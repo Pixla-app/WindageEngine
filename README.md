@@ -1,6 +1,8 @@
 # Windage Engine
 
-The studio's shared Swift/Metal foundation. **`WE`** prefix.
+The studio's shared Swift/Metal foundation. **`WE`** prefix. **`windageengine.com`** — with
+`windagengine.com` registered defensively for the dropped second `e` and redirecting to it; see
+`../docs/NAMING.md`.
 
 > Studio-level, per the "would a second title need this?" rule in `~/PixlaGames/CLAUDE.md`. It is
 > **not** a title and does not live under one.
@@ -53,6 +55,34 @@ rather than that title stopping for three months to grow the engine sideways.
 > licence to build speculatively. The rule still holds: something enters this package when working
 > code proves the seam. A skeleton that merely suggests a title *might* want something is a note, not
 > a feature.
+
+### It worked, and the first thing it produced is `Volume` (2026-08-26)
+
+Brinewake's probe was built for **ground that moves**. That worry turned out to be a non-issue —
+world-space interpolation error at ship turn rates is a *micrometre*, measured against the real 120 Hz
+step — and the probe is worth more for having disproved it than it would have been for confirming it.
+
+Looking for that seam is what surfaced the real one. `SceneObject` coupled an `MTKMesh` to a
+`BoundingBox`, and the hit test took scene objects, so **owning a GPU mesh was the price of being
+hittable**. Coldkeel had already paid it twice without the cost being visible as a seam: `Target` and
+`Sentry` each hand-rolled their own world bounds, the renderer ran four hit tests where three were the
+same code, and ranging quietly asked a *different* set of things than shooting did — a sentry could be
+shot but not ranged. Brinewake is what made it untenable rather than untidy: on a deck, everything
+moves, so every crate would have been another special case.
+
+So `Volume` — an extent plus a transform, no mesh — came in, and Coldkeel's four hit paths became two
+(volumes, then the terrain height march, which is legitimately different). **It arrived as working,
+tested code with the duplication it removes already visible in a shipping title**, which is the bar,
+and it is the first thing to enter this package from a second title rather than from Coldkeel.
+
+Two details worth not undoing:
+
+- **`worldBounds` is computed, not stored.** The old `SceneObject` stored it, which was only safe
+  because its transform never changed. On anything that moves, a stored box is a box where the thing
+  used to be, and the symptom is a round passing through a crate that is visibly in the way.
+- **Ranging and hitting share one list.** They had drifted apart precisely because they were two
+  loops. A reticle that reads a distance the round will not travel is worse than no readout, because
+  the player acts on it.
 
 ### Which titles
 

@@ -98,15 +98,19 @@ public nonisolated struct LoadedMesh {
 /// one before then is an engine feature with no game behind it.
 public nonisolated struct SceneObject {
     public let mesh: MTKMesh
-    public let transform: matrix_float4x4
 
-    /// World-space bounds, computed once at load. Everything that asks "what is out there" — ranging
-    /// a target, tracing a round — starts here.
-    public let worldBounds: BoundingBox
+    /// Where it is and how big it is — the half of this that a round cares about.
+    ///
+    /// **Held as a ``Volume`` rather than as its own bounds, so that half can travel without the
+    /// mesh.** Everything that asks "what is out there" — ranging a target, tracing a round — goes
+    /// through volumes, and a thing with no GPU mesh is as hittable as a thing with one.
+    public let volume: Volume
+
+    public var transform: matrix_float4x4 { volume.transform }
+    public var worldBounds: BoundingBox { volume.worldBounds }
 
     public init(loaded: LoadedMesh, transform: matrix_float4x4) {
         self.mesh = loaded.mesh
-        self.transform = transform
-        self.worldBounds = loaded.bounds.transformed(by: transform)
+        self.volume = Volume(local: loaded.bounds, transform: transform)
     }
 }
