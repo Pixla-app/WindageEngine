@@ -131,6 +131,19 @@ public final class InputState {
 
     private var steadyingFromPad = false
 
+    /// Crouch: **C** on the keyboard, Circle on a pad.
+    ///
+    /// **Held, not toggled**, for the same reason steadying is: a posture you have to keep asking
+    /// for is one you choose per shot. Latched, a crouch that is steadier than standing would simply
+    /// be switched on at the start of a session and never switched off, which makes it the default
+    /// posture rather than a decision.
+    ///
+    /// The same keys previously drove `MovementInput.vertical` for the free-flying camera. That axis
+    /// is still there for a title that flies; nothing in a game with feet reads it.
+    public var isCrouching: Bool {
+        pressedKeys.contains(Key.c) || (gamepad?.buttonB.isPressed ?? false)
+    }
+
     /// Takes the accumulated discrete steps and clears them.
     public func consumeSteps() -> SIMD2<Int> {
         defer { pendingSteps = SIMD2(0, 0) }
