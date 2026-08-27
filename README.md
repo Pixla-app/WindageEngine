@@ -108,25 +108,27 @@ and those drift apart. It is a bitmap, not signed distance fields — SDF is the
 eventually and a materially bigger piece of work, so this rasterises generously and scales *down*,
 which is the direction that stays sharp.
 
-## No App Store sandbox is baked in (2026-08-26)
+## Distribution-agnostic, deliberately (2026-08-26)
 
-The studio's distribution target is a **direct, notarized download outside the Mac App Store** — see
-`~/PixlaGames/CLAUDE.md`. The consequence for this package is a constraint on what it may assume:
+**This package is not the thing being distributed — a title is — so it must not assume how.** It has
+to run sandboxed or not:
 
-- **No sandbox assumptions.** Full filesystem access is available to a consumer; nothing here may be
-  written as though a container were the only place a title can read or write.
-- **No On-Demand Resources.** Assets are files a title ships and loads.
-- **No App Store IAP.** Nothing here has an opinion about payment.
+- **Never assume a writable location outside the container.** No hard-coded absolute paths, nothing
+  written beside the executable, no "documents folder".
+- **Never require an entitlement a sandboxed app cannot get.**
+- **Load resources from bundles**, not arbitrary disk paths.
 
-Notarization gets a build past Gatekeeper and asks nothing of the engine's design. **If the App Store
-is ever pursued, sandbox compliance is retrofitted then** — the same deferred-until-needed posture as
-Windows and licensing, both below.
+**The expensive part of App Store distribution was never the sandbox — it is retrofitting file access
+that assumed free rein.** Holding this constraint costs nothing and keeps both doors open, so a title
+can ship direct *or* on the store without the engine changing.
 
-> Coldkeel currently ships sandboxed because its Xcode template set it that way and it costs nothing
-> there yet. **That is a title's local fact and must not become an engine assumption**, which is
-> exactly why it is written down here.
+A title picks its own store; see `~/PixlaGames/CLAUDE.md`. Direct notarized download is the studio's
+default, and that is a title-level default, not a constraint this package may encode.
 
-## Conventions
+> Coldkeel currently ships sandboxed because its template set it that way. **A title's local fact must
+> never become an engine assumption**, which is exactly why it is written here.
+
+## Conventions## Conventions
 
 - **`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`**, matching the game targets. Anything pure — maths,
   simulation, anything bound for a render thread — must say `nonisolated` explicitly. Making a type
