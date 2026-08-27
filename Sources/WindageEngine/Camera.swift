@@ -18,6 +18,16 @@ public nonisolated struct MovementInput: Equatable, Sendable {
     public var vertical: Float = 0
     public var sprint: Bool = false
 
+    /// **Spelled out rather than synthesised.** A memberwise initialiser stays `internal`, so a
+    /// consumer outside this module can read a `MovementInput` and never construct one — an access
+    /// error that reads like a missing declaration.
+    public init(forward: Float = 0, strafe: Float = 0, vertical: Float = 0, sprint: Bool = false) {
+        self.forward = forward
+        self.strafe = strafe
+        self.vertical = vertical
+        self.sprint = sprint
+    }
+
     public static let still = MovementInput()
 }
 
