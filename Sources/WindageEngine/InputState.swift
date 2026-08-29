@@ -92,7 +92,11 @@ public final class InputState {
     // MARK: - Events in
 
     public func keyDown(_ keyCode: UInt16) {
+        // **Only a fresh press toggles.** macOS repeats a held key, so without the already-down
+        // check, resting a finger on `C` would strobe the crouch at the repeat rate.
+        let wasDown = pressedKeys.contains(keyCode)
         pressedKeys.insert(keyCode)
+        if keyCode == Key.c && !wasDown { toggleCrouch() }
 
         // Arrows step once per press — and again on key repeat, which is what makes holding one
         // down run a turret up rather than requiring forty presses.
@@ -105,7 +109,15 @@ public final class InputState {
         }
     }
     public func keyUp(_ keyCode: UInt16) { pressedKeys.remove(keyCode) }
-    public func setSprinting(_ sprinting: Bool) { sprintingFromKeyboard = sprinting }
+
+    /// Toggles the crouch. Called on the key *down* edge, so holding `C` does not strobe it.
+    public func toggleCrouch() {
+        isCrouching.toggle()
+    }
+    public func setSprinting(_ sprinting: Bool) {
+        sprintingFromKeyboard = sprinting
+        standIfSprinting()
+    }
     public func setRightMouse(_ held: Bool) { rightMouseHeld = held }
     public func setLeftMouse(_ held: Bool) { leftMouseHeld = held }
 
@@ -130,18 +142,33 @@ public final class InputState {
     }
 
     private var steadyingFromPad = false
+    private var crouchButtonWasPressed = false
 
-    /// Crouch: **C** on the keyboard, Circle on a pad.
+    /// Crouch: **C** on the keyboard, Circle on a pad. **Latched — press to crouch, press to stand.**
     ///
-    /// **Held, not toggled**, for the same reason steadying is: a posture you have to keep asking
-    /// for is one you choose per shot. Latched, a crouch that is steadier than standing would simply
-    /// be switched on at the start of a session and never switched off, which makes it the default
-    /// posture rather than a decision.
+    /// **Held was wrong, and this codebase already said so.** The rule it follows is the one written
+    /// for sprint: latch what stays on *while your hands are busy with something else*, hold what is
+    /// a moment. Steadying is held because a player taking a precision shot is standing still for a
+    /// second. Crouching is not that — you crouch and then walk, aim, steady and dial turrets, so
+    /// holding `C` means clamping it against W/A/S/D, right mouse, Shift and the arrow keys at once.
+    ///
+    /// **The worry that made it held does not survive contact with the cost.** A latched posture
+    /// that is only steadier would indeed get switched on once and never off — but crouching costs
+    /// 55% of your speed and the whole sprint, so what stops it being the default is the trade, not
+    /// the button. See `Footing.crouchedEyeHeight`.
     ///
     /// The same keys previously drove `MovementInput.vertical` for the free-flying camera. That axis
     /// is still there for a title that flies; nothing in a game with feet reads it.
-    public var isCrouching: Bool {
-        pressedKeys.contains(Key.c) || (gamepad?.buttonB.isPressed ?? false)
+    public private(set) var isCrouching = false
+
+    /// **Asking to sprint stands you up**, rather than doing nothing.
+    ///
+    /// You cannot sprint crouched — that is the cost — so a sprint press while crouched is either
+    /// ignored or obeyed. Ignoring it leaves the player pressing a key that does nothing and
+    /// concluding the game is stuck; standing up is what they meant, because "go fast" is not an
+    /// ambiguous intent.
+    private func standIfSprinting() {
+        if sprintingFromKeyboard || sprintLatch.isEngaged { isCrouching = false }
     }
 
     /// Takes the accumulated discrete steps and clears them.
@@ -197,6 +224,12 @@ public final class InputState {
     /// through a stop, and the next tap of the stick reads as sprinting when the player meant to
     /// walk.
     public func pollFrame() {
+        // Circle toggles the crouch on its press edge, like `C` does. Level-triggering it would
+        // strobe the posture for as long as the button is down.
+        let crouchButton = gamepad?.buttonB.isPressed ?? false
+        if crouchButton && !crouchButtonWasPressed { toggleCrouch() }
+        crouchButtonWasPressed = crouchButton
+
         // The d-pad steps on the press edge, like the arrow keys — level-triggering it would run a
         // turret to its stop in a third of a second.
         if let pad = gamepad?.dpad {
@@ -222,6 +255,7 @@ public final class InputState {
             sprintLatch.disengage()
         } else {
             sprintLatch.update(buttonPressed: stickClick, forwardInput: movement.forward)
+            standIfSprinting()
         }
     }
 
@@ -265,15 +299,17 @@ public final class InputState {
             input.strafe += stick.x
             input.forward += stick.y
 
-            // Cross rises, Circle drops — matching Space and C on the keyboard.
+            // Cross rises. Circle used to drop, matching C — it toggles the crouch now, and a
+            // button cannot mean both "go down one metre per second" and "change posture".
             if gamepad.buttonA.isPressed { input.vertical += 1 }
-            if gamepad.buttonB.isPressed { input.vertical -= 1 }
         }
 
         // Never sprinting through the optic — the states are exclusive by design.
         if sprintLatch.isEngaged && !isAiming {
             input.sprint = true
         }
+        // And never while crouched: that is what the posture costs. See `isCrouching`.
+        if isCrouching { input.sprint = false }
 
         // Keyboard and stick can both contribute; clamp so holding both is not faster than either.
         input.forward = min(max(input.forward, -1), 1)
