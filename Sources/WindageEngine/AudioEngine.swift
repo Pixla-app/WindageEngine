@@ -45,7 +45,13 @@ public final class AudioEngine {
         environment.distanceAttenuationParameters.referenceDistance = 8
         environment.distanceAttenuationParameters.maximumDistance = 2000
         environment.distanceAttenuationParameters.rolloffFactor = 0.9
-        environment.renderingAlgorithm = .auto
+        // **`.sphericalHead`, not `.auto`.** On a stereo output `.auto` resolves to HRTF, and sixteen
+        // HRTF-spatialised voices is a real load on the audio render thread — which surfaces as
+        // `HALC_ProxyIOContext: skipping cycle due to overload`, the one CoreAudio line in this
+        // project's console noise that is *not* noise. Spherical head keeps the distance attenuation
+        // and the directional cue a game actually reads at a fraction of the cost; binaural accuracy
+        // is not what tells a player which way a shot came from at 400 m.
+        environment.renderingAlgorithm = .sphericalHead
 
         // Mono voices: a spatialiser needs a point source, and a stereo file already has a position
         // baked into it that would fight the one being applied.
