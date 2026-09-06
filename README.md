@@ -128,6 +128,26 @@ about** — that rule protects against designing things that cannot be designed 
 game, like a scene graph or a material system. Skinned animation has one standard shape, and Model
 I/O hands over the data in it.
 
+### The authoring half is proved too — 2026-09-06
+
+Reading UsdSkel was only half the question; the other half is whether a bought rig *gets* into USD.
+A two-bone armature with a skinned mesh, authored in Blender 5.2 and exported to `.usdc`, read back
+through Model I/O:
+
+```
+MDLMesh Cylinder  verts=48  attrs=["position","normal","textureCoordinate","jointIndices","jointWeights"]
+  BIND skeleton=Rig
+MDLSkeleton Rig   joints=["Lower", "Lower/Upper"]
+```
+
+**The whole chain holds.** So a rigged model bought as FBX is a Blender import and a USD export away
+from being loadable — the risky half (does USD carry the skeleton, does Model I/O read it) is the
+half now proved, and FBX import into Blender is routine.
+
+> **What this does *not* prove:** the export above came from Blender-authored data, not from an
+> imported FBX. That step is ordinary, but it is untested here, so verify it on the first real
+> character rather than assuming it.
+
 > **The trigger is an asset, not a decision.** Building a clip and blending API with nothing to skin
 > *is* the speculative version — you would be guessing at the interface with no consumer. Buy a
 > rigged **USD** character first, then build against it.
