@@ -93,6 +93,48 @@ all four have names, domains and trademark screening done.
 **Royal Valor is explicitly outside this**, and stays outside. It is the fantasy MMO, it is not in the
 shooter lane, and nothing here is expected to reach it.
 
+## Skinned animation is tractable here — probed 2026-09-06
+
+**The engine cannot animate a character, and that is its single biggest gap**: five shooter titles
+sit on it and every one of them will want one. Before treating that as a plan, the load-bearing
+assumption got tested — *does Model I/O actually import UsdSkel, or does it silently drop it?*
+
+A hand-written eight-vertex, two-joint `.usda` loaded through `MDLAsset`:
+
+```
+can import usda: true
+MDLObject  name=Root
+  MDLMesh  name=Bar
+    vertices=8  attributes=["position", "normal", "jointIndices", "jointWeights"]
+    BIND skeleton=Skel joints=2
+  MDLSkeleton  name=Skel
+    jointPaths: ["Root", "Root/Mid"]
+    bind transforms: 2
+```
+
+**All of it comes through** — joint indices and weights as vertex attributes, the skeleton with its
+joint paths and bind transforms, and an `MDLAnimationBindComponent` tying the mesh to it. So the
+parsing is not work this studio owns, and no third-party importer is needed.
+
+**`MeshLoader` needs no structural change either.** It already takes a `semantics` map from the game,
+so asking for `MDLVertexAttributeJointIndices` and `MDLVertexAttributeJointWeights` is a dictionary
+entry. The seam was already in the right place.
+
+### What it would actually cost, and why the extraction rule does not bar it
+
+Vertex format (joints + weights), a skeleton and clip value type, sampling to a joint-matrix palette,
+and skinning in the vertex shader. Real, bounded, and **not speculative in the way the rule warns
+about** — that rule protects against designing things that cannot be designed correctly from one
+game, like a scene graph or a material system. Skinned animation has one standard shape, and Model
+I/O hands over the data in it.
+
+> **The trigger is an asset, not a decision.** Building a clip and blending API with nothing to skin
+> *is* the speculative version — you would be guessing at the interface with no consumer. Buy a
+> rigged **USD** character first, then build against it.
+>
+> **And that changes what to buy: OBJ carries no skeleton.** An OBJ character is a statue by format,
+> not by engine limitation. See the buying filter in `../docs/ASSETS.md`.
+
 ## The split
 
 | Engine owns | A title owns |
