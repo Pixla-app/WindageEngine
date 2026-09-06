@@ -21,6 +21,7 @@ public final class InputState {
     private enum Key {
         static let w: UInt16 = 13, a: UInt16 = 0, s: UInt16 = 1, d: UInt16 = 2
         static let space: UInt16 = 49, c: UInt16 = 8, escape: UInt16 = 53
+        static let tab: UInt16 = 48
         static let up: UInt16 = 126, down: UInt16 = 125, left: UInt16 = 123, right: UInt16 = 124
     }
 
@@ -97,6 +98,7 @@ public final class InputState {
         let wasDown = pressedKeys.contains(keyCode)
         pressedKeys.insert(keyCode)
         if keyCode == Key.c && !wasDown { toggleCrouch() }
+        if keyCode == Key.tab && !wasDown { pendingNext += 1 }
 
         // Arrows step once per press — and again on key repeat, which is what makes holding one
         // down run a turret up rather than requiring forty presses.
@@ -110,13 +112,24 @@ public final class InputState {
     }
     public func keyUp(_ keyCode: UInt16) { pressedKeys.remove(keyCode) }
 
+    /// Presses of **Tab** since the game last took them.
+    ///
+    /// **A generic "next" edge, not a game verb.** The engine has no idea what a title advances —
+    /// a job, a level, a page of a menu — and should not learn. It counts presses; the game decides.
+    public private(set) var pendingNext = 0
+
+    /// Takes the accumulated presses and clears them.
+    public func consumeNext() -> Int {
+        defer { pendingNext = 0 }
+        return pendingNext
+    }
+
     /// Toggles the crouch. Called on the key *down* edge, so holding `C` does not strobe it.
     public func toggleCrouch() {
         isCrouching.toggle()
     }
     public func setSprinting(_ sprinting: Bool) {
         sprintingFromKeyboard = sprinting
-        standIfSprinting()
     }
     public func setRightMouse(_ held: Bool) { rightMouseHeld = held }
     public func setLeftMouse(_ held: Bool) { leftMouseHeld = held }
@@ -161,15 +174,26 @@ public final class InputState {
     /// is still there for a title that flies; nothing in a game with feet reads it.
     public private(set) var isCrouching = false
 
-    /// **Asking to sprint stands you up**, rather than doing nothing.
+    /// **Asking to sprint stands you up — on the press, not while it is held.**
     ///
-    /// You cannot sprint crouched — that is the cost — so a sprint press while crouched is either
-    /// ignored or obeyed. Ignoring it leaves the player pressing a key that does nothing and
-    /// concluding the game is stuck; standing up is what they meant, because "go fast" is not an
-    /// ambiguous intent.
+    /// You cannot sprint crouched, so a sprint *press* while crouched is either ignored or obeyed.
+    /// Ignoring it leaves the player pressing a key that does nothing and concluding the game is
+    /// stuck; standing up is what they meant, because "go fast" is not an ambiguous intent.
+    ///
+    /// > **It checked the held state and ran every frame, which made crouching while sprinting
+    /// > impossible.** `pollFrame` called this on every tick, so pressing `C` with Shift down
+    /// > crouched for exactly one step and stood back up on the next — and since a slide starts on
+    /// > the edge of crouching at sprint speed, the slide could never happen either. It reads as the
+    /// > key doing nothing. Tests missed it because they drove this type directly and never ran
+    /// > `pollFrame`; only stepping the real input path in the running game showed it.
     private func standIfSprinting() {
-        if sprintingFromKeyboard || sprintLatch.isEngaged { isCrouching = false }
+        let requested = sprintingFromKeyboard || sprintLatch.isEngaged
+        defer { sprintWasRequested = requested }
+        guard requested, !sprintWasRequested else { return }
+        isCrouching = false
     }
+
+    private var sprintWasRequested = false
 
     /// Takes the accumulated discrete steps and clears them.
     public func consumeSteps() -> SIMD2<Int> {
@@ -230,6 +254,11 @@ public final class InputState {
         if crouchButton && !crouchButtonWasPressed { toggleCrouch() }
         crouchButtonWasPressed = crouchButton
 
+        // Sprint stands a crouched player up on the press edge. Evaluated once a frame, here, after
+        // the latch below has settled — checking the *held* state instead is what made crouching
+        // while sprinting impossible.
+        defer { standIfSprinting() }
+
         // The d-pad steps on the press edge, like the arrow keys — level-triggering it would run a
         // turret to its stop in a third of a second.
         if let pad = gamepad?.dpad {
@@ -255,7 +284,6 @@ public final class InputState {
             sprintLatch.disengage()
         } else {
             sprintLatch.update(buttonPressed: stickClick, forwardInput: movement.forward)
-            standIfSprinting()
         }
     }
 

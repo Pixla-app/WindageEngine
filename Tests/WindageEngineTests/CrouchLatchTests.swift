@@ -40,15 +40,54 @@ struct CrouchLatchTests {
 
     /// **Asking to sprint stands you up.** Ignoring the key would leave the player pressing
     /// something that does nothing and concluding the game is stuck; "go fast" is not ambiguous.
-    @Test("Sprinting stands you up rather than doing nothing")
+    @Test("Pressing sprint stands you up rather than doing nothing")
     func sprintingStands() {
         let input = InputState()
         input.keyDown(c)
         #expect(input.isCrouching)
 
         input.setSprinting(true)
-        #expect(!input.isCrouching, "it stayed crouched with sprint held")
+        input.pollFrame()
+        #expect(!input.isCrouching, "it stayed crouched when sprint was pressed")
         #expect(input.movement.sprint, "and then would not sprint either")
+    }
+
+    /// **The bug that made the slide unreachable, and that only the running game showed.**
+    ///
+    /// Standing up was checked against the *held* state, every frame — so pressing `C` with Shift
+    /// down crouched for one step and stood back up on the next, and since a slide starts on the
+    /// edge of crouching at sprint speed, no slide could ever begin. It reads as the key doing
+    /// nothing. **`pollFrame` is what these tests were missing**: driving the type directly skips
+    /// the per-frame path where it happened.
+    @Test("Crouching while sprint is held stays crouched")
+    func crouchSurvivesHeldSprint() {
+        let input = InputState()
+        input.setSprinting(true)
+        for _ in 0..<10 { input.pollFrame() }
+        #expect(!input.isCrouching)
+
+        input.keyDown(c)                 // C, with Shift still down
+        #expect(input.isCrouching)
+        for _ in 0..<60 { input.pollFrame() }
+        #expect(input.isCrouching, "it stood back up on its own while sprint was merely held")
+        #expect(!input.movement.sprint, "and it is crouch-walking, not sprinting")
+    }
+
+    /// Releasing and pressing sprint again is a fresh press, so it stands you up.
+    @Test("Re-pressing sprint after a crouch stands you up")
+    func aFreshPressStands() {
+        let input = InputState()
+        input.setSprinting(true)
+        input.pollFrame()
+        input.keyDown(c)
+        for _ in 0..<10 { input.pollFrame() }
+        #expect(input.isCrouching)
+
+        input.setSprinting(false)
+        input.pollFrame()
+        input.setSprinting(true)
+        input.pollFrame()
+        #expect(!input.isCrouching, "a fresh sprint press did not stand you up")
     }
 
     /// And while crouched, the movement never reports a sprint — that is what the posture costs.
