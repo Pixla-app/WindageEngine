@@ -144,9 +144,37 @@ MDLSkeleton Rig   joints=["Lower", "Lower/Upper"]
 from being loadable — the risky half (does USD carry the skeleton, does Model I/O read it) is the
 half now proved, and FBX import into Blender is routine.
 
-> **What this does *not* prove:** the export above came from Blender-authored data, not from an
-> imported FBX. That step is ordinary, but it is untested here, so verify it on the first real
-> character rather than assuming it.
+### And the FBX-into-Blender half, on a real character — 2026-09-07
+
+The caveat below said that step was "ordinary". **It was not.** A Sidekick character taken through
+Unity → FBX → Blender → `.usdc` and read back with Model I/O:
+
+```
+MDLMesh 'Scene'   vertices: 52866  attrs=[position, normal, textureCoordinate,
+                                          textureCoordinate1, jointIndices, jointWeights]
+MDLSkeleton 'root'  joints: 102    (ik_foot_root, ik_foot_root/ik_foot_l, …)
+```
+
+It holds — but three things had to be fixed first, and any of them would stop a bought FBX cold:
+
+- **Unity's FBX Exporter writes ASCII by default and Blender refuses ASCII outright.** The project's
+  Fbx Export setting is not consulted by the API path; the options have to be passed per export.
+- **Blender's FBX importer refuses blendshapes** — *"FBX in-between Shapes are not currently
+  supported"*, open since 2020. They have to be baked into the vertices and dropped, which is what
+  the engine wants anyway.
+- **Those shapes have in-between frames.** Baking the last frame and scaling it — the obvious
+  implementation — is wrong at every weight but the top one.
+
+**Two notes for the loader.** The vertex count is several times the modelled one because USD stores
+normals and UVs per face-corner and Model I/O expands them; that is not a broken mesh. And
+`MDLAnimationBindComponent` comes back with the skeleton attached but **`jointPaths` empty** — the
+mapping is on `MDLSkeleton.jointPaths` instead, so a loader reading only the bind component will
+decide a skinned character is a statue.
+
+The tooling that does all of this is `Studio/Characters/` — see its README.
+
+> **What the 2026-09-06 probe did *not* prove:** the export above came from Blender-authored data,
+> not from an imported FBX. That is the gap the 2026-09-07 run closed.
 
 > **The trigger is an asset, not a decision.** Building a clip and blending API with nothing to skin
 > *is* the speculative version — you would be guessing at the interface with no consumer. Buy a
