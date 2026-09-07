@@ -112,3 +112,53 @@ struct LevelTests {
         #expect(level.markers(ofKind: "whatever-a-game-wants").count == 1)
     }
 }
+
+/// Anchors are the reason a level survives its terrain changing, so the arithmetic is pinned.
+struct LevelAnchorTests {
+
+    /// A slope: ground falls one metre per metre of +x.
+    private let slope = Level.Ground(
+        heightAt: { x, _ in -x },
+        footprintCorners: { $0 == "hab" ? [SIMD2(-10, 0), SIMD2(10, 0)] : [] })
+
+    private let level = Level(name: "anchors")
+
+    @Test("Absolute keeps the height it was given")
+    func absolute() {
+        let placement = Level.Placement(mesh: "sign", position: SIMD3(5, 42, 0), anchor: .absolute)
+        #expect(level.worldPosition(of: placement, on: slope) == SIMD3(5, 42, 0))
+    }
+
+    @Test("Ground puts y on top of the ground under the origin")
+    func ground() {
+        let placement = Level.Placement(mesh: "rock", position: SIMD3(5, 0, 0), anchor: .ground)
+        #expect(level.worldPosition(of: placement, on: slope) == SIMD3(5, -5, 0))
+        let raised = Level.Placement(mesh: "rock", position: SIMD3(5, 2, 0), anchor: .ground)
+        #expect(level.worldPosition(of: raised, on: slope) == SIMD3(5, -3, 0))
+    }
+
+    /// **The lowest corner, not the origin.** A twenty-metre building centred at x = 0 spans
+    /// x = −10…+10, so on this slope its low corner is at −10 m of height; bedding to the origin
+    /// would leave that end ten metres in the air.
+    @Test("Bedded takes the lowest ground under the footprint")
+    func bedded() {
+        let placement = Level.Placement(mesh: "hab", position: SIMD3(0, 0, 0), anchor: .beddedFootprint)
+        #expect(level.worldPosition(of: placement, on: slope) == SIMD3(0, -10, 0))
+    }
+
+    /// And it follows the placement's rotation, or a turned building beds to the wrong corner.
+    @Test("Bedding respects yaw")
+    func beddedRotates() {
+        // Rotated a quarter turn, the footprint now runs along z, where this ground is flat.
+        let placement = Level.Placement(mesh: "hab", position: SIMD3(0, 0, 0),
+                                        yaw: .pi / 2, anchor: .beddedFootprint)
+        let y = level.worldPosition(of: placement, on: slope).y
+        #expect(abs(y) < 0.001, "a turned building bedded to a corner it no longer has")
+    }
+
+    @Test("A mesh with no footprint beds on its origin")
+    func noFootprint() {
+        let placement = Level.Placement(mesh: "unknown", position: SIMD3(3, 0, 0), anchor: .beddedFootprint)
+        #expect(level.worldPosition(of: placement, on: slope) == SIMD3(3, -3, 0))
+    }
+}

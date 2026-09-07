@@ -203,6 +203,68 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - Anchors
+
+nonisolated extension Level {
+
+    /// What the engine needs from the game to turn an anchored placement into a world position.
+    ///
+    /// **Closures rather than a protocol the game must conform to, and rather than the engine owning
+    /// terrain.** Only the game knows what its ground is — Coldkeel's is a height *function* with no
+    /// mesh behind it — and only the game knows how big its meshes are. What the engine does know is
+    /// what an anchor *means*, and that meaning is identical in every game, so it lives here instead
+    /// of being re-derived per title.
+    public struct Ground: Sendable {
+        /// Ground height at a world x/z.
+        public let heightAt: @Sendable (Float, Float) -> Float
+
+        /// A mesh's footprint corners in **its own model space**, for ``Anchor/beddedFootprint``.
+        /// Returning none is fine — the placement then beds on its origin alone.
+        public let footprintCorners: @Sendable (String) -> [SIMD2<Float>]
+
+        public init(heightAt: @escaping @Sendable (Float, Float) -> Float,
+                    footprintCorners: @escaping @Sendable (String) -> [SIMD2<Float>] = { _ in [] }) {
+            self.heightAt = heightAt
+            self.footprintCorners = footprintCorners
+        }
+    }
+
+    /// Where a placement actually stands.
+    ///
+    /// The stored `y` is an **offset** for the ground anchors and a world height for `.absolute`, so
+    /// a level authored on one terrain still sits on the ground after the terrain changes.
+    public func worldPosition(of placement: Placement, on ground: Ground) -> SIMD3<Float> {
+        let x = placement.position.x, z = placement.position.z
+        switch placement.anchor {
+        case .absolute:
+            return placement.position
+        case .ground:
+            return SIMD3(x, ground.heightAt(x, z) + placement.position.y, z)
+        case .beddedFootprint:
+            // The **lowest** corner, not the average and not the origin: bedding to anything higher
+            // leaves the low end of a long building in the air, which is the failure this exists for.
+            var lowest = ground.heightAt(x, z)
+            let c = cos(placement.yaw), s = sin(placement.yaw)
+            for corner in ground.footprintCorners(placement.mesh) {
+                let scaled = corner * placement.scale
+                lowest = min(lowest, ground.heightAt(x + scaled.x * c - scaled.y * s,
+                                                    z + scaled.x * s + scaled.y * c))
+            }
+            return SIMD3(x, lowest + placement.position.y, z)
+        }
+    }
+
+    /// The same, for a marker.
+    public func worldPosition(of marker: Marker, on ground: Ground) -> SIMD3<Float> {
+        switch marker.anchor {
+        case .absolute: return marker.position
+        default: return SIMD3(marker.position.x,
+                              ground.heightAt(marker.position.x, marker.position.z) + marker.position.y,
+                              marker.position.z)
+        }
+    }
+}
+
 // MARK: - Reading and writing
 
 nonisolated extension Level {
