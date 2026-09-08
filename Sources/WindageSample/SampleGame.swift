@@ -106,7 +106,7 @@ final class SampleGame: GameLoop {
 
         let loaded = SampleLevel.load(0)
         editor = LevelEditor(level: loaded.level)
-        levelPath = loaded.source
+        levelPath = loaded.report
 
         run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position),
                         levelName: loaded.level.name)
@@ -166,7 +166,10 @@ final class SampleGame: GameLoop {
         }
         uniformBuffer = buffer
 
-        hud = HUDRenderer(device: device)
+        // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
+        // default, and a character it does not carry draws nothing at all — which is how these
+        // hints spent several sessions reading "S save  Z undo" with the ⌘ silently missing.
+        hud = HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•"])
 
         audio = AudioEngine()
         if let audio {
@@ -264,7 +267,7 @@ final class SampleGame: GameLoop {
         levelIndex = (index + SampleLevel.names.count) % SampleLevel.names.count
         let loaded = SampleLevel.load(levelIndex)
         editor = LevelEditor(level: loaded.level)
-        levelPath = loaded.source
+        levelPath = loaded.report
 
         loadMissingMeshes()
         rebuild()
@@ -341,6 +344,17 @@ final class SampleGame: GameLoop {
                 } catch { print("WindageSample: save failed — \(error)") }
             case 6: editor.undo(); rebuild()                 // cmd-Z
             case 15: editor.redo(); rebuild()                // cmd-R
+            case 51:                                         // cmd-⌫ — throw the edited copy away
+                // **The way back to the level this repository ships.** Once the editor has saved,
+                // that copy shadows the shipped file for ever, so editing `courtyard.json` in the
+                // source tree appears to do nothing. Without this the only cure is knowing where
+                // Application Support is.
+                if SampleLevel.discardEdits(levelIndex) {
+                    print("WindageSample: discarded the edited copy")
+                } else {
+                    print("WindageSample: there was no edited copy to discard")
+                }
+                load(level: levelIndex)
             default: return false
             }
             return true
@@ -585,7 +599,7 @@ final class SampleGame: GameLoop {
                          x: margin, y: y + body * 1.4, pointSize: body, color: gold)
             _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete",
                          x: margin, y: viewportSize.y - margin - hint * 1.4, pointSize: hint, color: white)
-            _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · tab back to walking",
+            _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · ⌘⌫ revert to shipped · tab back to walking",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         } else {
             // **The hints follow whichever device is actually plugged in.** Telling somebody holding

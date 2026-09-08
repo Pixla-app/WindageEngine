@@ -45,16 +45,33 @@ public final class FontAtlas {
 
     private var glyphs: [Character: Glyph] = [:]
 
-    public init?(device: MTLDevice, font: NSFont = .monospacedSystemFont(ofSize: FontAtlas.rasterHeight, weight: .medium)) {
+    /// Characters the sheet could not include, because the font has no glyph for them.
+    ///
+    /// **Reported rather than silently dropped.** A character with no glyph draws nothing at all,
+    /// which is invisible in exactly the way a missing HUD element must not be: it cost this engine
+    /// a `×` that vanished out of a scope readout and a whole row of keyboard symbols that vanished
+    /// out of the sample's hints, and in both cases the text simply looked oddly spaced.
+    public private(set) var unavailableCharacters: Set<Character> = []
+
+    /// - Parameter additionalCharacters: anything beyond printable ASCII the game intends to draw.
+    ///   **ASCII is the default and not a limit** — a HUD that wants `×`, `·` or `⌘` asks for it
+    ///   here, and finds out at load whether the font can supply it.
+    public init?(device: MTLDevice,
+                 font: NSFont = .monospacedSystemFont(ofSize: FontAtlas.rasterHeight, weight: .medium),
+                 additionalCharacters: Set<Character> = []) {
         let ctFont = font as CTFont
-        let characters = (32...126).map { Character(UnicodeScalar($0)!) }
+        let ascii = (32...126).map { Character(UnicodeScalar($0)!) }
+        let characters = ascii + additionalCharacters.subtracting(ascii).sorted()
 
         // Measure everything first, then lay it out in rows.
         var measured: [(Character: Character, glyph: CGGlyph, rect: CGRect, advance: CGFloat)] = []
         for character in characters {
             let utf16 = Array(String(character).utf16)
             var glyph = CGGlyph()
-            guard CTFontGetGlyphsForCharacters(ctFont, utf16, &glyph, 1) else { continue }
+            guard CTFontGetGlyphsForCharacters(ctFont, utf16, &glyph, 1) else {
+                unavailableCharacters.insert(character)
+                continue
+            }
 
             var rect = CGRect.zero
             var advance = CGSize.zero

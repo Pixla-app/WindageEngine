@@ -154,8 +154,8 @@ struct SampleRunTests {
     /// **Every level, not just the first.** A crate with no marker cannot be collected, and a marker
     /// with no crate is an objective the player cannot see.
     @Test("Every level's crates and objective markers agree", arguments: 0..<SampleLevel.names.count)
-    func levelIsConsistent(index: Int) {
-        let level = SampleLevel.builtIn(index)
+    func levelIsConsistent(index: Int) throws {
+        let level = try SampleLevel.bundled(index)
         let markers = level.markers(ofKind: "objective")
         let crates = level.placements(tagged: "objective")
         #expect(!markers.isEmpty, "\(level.name) has no objectives, so it wins itself")
@@ -224,9 +224,9 @@ struct SecondLevelTests {
     }
 
     @Test("The sample ships more than one level, and they are not the same")
-    func theLevelsDiffer() {
+    func theLevelsDiffer() throws {
         #expect(SampleLevel.names.count >= 2)
-        let first = SampleLevel.builtIn(0), second = SampleLevel.builtIn(1)
+        let first = try SampleLevel.bundled(0), second = try SampleLevel.bundled(1)
         #expect(first.name != second.name)
         #expect(first.markers(ofKind: "objective").count != second.markers(ofKind: "objective").count,
                 "a run sized from one level must visibly not fit the other")
@@ -238,9 +238,9 @@ struct SecondLevelTests {
     /// **The one that actually bit.** Meshes were loaded once at startup from the first level's list,
     /// so anything new in the second drew nothing at all.
     @Test("The second level uses a mesh the first does not")
-    func theSecondLevelNeedsANewMesh() {
-        let first = Set(SampleLevel.builtIn(0).placements.map(\.mesh))
-        let second = Set(SampleLevel.builtIn(1).placements.map(\.mesh))
+    func theSecondLevelNeedsANewMesh() throws {
+        let first = try Set(SampleLevel.bundled(0).placements.map(\.mesh))
+        let second = try Set(SampleLevel.bundled(1).placements.map(\.mesh))
         #expect(!second.subtracting(first).isEmpty,
                 "both levels use the same meshes, so loading meshes once would never be caught")
     }
@@ -282,5 +282,104 @@ struct SecondLevelTests {
         let json = String(data: try Data(contentsOf: store.url), encoding: .utf8)!
         #expect(!json.contains("bestSeconds"))
         #expect(json.contains("\"version\" : 2"))
+    }
+}
+
+/// The levels are files now, not functions. These pin the part of that which can go wrong quietly.
+@Suite("Levels are files")
+struct SampleLevelFileTests {
+
+    private func scratch() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WindageSampleLevelTests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    /// **The failure this replaces was silent.** When the levels were built in code there was
+    /// nothing to ship and nothing to miss; a resource, by contrast, is one `Package.swift` line
+    /// away from not being in the bundle at all, and the game would simply start on an empty world.
+    @Test("Every level named actually ships", arguments: 0..<SampleLevel.names.count)
+    func everyLevelShips(index: Int) throws {
+        let level = try SampleLevel.bundled(index)
+        #expect(!level.placements.isEmpty, "\(SampleLevel.fileName(index)).json is not in the bundle")
+        #expect(level.formatVersion <= Level.currentVersion)
+    }
+
+    /// **An index out of range is a real level, not a missing one.** The names clamp, so there is
+    /// no way through this API to ask for a file that does not exist — worth pinning, because the
+    /// alternative reads as "loading is fault-tolerant" when it is the *index* that is.
+    @Test("An out-of-range index clamps to a level that exists")
+    func indicesClamp() {
+        let loaded = SampleLevel.load(99, savedIn: scratch())
+        #expect(loaded.level.name != "MISSING")
+        #expect(SampleLevel.fileName(99) == SampleLevel.names.last)
+        #expect(SampleLevel.fileName(-3) == SampleLevel.names.first)
+    }
+
+    @Test("With no edited copy, the shipped level is what loads")
+    func shippedByDefault() {
+        let loaded = SampleLevel.load(0, savedIn: scratch())
+        #expect(loaded.origin == .shipped)
+        #expect(loaded.shadowedPath == nil)
+        #expect(loaded.report == loaded.path)
+    }
+
+    /// **And it says what it is shadowing.** A reader who edits the repository's `courtyard.json`,
+    /// sees nothing change, and is told nothing has been handed a puzzle instead of a lesson.
+    @Test("An edited copy shadows the shipped level, and says so")
+    func editedShadowsShipped() throws {
+        let directory = scratch()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var level = try SampleLevel.bundled(0)
+        level.name = "EDITED"
+        try level.encoded().write(to: SampleLevel.writableURL(0, in: directory))
+
+        let loaded = SampleLevel.load(0, savedIn: directory)
+        #expect(loaded.origin == .edited)
+        #expect(loaded.level.name == "EDITED")
+        #expect(loaded.shadowedPath != nil, "it must name the file it is shadowing")
+        #expect(loaded.report.contains("shadowing"))
+    }
+
+    @Test("Discarding the edit puts the shipped level back")
+    func discardingRestoresShipped() throws {
+        let directory = scratch()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var level = try SampleLevel.bundled(1)
+        level.name = "EDITED"
+        try level.encoded().write(to: SampleLevel.writableURL(1, in: directory))
+        #expect(SampleLevel.load(1, savedIn: directory).origin == .edited)
+
+        #expect(SampleLevel.discardEdits(1, in: directory))
+        #expect(SampleLevel.load(1, savedIn: directory).origin == .shipped)
+    }
+
+    /// **Loading must not write.** The old version copied the built-in level out on first run, so
+    /// the file the player edited and the file the repository shipped were different objects — and
+    /// an install made before a level changed kept the stale one for ever with nothing to say so.
+    @Test("Loading a level writes nothing")
+    func loadingWritesNothing() throws {
+        let directory = scratch()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        _ = SampleLevel.load(0, savedIn: directory)
+        _ = SampleLevel.load(1, savedIn: directory)
+
+        let written = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(written.isEmpty, "loading left \(written) behind")
+    }
+
+    /// The format round-trips through the file the game actually ships, not through one a test made.
+    @Test("A shipped level survives a save and a reload", arguments: 0..<SampleLevel.names.count)
+    func shippedLevelsRoundTrip(index: Int) throws {
+        let level = try SampleLevel.bundled(index)
+        let again = try Level.decode(from: level.encoded())
+        #expect(again.name == level.name)
+        #expect(again.placements.count == level.placements.count)
+        #expect(again.markers.count == level.markers.count)
+        #expect(again.settings == level.settings)
     }
 }

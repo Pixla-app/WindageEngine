@@ -38,6 +38,10 @@ let package = Package(
         .target(
             name: "WindageSampleCore",
             dependencies: ["WindageEngine"],
+            // **The levels are files, and this is where they ship from.** `.process` rather than
+            // `.copy` so they land flat in the bundle, which is where `Level.load(named:bundle:)`
+            // looks — the same arrangement a title uses.
+            resources: [.process("Resources")],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(

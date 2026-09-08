@@ -3,6 +3,7 @@
 //  WindageEngine
 //
 
+import Foundation
 import Metal
 import simd
 
@@ -43,12 +44,18 @@ public final class HUDRenderer {
 
     private static let vertexStride = MemoryLayout<Vertex>.stride
 
-    public init?(device: MTLDevice, font: FontAtlas? = nil) {
-        guard let atlas = font ?? FontAtlas(device: device) else {
-            print("WindageEngine: unable to build the font atlas")
+    /// - Parameter additionalCharacters: anything outside printable ASCII this HUD will draw.
+    ///   Ignored when `font` is supplied, since that atlas has already chosen its characters.
+    public init?(device: MTLDevice, font: FontAtlas? = nil, additionalCharacters: Set<Character> = []) {
+        guard let atlas = font ?? FontAtlas(device: device, additionalCharacters: additionalCharacters) else {
+            print("\(Engine.name): unable to build the font atlas")
             return nil
         }
         self.font = atlas
+        if !atlas.unavailableCharacters.isEmpty {
+            NSLog("\(Engine.name): the font has no glyph for "
+                  + atlas.unavailableCharacters.sorted().map(String.init).joined(separator: " "))
+        }
 
         do {
             // The engine's own shaders — compiled into the bundle by Xcode, or compiled here at
@@ -174,26 +181,36 @@ public final class HUDRenderer {
         rect(x: x + width - thickness, y: y, width: thickness, height: height, color: color)
     }
 
+    /// Characters already reported as missing, so the log says each one once rather than every frame.
+    private nonisolated(unsafe) static var warnedAbout: Set<Character> = []
+
     /// Draws a line of text with its **left edge and baseline** at `x, y`.
     ///
     /// Baseline rather than top edge, because that is the line the eye reads along: two readouts at
     /// the same baseline look aligned even when one contains a comma or a lowercase descender, and
     /// two aligned by their top edges do not.
-    @discardableResult
-    /// Draws a line of text and returns the pen position after it.
-    ///
     /// **`y` is the baseline, not the top.** Glyphs are drawn *upward* from it, which is the usual
     /// convention for text rendering and is not what somebody laying out a HUD assumes — passing a
     /// top margin puts the first line's ascenders off the top edge of the screen, which is exactly
     /// what happened to the sample and was reported as the title touching the top. The first line's
     /// `y` wants to be at least one `pointSize` below where you want the text to start.
+    @discardableResult
     public func text(_ string: String, x: Float, y: Float, pointSize: Float, color: UIColor) -> Float {
         guard color.srgb.w > 0 else { return width(of: string, pointSize: pointSize) }
         let scale = pointSize / Float(FontAtlas.rasterHeight)
         var penX = x
 
         for character in string {
-            guard let glyph = font.glyph(for: character) else { continue }
+            guard let glyph = font.glyph(for: character) else {
+                // **Say so, once.** A character the atlas does not carry draws nothing, and a HUD
+                // that quietly omits part of a line is a bug that survives being looked at — see
+                // `FontAtlas.unavailableCharacters`. The warning is per character, not per frame.
+                if HUDRenderer.warnedAbout.insert(character).inserted {
+                    NSLog("\(Engine.name): no glyph for '\(character)' — it will not be drawn. "
+                          + "Pass it to FontAtlas(additionalCharacters:).")
+                }
+                continue
+            }
             let w = glyph.size.x * scale
             let h = glyph.size.y * scale
 

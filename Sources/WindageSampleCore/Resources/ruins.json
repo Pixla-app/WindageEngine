@@ -1,0 +1,515 @@
+{
+  "formatVersion" : 1,
+  "markers" : [
+    {
+      "anchor" : "absolute",
+      "kind" : "spawn",
+      "name" : "start",
+      "position" : [
+        0,
+        0,
+        6
+      ],
+      "values" : {
+        "pitch" : -6
+      }
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -4,
+        0,
+        -14
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        5,
+        0,
+        -21
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -6,
+        0,
+        -30
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        3,
+        0,
+        -37
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -2,
+        0,
+        -45
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        6,
+        0,
+        -52
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -5,
+        0,
+        -58
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        0,
+        0,
+        -66
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        4,
+        0,
+        -70
+      ]
+    }
+  ],
+  "name" : "RUINS",
+  "placements" : [
+    {
+      "anchor" : "absolute",
+      "mesh" : "ground",
+      "position" : [
+        0,
+        0,
+        0
+      ],
+      "tags" : [
+        "ground"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -8
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -8
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -17
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.12
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -17
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.12
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -26
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.24
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -26
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.24
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -35
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.35999998
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -35
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.35999998
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -44
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.48
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -44
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.48
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        -7,
+        0,
+        -53
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.59999996
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "pillar",
+      "position" : [
+        7,
+        0,
+        -53
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ],
+      "yaw" : 0.59999996
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -6.6000004,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : -0.6
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -4.4,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : -0.4
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -2.2,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : -0.2
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        0,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        2.2,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : 0.2
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        4.4,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : 0.4
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        6.6000004,
+        0,
+        -62
+      ],
+      "scale" : 2.4,
+      "tags" : [
+        "solid"
+      ],
+      "yaw" : 0.6
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -4,
+        0,
+        -14
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        5,
+        0,
+        -21
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 0.55
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -6,
+        0,
+        -30
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 1.1
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        3,
+        0,
+        -37
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 1.6500001
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -2,
+        0,
+        -45
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 2.2
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        6,
+        0,
+        -52
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 2.75
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -5,
+        0,
+        -58
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 3.3000002
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        0,
+        0,
+        -66
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 3.8500001
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        4,
+        0,
+        -70
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 4.4
+    }
+  ],
+  "settings" : {
+    "sunPitch" : 22,
+    "sunYaw" : -40
+  }
+}

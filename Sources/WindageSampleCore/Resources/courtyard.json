@@ -1,0 +1,414 @@
+{
+  "formatVersion" : 1,
+  "markers" : [
+    {
+      "anchor" : "absolute",
+      "kind" : "spawn",
+      "name" : "start",
+      "position" : [
+        0,
+        0,
+        12
+      ],
+      "values" : {
+        "pitch" : -10
+      }
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -5,
+        0,
+        -6
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        3,
+        0,
+        -9
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        6,
+        0,
+        -3
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -2,
+        0,
+        -12
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        -8,
+        0,
+        -22
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "objective",
+      "position" : [
+        9,
+        0,
+        -24
+      ]
+    }
+  ],
+  "name" : "COURTYARD",
+  "placements" : [
+    {
+      "anchor" : "absolute",
+      "mesh" : "ground",
+      "position" : [
+        0,
+        0,
+        0
+      ],
+      "tags" : [
+        "ground"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -16,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -14,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -12,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -10,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -8,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -6,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -4,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        4,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        6,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        8,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        10,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        12,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        14,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        16,
+        0,
+        -18
+      ],
+      "scale" : 2,
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "tower",
+      "position" : [
+        -18,
+        0,
+        -18
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "tower",
+      "position" : [
+        18,
+        0,
+        -18
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "tower",
+      "position" : [
+        -18,
+        0,
+        6
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "tower",
+      "position" : [
+        18,
+        0,
+        6
+      ],
+      "tags" : [
+        "solid",
+        "landmark"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -5,
+        0,
+        -6
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        3,
+        0,
+        -9
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 0.4
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        6,
+        0,
+        -3
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 0.8
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -2,
+        0,
+        -12
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 1.2
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -8,
+        0,
+        -22
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 1.6
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        9,
+        0,
+        -24
+      ],
+      "scale" : 1.5,
+      "tags" : [
+        "solid",
+        "objective"
+      ],
+      "yaw" : 2
+    }
+  ],
+  "settings" : {
+    "sunPitch" : 38,
+    "sunYaw" : 25
+  }
+}

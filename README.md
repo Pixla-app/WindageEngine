@@ -19,14 +19,19 @@ swift run WindageSample
 That is the whole set-up: no Xcode project, no scheme, no signing. A window opens on a small
 courtyard you can walk around — **WASD** to move, click to capture the mouse, **esc** to release it.
 
-The sample prints where its level file is. Open that file, move something, run it again:
+**Its levels are files in this repository.** Open `Sources/WindageSampleCore/Resources/courtyard.json`,
+find the first tower, move it, and run it again:
 
 ```json
 { "mesh" : "tower", "position" : [ -18, 0, -18 ], "anchor" : "absolute", "tags" : ["solid","landmark"] }
 ```
 
-Change the first number and the orange tower moves. That is the point of it — see **The sample game**
-below.
+Change the first number and the orange tower moves. No compiler step you have to think about, and the
+diff is the change. That is the point of it — see **The sample game** below.
+
+> The sample prints which file it loaded. Once the in-game editor has saved, its copy lives in
+> Application Support and **shadows the file above** — the console line says so, and **⌘⌫** throws
+> that copy away.
 
 ## What it is, and what it deliberately is not
 
@@ -301,6 +306,12 @@ made to work without reaching inside, the API is wrong and the engine gets fixed
 
 It deliberately has:
 
+- **Levels that are files, not code.** `courtyard.json` and `ruins.json` ship in
+  `WindageSampleCore`'s resources and are loaded through `Level.load(named:bundle:)` — the same call
+  a title makes. **They used to be Swift functions that built a `Level`**, generated to disk on first
+  run, and that was the sample teaching the opposite of what the format claims: a level assembled by
+  a function says the file is an export. The files were generated once from those functions, so the
+  courtyard is byte-for-byte the courtyard it always was, and the functions are gone.
 - **No art dependency.** Its three meshes are hand-written OBJ files of a box, a taller box and a
   ground quad. A sample that needs an asset pack cannot be run by whoever just cloned this.
 - **No Xcode project.** `swift run WindageSample`. Anything requiring a project is a thing the reader
@@ -325,7 +336,8 @@ the faces the camera could not see and read as black boxes.
 `LevelEditor` — selection, move/rotate/scale/duplicate/delete, undo/redo, a dirty flag, save. Press
 **Tab** in the sample to use it: crosshair at something and **click** (or space) to pick, arrows to
 move, **q/e** up and down, **a/d** to turn, **-/=** to scale, **b** to copy, **⌫** to delete,
-**⌘S** save, **⌘Z** undo.
+**⌘S** save, **⌘Z** undo, **⌘⌫** discard the saved copy and go back to the level this repository
+ships.
 
 **All of the editing lives in the engine and none of it needs a window.** A selection, a set of
 operations, an undo stack and a dirty flag have nothing to do with rendering and everything to do
