@@ -33,7 +33,7 @@ public final class InputState {
     /// | L2 | aim | aim |
     /// | R2 | fire | fire |
     /// | L3 | sprint | sprint latch |
-    /// | R3 | — | free |
+    /// | R3 | — | one scroll notch (magnification) |
     /// | d-pad | — | discrete steps (Coldkeel's turrets) |
     ///
     /// **Square and Triangle stay unbound even in a title that has neither a reload nor a second
@@ -70,6 +70,38 @@ public final class InputState {
 
     private var rightMouseHeld = false
     private var leftMouseHeld = false
+
+    /// Notches of scroll since the simulation last took them — mouse wheel, trackpad, or R3.
+    ///
+    /// **A notch, not a distance.** A wheel reports a continuous delta and a trackpad reports a
+    /// stream of tiny ones; a game that consumes raw deltas gets a magnification that races on a
+    /// trackpad and crawls on a wheel. Accumulating to a threshold makes both devices produce the
+    /// same discrete clicks.
+    private var scrollAccumulator: Float = 0
+    private var pendingScroll = 0
+    private var scrollClickWasPressed = false
+
+    /// How much raw scroll makes one notch.
+    public static let scrollNotch: Float = 1.0
+
+    /// Feed raw scroll from the window. Positive is up / away from the user.
+    public func addScroll(_ delta: Float) {
+        scrollAccumulator += delta
+        while scrollAccumulator >= InputState.scrollNotch {
+            scrollAccumulator -= InputState.scrollNotch
+            pendingScroll += 1
+        }
+        while scrollAccumulator <= -InputState.scrollNotch {
+            scrollAccumulator += InputState.scrollNotch
+            pendingScroll -= 1
+        }
+    }
+
+    /// Notches since the last call. **Consumed once per simulation step**, like the look delta.
+    public func consumeScroll() -> Int {
+        defer { pendingScroll = 0 }
+        return pendingScroll
+    }
 
     /// Discrete steps requested since the simulation last took them — arrow keys and the d-pad.
     ///
@@ -307,6 +339,13 @@ public final class InputState {
         // swap; a shooter is expected to grow a second weapon, so Triangle is not free to borrow even
         // while there is only one. The shoulders were unbound, L1 is reachable without letting go of
         // either stick, and it leaves R1 for the grenade or melee a shooter usually wants.
+        // **R3 scrolls one way only, and that is a real limit rather than an oversight.** A button
+        // has no sign; a game binding it to something with a range has to wrap around, and should say
+        // so on screen. The mouse wheel is the two-way device.
+        let scrollClick = gamepad?.rightThumbstickButton?.isPressed ?? false
+        if scrollClick && !scrollClickWasPressed { pendingScroll += 1 }
+        scrollClickWasPressed = scrollClick
+
         let braceButton = gamepad?.leftShoulder.isPressed ?? false
         if braceButton && !braceButtonWasPressed { toggleBrace() }
         braceButtonWasPressed = braceButton
