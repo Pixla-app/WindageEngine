@@ -21,7 +21,7 @@ public final class InputState {
     private enum Key {
         static let w: UInt16 = 13, a: UInt16 = 0, s: UInt16 = 1, d: UInt16 = 2
         static let space: UInt16 = 49, c: UInt16 = 8, escape: UInt16 = 53
-        static let tab: UInt16 = 48
+        static let tab: UInt16 = 48, b: UInt16 = 11
         static let up: UInt16 = 126, down: UInt16 = 125, left: UInt16 = 123, right: UInt16 = 124
     }
 
@@ -99,6 +99,7 @@ public final class InputState {
         pressedKeys.insert(keyCode)
         if keyCode == Key.c && !wasDown { toggleCrouch() }
         if keyCode == Key.tab && !wasDown { pendingNext += 1 }
+        if keyCode == Key.b && !wasDown { toggleBrace() }
 
         // Arrows step once per press — and again on key repeat, which is what makes holding one
         // down run a turret up rather than requiring forty presses.
@@ -173,6 +174,21 @@ public final class InputState {
     /// The same keys previously drove `MovementInput.vertical` for the free-flying camera. That axis
     /// is still there for a title that flies; nothing in a game with feet reads it.
     public private(set) var isCrouching = false
+
+    /// Whether the player is **braced** — resting the weapon on something rather than holding it up.
+    ///
+    /// Latched like the crouch, and generic on purpose: a bipod is Coldkeel's version, a wall lean or
+    /// a sandbag would be another title's. What the engine knows is that it is a held posture the
+    /// player toggles; what it *means* is the game's business.
+    public private(set) var isBraced = false
+
+    public func toggleBrace() { isBraced.toggle() }
+
+    /// Give it up. A game calls this when its own rules say bracing has ended — Coldkeel folds the
+    /// bipod when the player stands or runs.
+    public func releaseBrace() { isBraced = false }
+
+    private var braceButtonWasPressed = false
 
     /// **Asking to sprint stands you up — on the press, not while it is held.**
     ///
@@ -253,6 +269,11 @@ public final class InputState {
         let crouchButton = gamepad?.buttonB.isPressed ?? false
         if crouchButton && !crouchButtonWasPressed { toggleCrouch() }
         crouchButtonWasPressed = crouchButton
+
+        // Square toggles the brace, on its press edge for the same reason.
+        let braceButton = gamepad?.buttonX.isPressed ?? false
+        if braceButton && !braceButtonWasPressed { toggleBrace() }
+        braceButtonWasPressed = braceButton
 
         // Sprint stands a crouched player up on the press edge. Evaluated once a frame, here, after
         // the latch below has settled — checking the *held* state instead is what made crouching
