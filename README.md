@@ -433,6 +433,34 @@ win would have overwritten the first's record. Best times are per level now, and
 rather than being discarded, so nobody loses a time to a format change. Migration runs one way: a
 save written now is v2 and never writes the old field back.
 
+## Culling (2026-09-08)
+
+`Frustum` — the planes of a view-projection and a conservative box test. **Extracted from
+Brassgrave's probe**, which is what a probe is for.
+
+It was written as that title's divergence: trenches are dense, close, occluding geometry. It carried
+a note saying Coldkeel was right not to cull, because a sniper range is an open plain where nearly
+everything is in front of the player. **That stopped being true** when the range gained a colony,
+ruins and 260 sprigs of flora — a 65° field of view is under a fifth of the circle, and the rest of
+an 854-object scene is behind the player's shoulders. Measured in Coldkeel:
+
+| facing | drawn of 870 |
+|---|---|
+| down the range | 611 |
+| across the valley | 111 |
+| back up the hill | 9 |
+
+Two consumers and working, tested code, which is what the extraction rule asks for.
+
+**The finding it was written to produce still stands: a Windage Engine frustum has five planes, not
+six.** The projection's far plane is infinite, so the far row extracts as a zero normal; code written
+expecting six either carries a plane that always passes or divides by zero normalising it.
+
+> **Shadow casters are culled per *cascade*, never by the view.** Something behind the player still
+> casts into the scene in front of them, and testing casters against the camera's frustum is the
+> classic way to make shadows vanish when you turn round. Each cascade's own frustum is the exact
+> test, because it is the volume that cascade renders.
+
 ## Testing
 
 `swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title
