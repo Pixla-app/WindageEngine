@@ -414,6 +414,25 @@ naming what was collected and where. A callback from inside a simulation step ru
 the step is on and invites the caller to mutate the run mid-step; a returned value cannot, and it
 keeps the run testable without a spy.
 
+## A second level (2026-09-08)
+
+The sample ships two: **COURTYARD** and **RUINS**. `n` switches, and winning moves you on.
+
+**One level is not enough to find out what assumed there would only ever be one**, and three things
+had. Meshes were loaded once at startup from the first level's list, so anything new in the second
+drew nothing. The camera was placed in `init`, so a new spawn was ignored. The run was sized once, so
+a level with a different number of objectives could not be finished.
+
+**None of those would have been found by a second *copy* of the first level.** RUINS differs
+deliberately, in exactly the ways that break each one: a mesh the courtyard never uses, a different
+spawn and facing, nine objectives against six, and its own sun.
+
+**The save format's version field earned its keep on its first use.** `Progress` held one
+`bestSeconds`, which was right with one level and silently wrong with two — the second level's first
+win would have overwritten the first's record. Best times are per level now, and a v1 save *migrates*
+rather than being discarded, so nobody loses a time to a format change. Migration runs one way: a
+save written now is v2 and never writes the old field back.
+
 ## Testing
 
 `swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title

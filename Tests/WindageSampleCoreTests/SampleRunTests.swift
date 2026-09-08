@@ -61,7 +61,7 @@ struct SampleRunTests {
         #expect(run.mode == .won(seconds: 3))
         #expect(run.isOver)
         #expect(run.progress.wins == 1)
-        #expect(run.progress.bestSeconds == 3)
+        #expect(run.best == 3)
     }
 
     @Test("Running out of time loses")
@@ -120,11 +120,11 @@ struct SampleRunTests {
         defer { store.clear() }
         var first = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
         first.step(deltaTime: 7, playerAt: SIMD3(0, 0, 0))
-        #expect(first.progress.bestSeconds == 7)
+        #expect(first.best == 7)
 
         // A fresh value, as a relaunch would build.
         let second = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
-        #expect(second.progress.bestSeconds == 7)
+        #expect(second.best == 7)
         #expect(second.progress.runs == 1)
     }
 
@@ -136,10 +136,10 @@ struct SampleRunTests {
         run.step(deltaTime: 5, playerAt: SIMD3(0, 0, 0))
         run.restart()
         run.step(deltaTime: 30, playerAt: SIMD3(0, 0, 0))
-        #expect(run.progress.bestSeconds == 5, "a slower run overwrote the best time")
+        #expect(run.best == 5, "a slower run overwrote the best time")
         run.restart()
         run.step(deltaTime: 2, playerAt: SIMD3(0, 0, 0))
-        #expect(run.progress.bestSeconds == 2)
+        #expect(run.best == 2)
     }
 
     /// A level with no objectives must not win instantly — `allSatisfy` on an empty array is `true`,
@@ -151,12 +151,14 @@ struct SampleRunTests {
         #expect(run.mode == .playing)
     }
 
-    @Test("The level's crates and its objective markers agree")
-    func levelIsConsistent() {
-        let level = SampleLevel.builtIn
+    /// **Every level, not just the first.** A crate with no marker cannot be collected, and a marker
+    /// with no crate is an objective the player cannot see.
+    @Test("Every level's crates and objective markers agree", arguments: 0..<SampleLevel.names.count)
+    func levelIsConsistent(index: Int) {
+        let level = SampleLevel.builtIn(index)
         let markers = level.markers(ofKind: "objective")
         let crates = level.placements(tagged: "objective")
-        #expect(markers.count == SampleLevel.cratePositions.count)
+        #expect(!markers.isEmpty, "\(level.name) has no objectives, so it wins itself")
         #expect(crates.count == markers.count, "a crate with no marker cannot be collected")
         for (marker, crate) in zip(markers, crates) {
             #expect(marker.position.x == crate.position.x)
@@ -210,5 +212,75 @@ struct SampleRunEventTests {
         var run = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
         run.togglePause()
         #expect(run.step(deltaTime: 1, playerAt: .zero).isEmpty)
+    }
+}
+
+/// **Two levels is where the assumptions live.** A second copy of the first level would have found
+/// none of this; a second level that *differs* found all of it.
+struct SecondLevelTests {
+
+    private func store() -> SaveStore<SampleRun.Progress> {
+        SaveStore(container: "WindageSampleCoreTests", name: "levels-\(UUID().uuidString)")
+    }
+
+    @Test("The sample ships more than one level, and they are not the same")
+    func theLevelsDiffer() {
+        #expect(SampleLevel.names.count >= 2)
+        let first = SampleLevel.builtIn(0), second = SampleLevel.builtIn(1)
+        #expect(first.name != second.name)
+        #expect(first.markers(ofKind: "objective").count != second.markers(ofKind: "objective").count,
+                "a run sized from one level must visibly not fit the other")
+        #expect(first.markers(ofKind: "spawn").first?.position
+                != second.markers(ofKind: "spawn").first?.position)
+        #expect(first.settings["sunYaw"] != second.settings["sunYaw"])
+    }
+
+    /// **The one that actually bit.** Meshes were loaded once at startup from the first level's list,
+    /// so anything new in the second drew nothing at all.
+    @Test("The second level uses a mesh the first does not")
+    func theSecondLevelNeedsANewMesh() {
+        let first = Set(SampleLevel.builtIn(0).placements.map(\.mesh))
+        let second = Set(SampleLevel.builtIn(1).placements.map(\.mesh))
+        #expect(!second.subtracting(first).isEmpty,
+                "both levels use the same meshes, so loading meshes once would never be caught")
+    }
+
+    @Test("Each level keeps its own best time")
+    func bestTimesArePerLevel() {
+        let store = self.store(); defer { store.clear() }
+        var one = SampleRun(objectives: [SIMD3(0, 0, 0)], levelName: "COURTYARD", store: store)
+        one.step(deltaTime: 5, playerAt: .zero)
+        var two = SampleRun(objectives: [SIMD3(0, 0, 0)], levelName: "RUINS", store: store)
+        two.step(deltaTime: 40, playerAt: .zero)
+        #expect(two.best == 40)
+        #expect(two.progress.best["COURTYARD"] == 5, "the second level overwrote the first's record")
+    }
+
+    /// **A version field earns its keep exactly once.** A v1 save has one time and no level; it
+    /// belonged to the only level that existed, and it must survive rather than being thrown away.
+    @Test("A version 1 save migrates instead of being lost")
+    func v1Migrates() throws {
+        let store = self.store(); defer { store.clear() }
+        let old = """
+        {"version":1,"bestSeconds":12.5,"runs":4,"wins":2}
+        """
+        try Data(old.utf8).write(to: store.url)
+        let progress = try #require(store.load())
+        #expect(progress.version == SampleRun.Progress.currentVersion)
+        #expect(progress.best["COURTYARD"] == 12.5)
+        #expect(progress.runs == 4)
+        #expect(progress.wins == 2)
+    }
+
+    /// And a save written now is v2 — migration runs one way.
+    @Test("Saving never writes the old shape back")
+    func migrationIsOneWay() throws {
+        let store = self.store(); defer { store.clear() }
+        var progress = SampleRun.Progress()
+        progress.best["RUINS"] = 30
+        try store.save(progress)
+        let json = String(data: try Data(contentsOf: store.url), encoding: .utf8)!
+        #expect(!json.contains("bestSeconds"))
+        #expect(json.contains("\"version\" : 2"))
     }
 }

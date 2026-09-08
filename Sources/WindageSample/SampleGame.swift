@@ -62,8 +62,11 @@ final class SampleGame: GameLoop {
     private(set) var isEditing = false
     var isEditingLevel: Bool { isEditing }
     private var level: Level { editor.level }
-    private let levelURL: URL
-    private let levelPath: String
+    /// Which level is loaded. **`var`, and that is the whole point of this pass** — everything about
+    /// this game assumed one level, loaded once, because there had only ever been one.
+    private var levelIndex = 0
+    private var levelURL: URL { SampleLevel.writableURL(levelIndex) }
+    private var levelPath: String
     private var meshes: [String: LoadedMesh] = [:]
     /// Resolved from the level — anchors against this game's ground, which is simply y = 0.
     /// **Rebuilt whenever the level changes**, because in edit mode it changes constantly.
@@ -79,6 +82,8 @@ final class SampleGame: GameLoop {
     private var objectiveDrawables: [Int] = []
 
     private var run: SampleRun
+    /// Seconds left on the pause between winning and the next level, or nil.
+    private var advanceAfterWinning: Double?
     private var camera: Camera
     private var previousCamera: Camera
     private var aspectRatio: Float = 1
@@ -99,12 +104,12 @@ final class SampleGame: GameLoop {
         self.engine = engine
         let device = engine.device
 
-        let loaded = SampleLevel.load()
+        let loaded = SampleLevel.load(0)
         editor = LevelEditor(level: loaded.level)
-        levelURL = SampleLevel.writableURL
         levelPath = loaded.source
 
-        run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position))
+        run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position),
+                        levelName: loaded.level.name)
 
         // Spawn where the level says, looking where it says.
         let spawn = loaded.level.markers(ofKind: "spawn").first
@@ -246,6 +251,63 @@ final class SampleGame: GameLoop {
         return simd_normalize(SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)))
     }
 
+    // MARK: - Levels
+
+    /// Load a different level **while the game is running**.
+    ///
+    /// **Three things here were assumptions, not code, until there was a second level.** Meshes were
+    /// loaded once in `init` from the first level's list, so a level using anything new drew nothing.
+    /// The camera was placed in `init`, so a new spawn was ignored. And the run was sized once, so a
+    /// level with a different number of objectives could not be finished. None of them would have
+    /// been found by a second *copy* of the first level — only by one that differs.
+    func load(level index: Int) {
+        levelIndex = (index + SampleLevel.names.count) % SampleLevel.names.count
+        let loaded = SampleLevel.load(levelIndex)
+        editor = LevelEditor(level: loaded.level)
+        levelPath = loaded.source
+
+        loadMissingMeshes()
+        rebuild()
+
+        // Spawn where *this* level says, not where the last one did.
+        let spawn = level.markers(ofKind: "spawn").first
+        camera.position = (spawn?.position ?? SIMD3(0, 0, 12)) + SIMD3(0, 1.7, 0)
+        camera.yaw = spawn?.yaw ?? 0
+        camera.pitch = radians_from_degrees(Float(spawn?.values["pitch"] ?? 0))
+        previousCamera = camera
+
+        // A fresh run, sized from this level's objectives — and keeping the progress, which is the
+        // player's rather than the level's.
+        run = SampleRun(objectives: level.markers(ofKind: "objective").map(\.position),
+                        levelName: level.name)
+        print("WindageSample: '\(level.name)' — \(drawables.count) drawables from \(levelPath)")
+    }
+
+    /// Loads any mesh this level needs that is not already in memory.
+    ///
+    /// **Additive rather than a reload.** Levels share most of their meshes, and throwing the lot away
+    /// on every switch would stall for no reason — but a mesh has to be in the residency set before
+    /// the GPU can reach it, so a newly loaded one joins it and the set is committed again.
+    private func loadMissingMeshes() {
+        var added: [any MTLAllocation] = []
+        for name in Set(level.placements.map(\.mesh)) where meshes[name] == nil {
+            guard let mesh = try? MeshLoader.load(named: name, device: engine.device,
+                                                  vertexDescriptor: SampleGame.vertexDescriptor(),
+                                                  semantics: SampleGame.semantics,
+                                                  bundle: .module).first else {
+                print("WindageSample: no mesh named \(name)")
+                continue
+            }
+            meshes[name] = mesh
+            added += mesh.mesh.vertexBuffers.map(\.buffer)
+            added += mesh.mesh.submeshes.map(\.indexBuffer.buffer)
+        }
+        if !added.isEmpty {
+            engine.residencySet.addAllocations(added)
+            engine.commitResidency()
+        }
+    }
+
     // MARK: - Editing
 
     /// Keys the editor takes, by macOS key code. Returns whether it consumed the event.
@@ -264,6 +326,7 @@ final class SampleGame: GameLoop {
         switch code {
         case 35: run.togglePause(); return true              // p
         case 15: if !command { run.restart(); return true }  // r — but ⌘R is redo
+        case 45: load(level: levelIndex + 1); return true    // n — next level
         default: break
         }
 
@@ -347,8 +410,24 @@ final class SampleGame: GameLoop {
                 // positional path untested by the one consumer meant to exercise it.
                 audio?.play("pickup", at: crate + SIMD3(0, 1, 0))
             }
-            if events.won { audio?.play("win") }
+            if events.won {
+                audio?.play("win")
+                // **Winning moves you on.** A game that ends and sits there is a game that stopped;
+                // this is the smallest progression there is, and it is what makes a second level
+                // part of the loop rather than a thing you have to ask for.
+                advanceAfterWinning = 2.5
+            }
             if events.lost { audio?.play("lose") }
+        }
+
+        if var wait = advanceAfterWinning {
+            wait -= Double(deltaTime)
+            if wait <= 0 {
+                advanceAfterWinning = nil
+                load(level: levelIndex + 1)
+            } else {
+                advanceAfterWinning = wait
+            }
         }
 
         // Where the ears are. Once per step is more often than needed — once per frame would do —
@@ -467,7 +546,8 @@ final class SampleGame: GameLoop {
         // line-height down or its ascenders run off the top edge — which is what "COURTYARD touches
         // the top" was.
         var y = margin + title
-        _ = hud.text(level.name, x: margin, y: y, pointSize: title, color: white)
+        _ = hud.text("\(level.name)   \(levelIndex + 1)/\(SampleLevel.names.count)",
+                     x: margin, y: y, pointSize: title, color: white)
         y += title * 1.5
 
         let clock = String(format: "%02d:%02d", Int(run.remaining) / 60, Int(run.remaining) % 60)
@@ -476,7 +556,7 @@ final class SampleGame: GameLoop {
                      pointSize: body, color: run.remaining < 15 ? red : white)
         y += body * 1.4
 
-        if let best = run.progress.bestSeconds {
+        if let best = run.best {
             _ = hud.text(String(format: "best %.1fs   ·   %d of %d runs won",
                                 best, run.progress.wins, run.progress.runs),
                          x: margin, y: y, pointSize: hint, color: white)
@@ -516,7 +596,7 @@ final class SampleGame: GameLoop {
                 : "WASD move · mouse look · click to capture · esc release"
             _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
                          pointSize: hint, color: white)
-            _ = hud.text("p pause · r restart · tab to edit the level",
+            _ = hud.text("p pause · r restart · n next level · tab to edit the level",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         }
 

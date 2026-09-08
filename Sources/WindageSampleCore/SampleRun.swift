@@ -31,12 +31,46 @@ public nonisolated struct SampleRun {
     /// `nonisolated` because a save is data, and `SaveStore` is too — the sample's target defaults
     /// to `MainActor`, and a main-actor `Codable` conformance cannot satisfy a `Sendable` one.
     public nonisolated struct Progress: Codable, Equatable, Sendable {
-        public var version = 1
-        public var bestSeconds: Double?
+        /// **Version 2: best times became per level.** Version 1 held a single `bestSeconds`, which
+        /// was right while there was one level and silently wrong the moment there were two — the
+        /// second level's first win would have overwritten the first level's record.
+        ///
+        /// The field was there from the start for exactly this, and it earned its keep: a v1 save
+        /// migrates instead of being discarded, so nobody loses a time to a format change.
+        public static let currentVersion = 2
+
+        public var version = Progress.currentVersion
+        /// Level name to best seconds.
+        public var best: [String: Double] = [:]
         public var runs = 0
         public var wins = 0
 
         public init() {}
+
+        private enum CodingKeys: String, CodingKey { case version, best, runs, wins, bestSeconds }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            runs = try container.decodeIfPresent(Int.self, forKey: .runs) ?? 0
+            wins = try container.decodeIfPresent(Int.self, forKey: .wins) ?? 0
+            best = try container.decodeIfPresent([String: Double].self, forKey: .best) ?? [:]
+            // The v1 shape: one time, which belonged to the only level that existed.
+            if let single = try container.decodeIfPresent(Double.self, forKey: .bestSeconds) {
+                best["COURTYARD"] = min(best["COURTYARD"] ?? .infinity, single)
+            }
+            version = Progress.currentVersion
+        }
+
+        /// **Never writes the v1 field.** Migration is one way: a save written by this build is v2,
+        /// and an older build reading it gets no `bestSeconds` and starts fresh rather than reading
+        /// a number that means something else.
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(version, forKey: .version)
+            try container.encode(best, forKey: .best)
+            try container.encode(runs, forKey: .runs)
+            try container.encode(wins, forKey: .wins)
+        }
     }
 
     /// Where progress is kept.
@@ -71,10 +105,19 @@ public nonisolated struct SampleRun {
     public private(set) var collected: [Bool]
 
     public var remaining: Double { max(0, SampleRun.timeLimit - elapsed) }
+
+    /// The best time on *this* level, if there is one.
+    public var best: Double? { progress.best[levelName] }
     public var found: Int { collected.filter { $0 }.count }
     public var isOver: Bool { if case .playing = mode { return false }; if case .paused = mode { return false }; return true }
 
-    public init(objectives: [SIMD3<Float>], store: SaveStore<Progress> = SampleRun.sharedStore) {
+    /// Which level this run is of — best times are recorded against it.
+    public let levelName: String
+
+    public init(objectives: [SIMD3<Float>],
+                levelName: String = "",
+                store: SaveStore<Progress> = SampleRun.sharedStore) {
+        self.levelName = levelName
         self.objectives = objectives
         self.collected = Array(repeating: false, count: objectives.count)
         self.store = store
@@ -131,8 +174,8 @@ public nonisolated struct SampleRun {
         progress.runs += 1
         if won {
             progress.wins += 1
-            if progress.bestSeconds == nil || elapsed < progress.bestSeconds! {
-                progress.bestSeconds = elapsed
+            if elapsed < (progress.best[levelName] ?? .infinity) {
+                progress.best[levelName] = elapsed
             }
         }
         // **Written when the run ends, not every frame.** A save per frame is a write per frame, and
