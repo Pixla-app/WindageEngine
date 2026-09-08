@@ -164,3 +164,51 @@ struct SampleRunTests {
         }
     }
 }
+
+/// **What a step reports back**, which is how the game knows to make a noise without the run knowing
+/// anything about sound.
+struct SampleRunEventTests {
+
+    private func store() -> SaveStore<SampleRun.Progress> {
+        SaveStore(container: "WindageSampleCoreTests", name: "events-\(UUID().uuidString)")
+    }
+
+    @Test("A quiet step reports nothing")
+    func quietStep() {
+        let store = self.store(); defer { store.clear() }
+        var run = SampleRun(objectives: [SIMD3(100, 0, 0)], store: store)
+        #expect(run.step(deltaTime: 0.1, playerAt: .zero).isEmpty)
+    }
+
+    /// The position comes back with the event, because the sound has to come from the crate — a
+    /// bare "something was collected" would leave the caller guessing which one.
+    @Test("Collecting reports where it happened")
+    func collectReportsPosition() {
+        let store = self.store(); defer { store.clear() }
+        var run = SampleRun(objectives: [SIMD3(1, 0, 1), SIMD3(90, 0, 0)], store: store)
+        let events = run.step(deltaTime: 0.1, playerAt: .zero)
+        #expect(events.collected == [SIMD3(1, 0, 1)])
+        #expect(!events.won)
+    }
+
+    @Test("Winning and losing are each reported once")
+    func endingsAreReportedOnce() {
+        let winStore = self.store(); defer { winStore.clear() }
+        var win = SampleRun(objectives: [SIMD3(0, 0, 0)], store: winStore)
+        #expect(win.step(deltaTime: 1, playerAt: .zero).won)
+        #expect(win.step(deltaTime: 1, playerAt: .zero).isEmpty, "a finished run kept reporting")
+
+        let loseStore = self.store(); defer { loseStore.clear() }
+        var lose = SampleRun(objectives: [SIMD3(500, 0, 0)], store: loseStore)
+        #expect(lose.step(deltaTime: SampleRun.timeLimit + 1, playerAt: .zero).lost)
+        #expect(lose.step(deltaTime: 1, playerAt: .zero).isEmpty)
+    }
+
+    @Test("A paused step reports nothing")
+    func pausedIsSilent() {
+        let store = self.store(); defer { store.clear() }
+        var run = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
+        run.togglePause()
+        #expect(run.step(deltaTime: 1, playerAt: .zero).isEmpty)
+    }
+}

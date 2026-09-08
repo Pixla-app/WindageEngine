@@ -384,6 +384,33 @@ clock, a pause and a save are exactly the things that fail quietly, and none of 
 > radius was measured to a crate's centre without allowing for the crate's own width, so the player
 > stood visibly against one and nothing happened.
 
+## Sound in the sample (2026-09-08)
+
+`AudioEngine` had exactly one consumer, which is the position every other part of this engine was in
+before the sample existed. The sample now plays a pickup **at the crate**, and a win or a loss flat
+at the listener.
+
+**Positional on purpose.** The whole reason this engine spatialises is that a sound should come from
+where the thing is; a sample that played everything flat would leave the positional path — the part
+with the head-related work in it — exercised by nobody but Coldkeel.
+
+**The sounds are generated, not shipped.** `Tools/make_sample_sounds.py` synthesises three short WAVs
+from sine partials, the same way the meshes are hand-written OBJ. Somebody who clones this repo can
+build and run it without downloading anything, and that is the point of the sample.
+
+**Audio is optional and never fatal.** A machine with no output device, or an audio engine that will
+not start, prints a line and the game runs quiet. Sound is the first thing to go wrong on somebody
+else's hardware and the last thing that should stop them seeing the sample.
+
+> **`AudioEngine.load` defaults to `Bundle.main`**, which is right for an app bundle and wrong for a
+> SwiftPM executable — there, `.main` is the executable itself and holds no resources. Pass
+> `bundle: .module`. Not changed, because the default is correct for the case that ships.
+
+**A step reports what happened rather than calling back.** `SampleRun.step` returns an `Events` value
+naming what was collected and where. A callback from inside a simulation step runs on whatever thread
+the step is on and invites the caller to mutate the run mid-step; a returned value cannot, and it
+keeps the run testable without a spy.
+
 ## Testing
 
 `swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title

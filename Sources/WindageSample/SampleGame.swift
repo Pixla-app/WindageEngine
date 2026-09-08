@@ -48,6 +48,11 @@ final class SampleGame: GameLoop {
     private let pipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
     private let hud: HUDRenderer?
+
+    /// **Optional, and the game runs without it.** A machine with no output device, or an audio
+    /// engine that will not start, must not stop somebody seeing the sample — sound is the first
+    /// thing to go wrong on someone else's hardware and the last thing that should be fatal.
+    private let audio: AudioEngine?
     private let argumentTable: MTL4ArgumentTable
     private let uniformBuffer: MTLBuffer
 
@@ -152,6 +157,18 @@ final class SampleGame: GameLoop {
         uniformBuffer = buffer
 
         hud = HUDRenderer(device: device)
+
+        audio = AudioEngine()
+        if let audio {
+            // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
+            // which for a SwiftPM executable is the executable itself and holds no resources — the
+            // sounds live in the target's own bundle.
+            for sound in ["pickup", "win", "lose"] where !audio.load(sound, bundle: .module) {
+                print("WindageSample: no sound named \(sound)")
+            }
+        } else {
+            print("WindageSample: no audio — the game runs, it is just quiet")
+        }
 
         // **Everything the GPU reads has to be in the residency set.** A buffer or texture that is
         // not is read as whatever memory happens to be there — which is not a black screen, it is
@@ -313,8 +330,21 @@ final class SampleGame: GameLoop {
         // scene still draws and the window still resizes — which is why pausing is a game's decision
         // and not something the engine has to provide.
         if !isEditing {
-            run.step(deltaTime: Double(deltaTime), playerAt: camera.position)
+            let events = run.step(deltaTime: Double(deltaTime), playerAt: camera.position)
+            if !events.isEmpty { rebuild() }          // a collected crate changes colour
+            for crate in events.collected {
+                // **At the crate, not at the player.** The whole reason the engine spatialises is
+                // that a sound should come from where the thing is; playing it flat would make the
+                // positional path untested by the one consumer meant to exercise it.
+                audio?.play("pickup", at: crate + SIMD3(0, 1, 0))
+            }
+            if events.won { audio?.play("win") }
+            if events.lost { audio?.play("lose") }
         }
+
+        // Where the ears are. Once per step is more often than needed — once per frame would do —
+        // but it costs two vector writes and cannot go stale.
+        audio?.updateListener(position: camera.position, forward: camera.forward, up: SIMD3(0, 1, 0))
 
         // In edit mode the movement keys are the editor's, so the camera holds still. So is a
         // finished run: walking around after the clock stops reads as the game not having noticed.

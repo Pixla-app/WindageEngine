@@ -81,13 +81,29 @@ public nonisolated struct SampleRun {
         self.progress = store.load() ?? Progress()
     }
 
+    /// What happened in a step that something outside might want to react to.
+    ///
+    /// **Returned rather than fired as a callback.** A callback from inside a simulation step runs
+    /// on whatever thread the step is on and invites the caller to mutate the run while it is
+    /// stepping; a value handed back cannot. It also keeps the run testable without a spy.
+    public struct Events: Equatable, Sendable {
+        /// Where each crate collected this step was — so a sound can come from the crate.
+        public var collected: [SIMD3<Float>] = []
+        public var won = false
+        public var lost = false
+
+        public var isEmpty: Bool { collected.isEmpty && !won && !lost }
+    }
+
     /// One simulation step.
     ///
     /// **A pause is "do not advance", not "stop the loop".** The frame loop keeps running — the
     /// scene still draws, the HUD still updates, the window still resizes — which is why pausing is
     /// a game's decision and not something the engine has to provide.
-    public mutating func step(deltaTime: Double, playerAt position: SIMD3<Float>) {
-        guard mode == .playing else { return }
+    @discardableResult
+    public mutating func step(deltaTime: Double, playerAt position: SIMD3<Float>) -> Events {
+        var events = Events()
+        guard mode == .playing else { return events }
 
         elapsed += deltaTime
         for (index, objective) in objectives.enumerated() where !collected[index] {
@@ -96,14 +112,18 @@ public nonisolated struct SampleRun {
             let flat = SIMD2(position.x - objective.x, position.z - objective.z)
             if simd_length(flat) <= SampleRun.reach {
                 collected[index] = true
+                events.collected.append(objective)
             }
         }
 
         if collected.allSatisfy({ $0 }) && !objectives.isEmpty {
             finish(won: true)
+            events.won = true
         } else if elapsed >= SampleRun.timeLimit {
             finish(won: false)
+            events.lost = true
         }
+        return events
     }
 
     private mutating func finish(won: Bool) {
