@@ -8,6 +8,7 @@ import Metal
 import MetalKit
 import simd
 import WindageEngine
+import WindageSampleCore
 
 /// **The whole game.** Walk around a level you can edit, with a line of text saying where you are.
 ///
@@ -69,7 +70,10 @@ final class SampleGame: GameLoop {
     /// day they do you are pointing at something you cannot touch.
     private var volumes: [Volume] = []
     private var solidVolumes: [Volume] = []
+    /// Which drawables are objectives, so a collected one can go dark without searching the level.
+    private var objectiveDrawables: [Int] = []
 
+    private var run: SampleRun
     private var camera: Camera
     private var previousCamera: Camera
     private var aspectRatio: Float = 1
@@ -89,6 +93,8 @@ final class SampleGame: GameLoop {
         editor = LevelEditor(level: loaded.level)
         levelURL = SampleLevel.writableURL
         levelPath = loaded.source
+
+        run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position))
 
         // Spawn where the level says, looking where it says.
         let spawn = loaded.level.markers(ofKind: "spawn").first
@@ -180,6 +186,7 @@ final class SampleGame: GameLoop {
         drawables.removeAll(keepingCapacity: true)
         volumes.removeAll(keepingCapacity: true)
         solidVolumes.removeAll(keepingCapacity: true)
+        objectiveDrawables.removeAll(keepingCapacity: true)
         let ground = Level.Ground(heightAt: { _, _ in 0 })
         for placement in level.placements {
             guard let mesh = meshes[placement.mesh] else { continue }
@@ -190,6 +197,7 @@ final class SampleGame: GameLoop {
                                                       SIMD4(s * k, 0, c * k, 0),
                                                       SIMD4(position, 1)))
             drawables.append((mesh, transform, SampleGame.albedo(for: placement)))
+            if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
             // **The level's own tag decides.** The engine has no idea what "solid" means; this game
@@ -225,6 +233,14 @@ final class SampleGame: GameLoop {
             input.setMouseCaptured(!isEditing)
             return true
         }
+        // These work whether or not the editor is open, because a paused game you cannot unpause
+        // is a hang with a label on it.
+        switch code {
+        case 35: run.togglePause(); return true              // p
+        case 15: if !command { run.restart(); return true }  // r — but ⌘R is redo
+        default: break
+        }
+
         guard isEditing else { return false }
 
         if command {
@@ -293,8 +309,16 @@ final class SampleGame: GameLoop {
     func step(deltaTime: Float) {
         previousCamera = camera
         camera.turn(rate: input.lookRate, deltaTime: deltaTime)
-        // In edit mode the movement keys are the editor's, so the camera holds still.
+        // **A pause is "do not advance", not "stop the loop".** The frame loop keeps running, the
+        // scene still draws and the window still resizes — which is why pausing is a game's decision
+        // and not something the engine has to provide.
         if !isEditing {
+            run.step(deltaTime: Double(deltaTime), playerAt: camera.position)
+        }
+
+        // In edit mode the movement keys are the editor's, so the camera holds still. So is a
+        // finished run: walking around after the clock stops reads as the game not having noticed.
+        if !isEditing && !run.isOver && run.mode != .paused {
             let before = camera.position
             camera.advance(input.movement, deltaTime: deltaTime)
             // Stay on the ground. The sample has no terrain and no gravity — that is a game's job,
@@ -351,8 +375,14 @@ final class SampleGame: GameLoop {
             let offset = base + index * SampleGame.uniformStride
             // The selection glows, because an editor where you cannot tell what is selected is a
             // way to move the wrong thing.
-            let albedo = (isEditing && index == editor.selection)
-                ? SIMD3<Float>(1.0, 0.85, 0.25) : drawable.albedo
+            var albedo = drawable.albedo
+            // An objective still to reach is bright; one already touched goes dull, so progress is
+            // visible in the world and not only in the corner of the screen.
+            if let slot = objectiveDrawables.firstIndex(of: index) {
+                albedo = run.collected.indices.contains(slot) && run.collected[slot]
+                    ? SIMD3(0.30, 0.34, 0.30) : SIMD3(0.30, 0.80, 0.45)
+            }
+            if isEditing && index == editor.selection { albedo = SIMD3(1.0, 0.85, 0.25) }
             var uniforms = Uniforms(viewProjection: viewProjection,
                                     model: drawable.transform,
                                     normalMatrix: normalMatrix(from: drawable.transform),
@@ -381,27 +411,71 @@ final class SampleGame: GameLoop {
     func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
         guard let hud else { return }
         hud.begin(viewportSize: viewportSize)
-        let white = UIColor(srgb: SIMD4(1, 1, 1, 0.9))
-        _ = hud.text(level.name, x: 16, y: 20, pointSize: 20, color: white)
-        _ = hud.text(String(format: "x %.1f   z %.1f   %d drawables",
-                            camera.position.x, camera.position.z, drawables.count),
-                     x: 16, y: 46, pointSize: 14, color: white)
-        if isEditing {
-            let gold = UIColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
-            let what = editor.selected.map { "\($0.mesh)  yaw \(Int($0.yaw * 180 / .pi))°  scale \(String(format: "%.2f", $0.scale))" }
-            _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "nothing selected — click the crosshair at something")",
-                         x: 16, y: 72, pointSize: 15, color: gold)
-            _ = hud.text("click pick · ←→↑↓ move · q/e up-down · a/d turn · -/= scale · b copy · ⌫ delete",
-                         x: 16, y: viewportSize.y - 52, pointSize: 13, color: white)
-            _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · tab back to walking", x: 16,
-                         y: viewportSize.y - 30, pointSize: 13, color: white)
+
+        // **Sized against the drawable, not in raw pixels.** The viewport is in *pixels*, and on a
+        // Retina display that is twice the points — so text asked for at "20" rendered at ten points
+        // and was reported as unreadable. Scaling against a 1080-pixel reference is what Coldkeel
+        // already does, and it is resolution-independent rather than tuned to one machine.
+        let scale = max(viewportSize.y / 1080, 0.75)
+        let title = 30 * scale, body = 21 * scale, hint = 17 * scale
+        let margin = 22 * scale
+        let white = UIColor(srgb: SIMD4(1, 1, 1, 0.95))
+        let gold = UIColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
+        let green = UIColor(srgb: SIMD4(0.45, 0.95, 0.6, 1))
+        let red = UIColor(srgb: SIMD4(1.0, 0.45, 0.4, 1))
+
+        var y = margin
+        _ = hud.text(level.name, x: margin, y: y, pointSize: title, color: white)
+        y += title * 1.5
+
+        let clock = String(format: "%02d:%02d", Int(run.remaining) / 60, Int(run.remaining) % 60)
+        _ = hud.text("CRATES \(run.found)/\(run.objectives.count)     \(clock)",
+                     x: margin, y: y,
+                     pointSize: body, color: run.remaining < 15 ? red : white)
+        y += body * 1.4
+
+        if let best = run.progress.bestSeconds {
+            _ = hud.text(String(format: "best %.1fs   ·   %d of %d runs won",
+                                best, run.progress.wins, run.progress.runs),
+                         x: margin, y: y, pointSize: hint, color: white)
         } else {
-            _ = hud.text("WASD move · mouse look · click to capture · esc release · TAB to edit", x: 16,
-                         y: viewportSize.y - 30, pointSize: 13, color: white)
-            _ = hud.text("editing \(levelPath)", x: 16, y: viewportSize.y - 52, pointSize: 11, color: white)
+            _ = hud.text("no run finished yet", x: margin, y: y, pointSize: hint, color: white)
         }
+        y += hint * 1.6
+
+        switch run.mode {
+        case .paused:
+            _ = hud.text("PAUSED — p to resume", x: margin, y: y, pointSize: body, color: gold)
+        case .won(let seconds):
+            _ = hud.text(String(format: "ALL FOUND in %.1fs — r to run again", seconds),
+                         x: margin, y: y, pointSize: body, color: green)
+        case .lost:
+            _ = hud.text("OUT OF TIME — r to run again", x: margin, y: y, pointSize: body, color: red)
+        case .playing:
+            break
+        }
+
+        if isEditing {
+            let what = editor.selected.map {
+                "\($0.mesh)  yaw \(Int($0.yaw * 180 / .pi))°  scale \(String(format: "%.2f", $0.scale))"
+            }
+            _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")",
+                         x: margin, y: y + body * 1.4, pointSize: body, color: gold)
+            _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete",
+                         x: margin, y: viewportSize.y - margin - hint * 2.2, pointSize: hint, color: white)
+            _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · tab back to walking",
+                         x: margin, y: viewportSize.y - margin - hint, pointSize: hint, color: white)
+        } else {
+            _ = hud.text("WASD move · mouse look · click to capture · esc release",
+                         x: margin, y: viewportSize.y - margin - hint * 2.2, pointSize: hint, color: white)
+            _ = hud.text("p pause · r restart · tab to edit the level",
+                         x: margin, y: viewportSize.y - margin - hint, pointSize: hint, color: white)
+        }
+
         // A centre dot, so turning has something to turn about.
-        hud.rect(x: viewportSize.x / 2 - 2, y: viewportSize.y / 2 - 2, width: 4, height: 4, color: white)
+        let dot = 3 * scale
+        hud.rect(x: viewportSize.x / 2 - dot, y: viewportSize.y / 2 - dot,
+                 width: dot * 2, height: dot * 2, color: white)
         hud.draw(into: encoder, frameSlot: frameSlot)
     }
 }

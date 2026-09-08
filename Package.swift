@@ -31,9 +31,22 @@ let package = Package(
         // the sample cannot be built without reaching inside, the API is wrong. It found its first
         // one immediately — `swift build` compiles no Metal, so nothing that loaded a default
         // library could start outside Xcode. See `ShaderLibrary`.
+        // **The sample's logic, split out of its app the way the studio requires of a title.**
+        // A game loop, a save format and a level's contents need no window, so they live where
+        // `swift test` can reach them — and the sample demonstrating the recommended shape is worth
+        // more than the fifty lines it costs.
+        .target(
+            name: "WindageSampleCore",
+            dependencies: ["WindageEngine"],
+            swiftSettings: [.defaultIsolation(MainActor.self)]
+        ),
+        .testTarget(
+            name: "WindageSampleCoreTests",
+            dependencies: ["WindageSampleCore"]
+        ),
         .executableTarget(
             name: "WindageSample",
-            dependencies: ["WindageEngine"],
+            dependencies: ["WindageEngine", "WindageSampleCore"],
             // `.copy` and not `.process`: the shader **source** has to survive into the bundle so it
             // can be compiled at runtime when no metallib exists.
             resources: [.copy("SampleShaders.metal"), .copy("Resources")],

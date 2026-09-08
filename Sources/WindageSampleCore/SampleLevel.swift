@@ -12,29 +12,31 @@ import WindageEngine
 /// **Generated on first run rather than committed as a blob**, so the reader can see in code what
 /// the file contains, then go and edit the file and watch it change. That is the whole lesson: the
 /// level is data, and the code that made it is not privileged.
-enum SampleLevel {
+/// `nonisolated`, like the level format it builds: a level's contents are data, and a game that
+/// wanted to load one on a background thread should be able to.
+public nonisolated enum SampleLevel {
 
-    static let fileName = "sample-level"
+    public static let fileName = "sample-level"
 
     /// Where the file lives when the sample writes one: alongside the executable's own resources is
     /// not writable in every arrangement, so it goes to the user's Application Support — the one
     /// place a sandboxed *or* unsandboxed app can always write. See the engine's distribution rule.
-    static var writableURL: URL {
+    public static var writableURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("WindageSample", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("\(fileName).json")
     }
 
-    /// Load the level: the user's copy if they have one, the bundled one otherwise, and failing both
-    /// the built-in one — which is then written out so there is something to edit.
-    static func load() -> (level: Level, source: String) {
+    /// Load the level: the copy the player has been editing, or the built-in one — which is then
+    /// written out so there **is** something to edit.
+    ///
+    /// **The built-in level is code and the played level is a file, and that is the point.** The code
+    /// says what a fresh install looks like; after that the file wins, and a game shipping its own
+    /// levels would ship them as files in its bundle rather than as a function like this one.
+    public static func load() -> (level: Level, source: String) {
         let url = writableURL
         if let data = try? Data(contentsOf: url), let level = try? Level.decode(from: data) {
-            return (level, url.path)
-        }
-        if let level = try? Level.load(named: fileName, bundle: .module) {
-            try? level.encoded().write(to: url)
             return (level, url.path)
         }
         let level = builtIn
@@ -46,7 +48,10 @@ enum SampleLevel {
     ///
     /// Small on purpose. It exists to be *changed* — the README asks the reader to move a tower —
     /// and a level with two hundred things in it hides the one they moved.
-    static var builtIn: Level {
+    /// Where the crates are. Named once so the placements and the objective markers cannot drift.
+    public static let cratePositions: [(Float, Float)] = [(-5, -6), (3, -9), (6, -3), (-2, -12), (-8, -22), (9, -24)]
+
+    public static var builtIn: Level {
         var placements: [Level.Placement] = [
             Level.Placement(mesh: "ground", position: SIMD3(0, 0, 0), anchor: .absolute,
                             tags: ["ground"]),
@@ -62,11 +67,14 @@ enum SampleLevel {
             placements.append(Level.Placement(mesh: "tower", position: SIMD3(x, 0, z),
                                               anchor: .absolute, tags: ["solid", "landmark"]))
         }
-        // A few crates in the yard, at angles, so rotation is visible.
-        for (i, (x, z)) in [(Float(-5), Float(-6)), (3, -9), (6, -3), (-2, -12)].enumerated() {
+        // A few crates in the yard, at angles, so rotation is visible. **These are the objectives**
+        // — the marker beside each one is what the game reads, and the crate is what you see. Two
+        // records of the same thing, which is a level-authoring smell, but the alternative is the
+        // engine knowing that a placement can be an objective, which it must not.
+        for (i, (x, z)) in SampleLevel.cratePositions.enumerated() {
             placements.append(Level.Placement(mesh: "box", position: SIMD3(x, 0, z),
                                               yaw: Float(i) * 0.4, scale: 1.5,
-                                              anchor: .absolute, tags: ["solid"]))
+                                              anchor: .absolute, tags: ["solid", "objective"]))
         }
 
         return Level(name: "COURTYARD",
@@ -82,6 +90,10 @@ enum SampleLevel {
                      // pointed at sky.
                      markers: [Level.Marker(kind: "spawn", name: "start",
                                             position: SIMD3(0, 0, 12), anchor: .absolute, yaw: 0,
-                                            values: ["pitch": -10])])
+                                            values: ["pitch": -10])]
+                         + SampleLevel.cratePositions.map {
+                             Level.Marker(kind: "objective", position: SIMD3($0.0, 0, $0.1),
+                                          anchor: .absolute)
+                         })
     }
 }

@@ -347,6 +347,37 @@ under.
 > as **`"Coldkeel: …"`** — another product's name, which any third party would have seen in their own
 > console.
 
+## A game loop, and what it needed (2026-09-07)
+
+The walkthrough proved the engine could **load and draw** a level. It could not say whether anything
+with *state* worked — a pause that is not a stall, an outcome, progress kept between runs. So the
+sample became a small game: touch every marked crate before the clock runs out.
+
+**`SaveStore` is the one thing that had to come into the engine.** The distribution rule says the
+engine may never assume a writable location outside its container, because a title may go to the App
+Store — and that rule is easy to state and easy to break, since the natural thing to write is a path
+and a path beside the executable works right up until somebody sandboxes the app. So there is one
+place that knows where a game may write. It writes atomically, because a crash mid-write leaves a
+truncated save, and it returns `nil` rather than throwing on a file it cannot decode: losing a high
+score is a disappointment, refusing to launch is a bug report.
+
+**Almost nothing else was needed, which is the useful finding.** A pause is "do not advance", not
+"stop the loop" — the frame loop keeps running, the scene still draws, the window still resizes — so
+pausing is a game's decision and the engine does not have to provide it. Modes, objectives, scoring
+and win conditions all sat in the game with no engine change at all.
+
+### The sample is split the way a title is
+
+`WindageSampleCore` (logic, no window) + `WindageSample` (the app) + tests against the core — the
+same split `~/PixlaGames/CLAUDE.md` requires of every title, for the same reason: a win condition, a
+clock, a pause and a save are exactly the things that fail quietly, and none of them need a drawable.
+
+> **Two things running it found that its tests did not.** The HUD asked for text at "20" and got ten
+> points, because the viewport is in *pixels* and a Retina drawable is twice the points — reported as
+> unreadable. It scales against a 1080-pixel reference now, as Coldkeel already did. And the collect
+> radius was measured to a crate's centre without allowing for the crate's own width, so the player
+> stood visibly against one and nothing happened.
+
 ## Testing
 
 `swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title

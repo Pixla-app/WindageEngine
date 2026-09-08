@@ -10,6 +10,7 @@
 import AppKit
 import MetalKit
 import WindageEngine
+import WindageSampleCore
 
 /// The window's view: hands keyboard and mouse to `InputState` and the drawable to `FrameRenderer`.
 ///
