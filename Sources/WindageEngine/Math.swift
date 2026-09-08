@@ -55,6 +55,49 @@ public nonisolated func matrix_perspective_right_hand_reverse_z(fovyRadians fovy
                                          vector_float4( 0,  0, nearZ,  0)))
 }
 
+/// The same projection, confined to a **slice of the depth buffer**.
+///
+/// ### What this is for: drawing a weapon in the player's hands
+///
+/// A first-person viewmodel is not part of the world and cannot be projected like it. Two things go
+/// wrong if you try.
+///
+/// **It is too big.** At a 65° field of view a real rifle held 30 cm from the eye genuinely fills a
+/// quarter of the screen. Every shooter solves this with a *narrower* field of view for the weapon
+/// than for the world — around 55° against 65° here — which is a projection, not a size. Shrinking
+/// the model instead is the shortcut, and it makes the weapon geometrically a lie: anything measured
+/// off it afterwards (a muzzle position, a bipod's contact, a bolt's travel) is computed in a space
+/// that only happens to look right.
+///
+/// **It intersects the world.** A rifle 90 cm long, held by a player who can stand 45 cm from a
+/// wall, pokes through the wall. That is physically true and looks broken. Reserving the front of
+/// the depth buffer for the viewmodel puts it in front of everything without an extra pass and
+/// without breaking its *own* occlusion — a bolt behind a receiver still hides behind it, because
+/// the slice is monotonic.
+///
+/// - Parameter depthRange: where in the buffer this projection lands. `0...1` is the whole buffer and
+///   gives exactly the same matrix as the world projection. `0.9...1` is the front tenth: with a
+///   0.1 m near plane, world geometry only reaches depth 0.9 at **11 cm** from the eye, which is
+///   nearer than a player can get to anything.
+///
+/// > Reversed-Z, so **larger is nearer** — `depthRange.upperBound` is the near end. Reading it the
+/// > other way puts the weapon behind the world, which renders as the weapon simply not being there.
+public nonisolated func matrix_perspective_right_hand_reverse_z(fovyRadians fovy: Float,
+                                                                aspectRatio: Float,
+                                                                nearZ: Float,
+                                                                depthRange: ClosedRange<Float>) -> matrix_float4x4 {
+    let ys = 1 / tanf(fovy * 0.5)
+    let xs = ys / aspectRatio
+    let low = depthRange.lowerBound
+    let span = depthRange.upperBound - low
+    // Derived rather than tuned: the unmapped form gives depth = nearZ / distance, and this wants
+    // `low + span * nearZ / distance`. Multiplying out against clip.w = -z gives these two terms.
+    return matrix_float4x4(columns: (vector_float4(xs,  0,           0,  0),
+                                     vector_float4( 0, ys,           0,  0),
+                                     vector_float4( 0,  0,        -low, -1),
+                                     vector_float4( 0,  0, span * nearZ,  0)))
+}
+
 public nonisolated func radians_from_degrees(_ degrees: Float) -> Float {
     return (degrees / 180) * .pi
 }
