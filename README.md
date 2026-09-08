@@ -531,6 +531,25 @@ or not a licence ever happens:
   schedule; that is a business decision, not an engineering one, and it competes directly with
   shipping titles.
 
+### The repository says "all rights reserved", on purpose (2026-09-08)
+
+`LICENSE` reserves every right and grants nothing. **It is not the licensing decision** — that is
+still the one deferred below. It exists because a repository with no licence file is *already* all
+rights reserved, and leaving the file out means a reader cannot tell whether that was a decision or
+an oversight. Here it was an oversight.
+
+**The asymmetry is the whole argument for reserving first.** A permission granted publicly cannot be
+withdrawn from anyone who already has the code; a reservation can be relaxed whenever you like. So
+the cautious file today costs nothing and keeps every option, and a generous one today closes most of
+them permanently.
+
+When the terms are chosen, the realistic families for an engine that is not meant to be free are
+**source-available** rather than open-source: PolyForm's ready-made set (Noncommercial, or Small
+Business, which is free under a revenue threshold), or BUSL-1.1, which is source-available now and
+converts to open source on a date you set. A revenue share in the Unreal shape is a third option and
+the most expensive to run — it needs reporting and audit terms a solo studio has to administer for
+ever.
+
 **Revisit when two things are true:** a Pixla Games title has actually shipped on this engine, and a
 second platform exists. Before that, licensing would be selling an unproven foundation for a
 single platform — which is a worse product than the games it is meant to be making.

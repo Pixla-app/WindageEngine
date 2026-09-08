@@ -1,0 +1,29 @@
+Windage Engine
+Copyright (c) 2026 Pixla LLC. All rights reserved.
+
+NO LICENCE IS GRANTED BY THIS FILE.
+
+This is a statement of ownership, not a grant. You may not copy, modify,
+distribute, or use this software except under a separate written agreement
+with Pixla LLC.
+
+---
+
+Why this file exists, and why it does not say more
+--------------------------------------------------
+
+A repository with no licence file is already "all rights reserved" — that is
+what copyright does by default. This file changes nothing legally; it removes
+the ambiguity, so nobody has to guess whether the absence was a decision or an
+oversight. Here it was an oversight, and this is the correction.
+
+The distribution terms are deliberately still open, because that choice runs
+one way only: a permission granted publicly cannot be withdrawn from anyone who
+already has the code, while a reservation can be relaxed at any time. Reserving
+now costs nothing and keeps every option; granting now closes most of them for
+good.
+
+The engine's own posture on this is in README.md, under "Building it as if it
+were licensable": build to a standard that would survive being licensed, and
+revisit the terms when a title has actually shipped on it and a second platform
+exists. Until then this file stands.
