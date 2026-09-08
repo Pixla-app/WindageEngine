@@ -4,8 +4,29 @@ The studio's shared Swift/Metal foundation. **`WE`** prefix. **`windageengine.co
 `windagengine.com` registered defensively for the dropped second `e` and redirecting to it; see
 `../docs/NAMING.md`.
 
-> Studio-level, per the "would a second title need this?" rule in `~/PixlaGames/CLAUDE.md`. It is
-> **not** a title and does not live under one.
+> **Its own repository, and its own product, since 2026-09-07.** It sat inside the Pixla Games
+> studio repo under `Studio/` while it was "shared studio source"; it is not that. It is meant to be
+> cloned and built by people who have no relationship with that studio and will never see its
+> internals. Filing it inside someone's private folder said the engine was an implementation detail
+> of one studio — it is the opposite.
+
+## Run it
+
+```bash
+swift run WindageSample
+```
+
+That is the whole set-up: no Xcode project, no scheme, no signing. A window opens on a small
+courtyard you can walk around — **WASD** to move, click to capture the mouse, **esc** to release it.
+
+The sample prints where its level file is. Open that file, move something, run it again:
+
+```json
+{ "mesh" : "tower", "position" : [ -18, 0, -18 ], "anchor" : "absolute", "tags" : ["solid","landmark"] }
+```
+
+Change the first number and the orange tower moves. That is the point of it — see **The sample game**
+below.
 
 ## What it is, and what it deliberately is not
 
@@ -267,6 +288,37 @@ A local Swift package reference by relative path. From a title at
 > studio repo has to be checked out alongside it at the expected relative path. That is the price of
 > one shared foundation with no package registry, and it is worth knowing before someone clones a
 > title on a new machine and finds it will not build.
+
+## The sample game (2026-09-07)
+
+`Sources/WindageSample/` — a complete, deliberately dull first-person walkthrough, built against
+**the engine's public API only**.
+
+**It is not a demo, it is a test.** An engine extracted from one game and consumed only by that same
+game will grow an API shaped like that game's source layout, and nothing will say so. The sample is
+the standing check that somebody who did **not** write the engine can build with it: if it cannot be
+made to work without reaching inside, the API is wrong and the engine gets fixed, not the sample.
+
+It deliberately has:
+
+- **No art dependency.** Its three meshes are hand-written OBJ files of a box, a taller box and a
+  ground quad. A sample that needs an asset pack cannot be run by whoever just cloned this.
+- **No Xcode project.** `swift run WindageSample`. Anything requiring a project is a thing the reader
+  must own before they can start.
+- **No cleverness.** One directional light, no textures, no shadows. A sample with impressive
+  rendering teaches the reader about the rendering.
+
+**It found an engine bug on its first run, which is the entire argument for it.** `swift build`
+compiles no Metal at all — Xcode does, SwiftPM's CLI does not — so anything calling
+`makeDefaultLibrary(bundle:)` failed outside Xcode, with a blank window and nothing useful logged.
+`ShaderLibrary` now falls back to compiling the `.metal` source at runtime, and both the HUD and the
+sample go through it. That bug had been latent since the engine was written and could not have been
+found by Coldkeel, which is an Xcode app.
+
+Two smaller ones it also surfaced: Swift's `print` is fully buffered when stdout is not a terminal,
+so a piped run of the sample showed nothing at all until it set `setbuf(stdout, nil)`; and a sun
+direction that sounds pleasant is not the one that lights the shot — the first courtyard lit only
+the faces the camera could not see and read as black boxes.
 
 ## Testing
 

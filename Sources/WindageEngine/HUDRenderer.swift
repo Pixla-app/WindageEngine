@@ -51,8 +51,11 @@ public final class HUDRenderer {
         self.font = atlas
 
         do {
-            // The engine's own shaders, compiled into the package's resource bundle.
-            let library = try device.makeDefaultLibrary(bundle: .module)
+            // The engine's own shaders — compiled into the bundle by Xcode, or compiled here at
+            // startup when the package was built by `swift build`, which produces no metallib at
+            // all. See ``ShaderLibrary``; without that fallback the HUD cannot initialise outside
+            // Xcode, which is how anybody cloning this repo would first try to run it.
+            let library = try ShaderLibrary.make(device: device, bundle: .module, sourceNamed: "HUDShaders")
             let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
 
             let vertexFunction = MTL4LibraryFunctionDescriptor()

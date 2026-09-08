@@ -5,7 +5,10 @@ let package = Package(
     name: "WindageEngine",
     platforms: [.macOS(.v26)],
     products: [
-        .library(name: "WindageEngine", targets: ["WindageEngine"])
+        .library(name: "WindageEngine", targets: ["WindageEngine"]),
+        // **The sample is a product, not a test fixture.** `swift run WindageSample` is the first
+        // thing somebody who cloned this repo should be able to do.
+        .executable(name: "WindageSample", targets: ["WindageSample"]),
     ],
     targets: [
         .target(
@@ -21,6 +24,20 @@ let package = Package(
                 // explicitly, which is a decision worth having to write down.
                 .defaultIsolation(MainActor.self)
             ]
+        ),
+        // A complete, deliberately dull game built against the engine's **public API only**.
+        //
+        // It is the standing check that the engine is usable by someone who did not write it: if
+        // the sample cannot be built without reaching inside, the API is wrong. It found its first
+        // one immediately — `swift build` compiles no Metal, so nothing that loaded a default
+        // library could start outside Xcode. See `ShaderLibrary`.
+        .executableTarget(
+            name: "WindageSample",
+            dependencies: ["WindageEngine"],
+            // `.copy` and not `.process`: the shader **source** has to survive into the bundle so it
+            // can be compiled at runtime when no metallib exists.
+            resources: [.copy("SampleShaders.metal"), .copy("Resources")],
+            swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(
             name: "WindageEngineTests",
