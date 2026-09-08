@@ -320,6 +320,33 @@ so a piped run of the sample showed nothing at all until it set `setbuf(stdout, 
 direction that sounds pleasant is not the one that lights the shot — the first courtyard lit only
 the faces the camera could not see and read as black boxes.
 
+## The editor (2026-09-07)
+
+`LevelEditor` — selection, move/rotate/scale/duplicate/delete, undo/redo, a dirty flag, save. Press
+**Tab** in the sample to use it: crosshair at something and **click** (or space) to pick, arrows to
+move, **q/e** up and down, **a/d** to turn, **-/=** to scale, **b** to copy, **⌫** to delete,
+**⌘S** save, **⌘Z** undo.
+
+**All of the editing lives in the engine and none of it needs a window.** A selection, a set of
+operations, an undo stack and a dirty flag have nothing to do with rendering and everything to do
+with the format — so they run in `swift test` in milliseconds, and the sample only turns keys into
+them and draws the result. It is the same argument the studio makes for splitting a game's logic out
+of its app target: an editor testable only by clicking is an editor nobody tests.
+
+It also means **the game that ships is not the editor**. A title can embed one, a separate tool can
+drive one, and neither reimplements what "nudge the selected thing 0.5 m" means.
+
+Deliberately absent: gizmos, snapping, multi-select, prefabs, a scene graph. Those cannot be designed
+correctly before a second game has pushed on them — the same rule the rest of this engine is built
+under.
+
+> **Three things running the sample found that its own tests could not.** The `"solid"` tag was in
+> the level file and nothing read it, so you walked through every wall — a file saying something
+> untrue is worse than a file not saying it. `BoundingBox` had ray and segment tests but no
+> point-in-box test, the most basic query it could have. And the engine logged gamepad connections
+> as **`"Coldkeel: …"`** — another product's name, which any third party would have seen in their own
+> console.
+
 ## Testing
 
 `swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title

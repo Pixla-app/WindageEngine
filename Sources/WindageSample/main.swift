@@ -22,11 +22,17 @@ final class SampleView: MTKView {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { game?.input.setMouseCaptured(false); return }   // esc releases
+        // The editor gets first refusal. A key it takes must not also reach `InputState`, or `D`
+        // would nudge a crate *and* strafe the camera.
+        if game?.handleKey(event.keyCode, command: event.modifierFlags.contains(.command)) == true { return }
         game?.input.keyDown(event.keyCode)
     }
     override func keyUp(with event: NSEvent) { game?.input.keyUp(event.keyCode) }
 
-    override func mouseDown(with event: NSEvent) { game?.input.setMouseCaptured(true) }
+    override func mouseDown(with event: NSEvent) {
+        guard let game else { return }
+        if game.isEditingLevel { game.pickUnderCrosshair() } else { game.input.setMouseCaptured(true) }
+    }
     override func mouseMoved(with event: NSEvent) { deliver(event) }
     override func mouseDragged(with event: NSEvent) { deliver(event) }
 

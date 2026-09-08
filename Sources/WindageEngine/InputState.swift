@@ -79,11 +79,11 @@ public final class InputState {
         connectionObservers = [
             centre.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { note in
                 let name = (note.object as? GCController)?.vendorName ?? "Controller"
-                NSLog("Coldkeel: \(name) connected")
+                NSLog("\(Engine.name): \(name) connected")
             },
             centre.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { note in
                 let name = (note.object as? GCController)?.vendorName ?? "Controller"
-                NSLog("Coldkeel: \(name) disconnected")
+                NSLog("\(Engine.name): \(name) disconnected")
             }
         ]
         // Pads paired before launch are already present; this picks up ones woken afterwards.

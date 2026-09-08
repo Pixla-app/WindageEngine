@@ -30,6 +30,17 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
     /// min and max gives the right answer for a translation and a wrong one for any rotation — the
     /// resulting "box" can be inside-out or far too small, and the failure is a shot that passes
     /// through a target rather than an obvious visual glitch.
+    /// Whether a point is inside, edges included.
+    ///
+    /// **Inclusive on purpose.** A point exactly on a face is a coincidence that happens constantly
+    /// with hand-authored levels, where everything sits on round numbers — and "on the wall" reading
+    /// as "outside the wall" is how a player ends up standing in one.
+    public func contains(_ point: SIMD3<Float>) -> Bool {
+        point.x >= minimum.x && point.x <= maximum.x
+            && point.y >= minimum.y && point.y <= maximum.y
+            && point.z >= minimum.z && point.z <= maximum.z
+    }
+
     public func transformed(by matrix: matrix_float4x4) -> BoundingBox {
         var low = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var high = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)

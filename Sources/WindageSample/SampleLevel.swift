@@ -76,7 +76,12 @@ enum SampleLevel {
                      // make too: a sun direction that sounds pleasant is not the one that lights the shot.
                      settings: ["sunPitch": 38, "sunYaw": 25],
                      placements: placements,
+                     // **`values` carries the pitch**, which is the format's per-marker numbers
+                     // doing real work: the opening view is authored rather than whatever the camera
+                     // happened to default to, and looking level at the horizon meant the crosshair
+                     // pointed at sky.
                      markers: [Level.Marker(kind: "spawn", name: "start",
-                                            position: SIMD3(0, 0, 12), anchor: .absolute, yaw: 0)])
+                                            position: SIMD3(0, 0, 12), anchor: .absolute, yaw: 0,
+                                            values: ["pitch": -10])])
     }
 }
