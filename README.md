@@ -372,6 +372,12 @@ and win conditions all sat in the game with no engine change at all.
 same split `~/PixlaGames/CLAUDE.md` requires of every title, for the same reason: a win condition, a
 clock, a pause and a save are exactly the things that fail quietly, and none of them need a drawable.
 
+> **And one the tests found that running it did not.** `SampleRun` kept its progress in a shared
+> `static` store — fine for a game with one process, wrong the moment there are two of anything.
+> Swift Testing runs tests in parallel, they all wrote the same file, and results depended on which
+> finished first. The store is injected now, which is also what a game with save slots or profiles
+> would need.
+
 > **Two things running it found that its tests did not.** The HUD asked for text at "20" and got ten
 > points, because the viewport is in *pixels* and a Retina drawable is twice the points — reported as
 > unreadable. It scales against a 1080-pixel reference now, as Coldkeel already did. And the collect

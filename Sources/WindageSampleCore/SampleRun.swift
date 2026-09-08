@@ -39,7 +39,17 @@ public nonisolated struct SampleRun {
         public init() {}
     }
 
-    public static let store = SaveStore<Progress>(container: "WindageSample", name: "progress")
+    /// Where progress is kept.
+    ///
+    /// **Injected rather than global, and that was found by testing.** It began as one shared
+    /// `static let`, which is fine for a game with one process — and wrong the moment there are two
+    /// of anything. Swift Testing runs tests in parallel, they all wrote the same file, and the
+    /// results depended on which finished first. The same shape breaks a game with save slots or
+    /// profiles, which is the real reason to fix it rather than to special-case the tests.
+    public let store: SaveStore<Progress>
+
+    /// The one a shipped game uses.
+    public static let sharedStore = SaveStore<Progress>(container: "WindageSample", name: "progress")
 
     /// Seconds allowed. Generous — a sample that is hard to beat is a sample nobody finishes, and
     /// then the win state never gets exercised.
@@ -64,10 +74,11 @@ public nonisolated struct SampleRun {
     public var found: Int { collected.filter { $0 }.count }
     public var isOver: Bool { if case .playing = mode { return false }; if case .paused = mode { return false }; return true }
 
-    public init(objectives: [SIMD3<Float>]) {
+    public init(objectives: [SIMD3<Float>], store: SaveStore<Progress> = SampleRun.sharedStore) {
         self.objectives = objectives
         self.collected = Array(repeating: false, count: objectives.count)
-        self.progress = SampleRun.store.load() ?? Progress()
+        self.store = store
+        self.progress = store.load() ?? Progress()
     }
 
     /// One simulation step.
@@ -106,7 +117,7 @@ public nonisolated struct SampleRun {
         }
         // **Written when the run ends, not every frame.** A save per frame is a write per frame, and
         // the only thing it buys is remembering a run nobody finished.
-        try? SampleRun.store.save(progress)
+        try? store.save(progress)
     }
 
     public mutating func togglePause() {
