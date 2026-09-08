@@ -77,8 +77,14 @@ public final class AudioEngine {
     ///
     /// One-shots are short and are needed *now*; streaming them would add latency to exactly the
     /// sounds that must be immediate.
+    ///
+    /// **`bundle` has no default, deliberately.** It used to default to `.main`, which is right for
+    /// an app bundle and wrong for a SwiftPM executable — there `.main` is the executable itself and
+    /// holds no resources, so every load failed and printed. There is no default that is right for
+    /// both, and a default that is silently wrong for one of them is worse than making every caller
+    /// say where its sounds are. An app passes `.main`; a package target passes `.module`.
     @discardableResult
-    public func load(_ name: String, withExtension ext: String = "wav", bundle: Bundle = .main) -> Bool {
+    public func load(_ name: String, withExtension ext: String = "wav", bundle: Bundle) -> Bool {
         guard buffers[name] == nil else { return true }
         guard let url = bundle.url(forResource: name, withExtension: ext),
               let file = try? AVAudioFile(forReading: url),

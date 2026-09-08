@@ -402,9 +402,12 @@ build and run it without downloading anything, and that is the point of the samp
 not start, prints a line and the game runs quiet. Sound is the first thing to go wrong on somebody
 else's hardware and the last thing that should stop them seeing the sample.
 
-> **`AudioEngine.load` defaults to `Bundle.main`**, which is right for an app bundle and wrong for a
-> SwiftPM executable — there, `.main` is the executable itself and holds no resources. Pass
-> `bundle: .module`. Not changed, because the default is correct for the case that ships.
+> **`AudioEngine.load` takes a bundle with no default, and that was a change rather than a note.**
+> It defaulted to `.main`, which is right for an app bundle and wrong for a SwiftPM executable —
+> there `.main` is the executable itself and holds no resources, so every load failed and printed.
+> This was first written down as a papercut worth leaving; it was not. There is no default correct
+> for both, and one silently wrong for either is worse than making every caller say where its sounds
+> are. An app passes `.main`, a package target `.module`.
 
 **A step reports what happened rather than calling back.** `SampleRun.step` returns an `Events` value
 naming what was collected and where. A callback from inside a simulation step runs on whatever thread

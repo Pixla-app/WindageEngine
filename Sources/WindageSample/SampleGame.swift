@@ -87,6 +87,11 @@ final class SampleGame: GameLoop {
 
     /// Slots for uniforms: one per drawable per frame in flight, so a frame never overwrites one the
     /// GPU is still reading.
+    /// Uniform slots per frame, and therefore the hard ceiling on things drawn.
+    ///
+    /// **Being over it silently drops the tail of the scene** — the same fault that once made
+    /// Coldkeel's rifle disappear from the player's hands and read as a rendering bug. `rebuild()`
+    /// says so out loud rather than leaving it to be discovered.
     private static let maxDrawables = 128
     private static let uniformStride = (MemoryLayout<Uniforms>.stride + 255) & ~255
 
@@ -221,6 +226,10 @@ final class SampleGame: GameLoop {
             // does. Shipping the tag and then ignoring it — which this sample did on its first
             // run — is worse than not having it, because the file says something untrue.
             if placement.tags.contains("solid") { solidVolumes.append(volume) }
+        }
+        if drawables.count > SampleGame.maxDrawables {
+            print("WindageSample: WARNING \(drawables.count) drawables against a cap of "
+                  + "\(SampleGame.maxDrawables) — the rest of the level will not be drawn")
         }
     }
 
@@ -454,7 +463,10 @@ final class SampleGame: GameLoop {
         let green = UIColor(srgb: SIMD4(0.45, 0.95, 0.6, 1))
         let red = UIColor(srgb: SIMD4(1.0, 0.45, 0.4, 1))
 
-        var y = margin
+        // **`y` is a baseline and glyphs draw upward from it**, so the first line starts a full
+        // line-height down or its ascenders run off the top edge — which is what "COURTYARD touches
+        // the top" was.
+        var y = margin + title
         _ = hud.text(level.name, x: margin, y: y, pointSize: title, color: white)
         y += title * 1.5
 
@@ -492,14 +504,20 @@ final class SampleGame: GameLoop {
             _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")",
                          x: margin, y: y + body * 1.4, pointSize: body, color: gold)
             _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete",
-                         x: margin, y: viewportSize.y - margin - hint * 2.2, pointSize: hint, color: white)
+                         x: margin, y: viewportSize.y - margin - hint * 1.4, pointSize: hint, color: white)
             _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · tab back to walking",
-                         x: margin, y: viewportSize.y - margin - hint, pointSize: hint, color: white)
+                         x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         } else {
-            _ = hud.text("WASD move · mouse look · click to capture · esc release",
-                         x: margin, y: viewportSize.y - margin - hint * 2.2, pointSize: hint, color: white)
+            // **The hints follow whichever device is actually plugged in.** Telling somebody holding
+            // a controller to press WASD is a small lie the game is in a position to avoid, and the
+            // engine already reports which it has.
+            let moving = input.isGamepadConnected
+                ? "left stick move · right stick look"
+                : "WASD move · mouse look · click to capture · esc release"
+            _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
+                         pointSize: hint, color: white)
             _ = hud.text("p pause · r restart · tab to edit the level",
-                         x: margin, y: viewportSize.y - margin - hint, pointSize: hint, color: white)
+                         x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         }
 
         // A centre dot, so turning has something to turn about.

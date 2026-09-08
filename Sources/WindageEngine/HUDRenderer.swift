@@ -180,6 +180,13 @@ public final class HUDRenderer {
     /// the same baseline look aligned even when one contains a comma or a lowercase descender, and
     /// two aligned by their top edges do not.
     @discardableResult
+    /// Draws a line of text and returns the pen position after it.
+    ///
+    /// **`y` is the baseline, not the top.** Glyphs are drawn *upward* from it, which is the usual
+    /// convention for text rendering and is not what somebody laying out a HUD assumes — passing a
+    /// top margin puts the first line's ascenders off the top edge of the screen, which is exactly
+    /// what happened to the sample and was reported as the title touching the top. The first line's
+    /// `y` wants to be at least one `pointSize` below where you want the text to start.
     public func text(_ string: String, x: Float, y: Float, pointSize: Float, color: UIColor) -> Float {
         guard color.srgb.w > 0 else { return width(of: string, pointSize: pointSize) }
         let scale = pointSize / Float(FontAtlas.rasterHeight)
