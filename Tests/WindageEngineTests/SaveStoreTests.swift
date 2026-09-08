@@ -60,8 +60,10 @@ struct SaveStoreTests {
     /// The container is what keeps two games on one machine from overwriting each other.
     @Test("Different containers are different files")
     func containersAreSeparate() throws {
-        let a = SaveStore<Progress>(container: "WindageEngineTests-A", name: "p")
-        let b = SaveStore<Progress>(container: "WindageEngineTests-B", name: "p")
+        // Both under one container the suite cleans up, rather than two it leaves behind — a test
+        // that litters Application Support is a test that changes the machine it runs on.
+        let a = SaveStore<Progress>(container: "WindageEngineTests/a", name: "p")
+        let b = SaveStore<Progress>(container: "WindageEngineTests/b", name: "p")
         defer { a.clear(); b.clear() }
         try a.save(Progress(bestSeconds: 1, runs: 1))
         try b.save(Progress(bestSeconds: 2, runs: 2))
