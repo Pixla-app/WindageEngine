@@ -15,26 +15,36 @@ import simd
 /// knowing about the others.
 public final class InputState {
 
-    /// ### The face buttons, and why they are not free to reassign
+    /// ### The control map, and why most of it is not free to reassign
     ///
     /// Console shooters share a layout players arrive already knowing, and a game that ignores it is
     /// not being original — it is being wrong in a way every player notices and nobody reports. So
-    /// this engine binds around it rather than through it.
+    /// this engine binds *around* the convention rather than through it, and the reserved rows below
+    /// are as much a part of the map as the bound ones.
     ///
-    /// | button | convention | here |
+    /// | control | convention | here |
     /// |---|---|---|
     /// | Cross (`buttonA`) | jump | vertical movement |
     /// | Circle (`buttonB`) | crouch / prone | crouch latch |
-    /// | Square (`buttonX`) | **reload** | **deliberately unbound** |
-    /// | Triangle (`buttonY`) | weapon swap | brace latch |
+    /// | Square (`buttonX`) | **reload** | **reserved — unbound** |
+    /// | Triangle (`buttonY`) | **weapon swap** | **reserved — unbound** |
+    /// | L1 (`leftShoulder`) | equipment / lean | brace latch |
+    /// | R1 (`rightShoulder`) | grenade / melee | **reserved — unbound** |
+    /// | L2 | aim | aim |
+    /// | R2 | fire | fire |
+    /// | L3 | sprint | sprint latch |
+    /// | R3 | — | free |
+    /// | d-pad | — | discrete steps (Coldkeel's turrets) |
     ///
-    /// Square stays free even in a title with no reload, because a player will press it looking for
-    /// one. Triangle carries the brace because a one-weapon game has no swap to collide with; a title
-    /// that grows a second weapon has to move the brace, and this table is the reason why.
+    /// **Square and Triangle stay unbound even in a title that has neither a reload nor a second
+    /// weapon**, because a player will press them looking for both, and because a title that later
+    /// grows either would otherwise have to move something a player had already learned. That is the
+    /// mistake this table exists to stop: the brace was on Square, then Triangle, before landing on a
+    /// shoulder that nothing else wanted.
     ///
     /// > The framework names the face buttons in the **Xbox** layout, so on a DualSense `buttonY` is
-    /// > Triangle and `buttonX` is Square — which is the opposite of what the letters suggest if you
-    /// > are looking at the pad.
+    /// > Triangle and `buttonX` is Square — the opposite of what the letters suggest when you are
+    /// > looking at the pad.
 
     /// macOS virtual key codes. These are physical positions, not letters — the codes below are the
     /// QWERTY WASD cluster and stay in the same place on an AZERTY keyboard, which is what a game
@@ -202,8 +212,7 @@ public final class InputState {
     /// a sandbag would be another title's. What the engine knows is that it is a held posture the
     /// player toggles; what it *means* is the game's business.
     ///
-    /// **`B` on the keyboard, Triangle on a controller.** Square is left alone because it is reload
-    /// everywhere, whether or not a given title has one yet.
+    /// **`B` on the keyboard, L1 on a controller** — see the control map on ``InputState``.
     public private(set) var isBraced = false
 
     public func toggleBrace() { isBraced.toggle() }
@@ -294,15 +303,11 @@ public final class InputState {
         if crouchButton && !crouchButtonWasPressed { toggleCrouch() }
         crouchButtonWasPressed = crouchButton
 
-        // **Triangle, not Square.** The face buttons have a convention this engine does not get to
-        // ignore: Square is reload and Triangle is weapon swap, on effectively every console shooter,
-        // and a player will try Square for reload whatever a game has bound there. A title with one
-        // weapon has no swap, so Triangle is the free one — and Square stays free for the reload a
-        // game may not have yet.
-        //
-        // `buttonY` is Triangle on a DualSense; the framework names the face buttons in the Xbox
-        // layout, so Y is the top one.
-        let braceButton = gamepad?.buttonY.isPressed ?? false
+        // **L1, because every face button is spoken for.** Square is reload and Triangle is weapon
+        // swap; a shooter is expected to grow a second weapon, so Triangle is not free to borrow even
+        // while there is only one. The shoulders were unbound, L1 is reachable without letting go of
+        // either stick, and it leaves R1 for the grenade or melee a shooter usually wants.
+        let braceButton = gamepad?.leftShoulder.isPressed ?? false
         if braceButton && !braceButtonWasPressed { toggleBrace() }
         braceButtonWasPressed = braceButton
 
