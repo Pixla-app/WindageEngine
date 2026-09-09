@@ -543,12 +543,29 @@ withdrawn from anyone who already has the code; a reservation can be relaxed whe
 the cautious file today costs nothing and keeps every option, and a generous one today closes most of
 them permanently.
 
-When the terms are chosen, the realistic families for an engine that is not meant to be free are
-**source-available** rather than open-source: PolyForm's ready-made set (Noncommercial, or Small
-Business, which is free under a revenue threshold), or BUSL-1.1, which is source-available now and
-converts to open source on a date you set. A revenue share in the Unreal shape is a third option and
-the most expensive to run — it needs reporting and audit terms a solo studio has to administer for
-ever.
+### The terms, when they are chosen: PolyForm Small Business 1.0.0 (decided 2026-09-08)
+
+**Chosen, not applied.** `LICENSE` still reserves everything; this records what it becomes, so the
+decision is not re-argued from scratch when the trigger below arrives.
+
+What it says, read from the licence text rather than from memory: an organisation may use, modify and
+redistribute the software **commercially** if it has **fewer than 100 total employees and independent
+contractors** and **less than USD 1,000,000 total revenue in the prior tax year** (2019 dollars, CPI
+adjusted). Above either threshold they need a separate licence — which is the paid tier, without a
+royalty, a report or an audit clause to administer. Attribution comes free with it: a recipient must
+be given the terms and any plain-text `Required Notice:` lines, so the studio's credit travels with
+the code by the licence's own machinery rather than by asking.
+
+**Why this and not the alternatives.** It is source-available rather than open source, which is the
+actual requirement — the engine is not being given away. PolyForm Noncommercial would stop a
+one-person studio shipping anything at all, which is the audience most likely to use this. BUSL-1.1
+converts to open source on a date you have to pick years ahead, and picking it now is guessing. An
+Unreal-shaped revenue share is the expensive one: percentages need reporting and audit terms, and
+someone to read them, for ever.
+
+**What still has to happen when it is applied**, none of it today: replace `LICENSE` with the
+PolyForm text, add the `Required Notice:` line, add a `SPDX-License-Identifier` header convention,
+and decide the price and the form of the above-threshold licence.
 
 **Revisit when two things are true:** a Pixla Games title has actually shipped on this engine, and a
 second platform exists. Before that, licensing would be selling an unproven foundation for a

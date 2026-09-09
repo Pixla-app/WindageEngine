@@ -23,6 +23,10 @@ already has the code, while a reservation can be relaxed at any time. Reserving
 now costs nothing and keeps every option; granting now closes most of them for
 good.
 
+The terms this becomes have been chosen and not applied: PolyForm Small
+Business 1.0.0, which is source-available rather than open source. The
+reasoning, and the list of what applying it actually involves, is in README.md.
+
 The engine's own posture on this is in README.md, under "Building it as if it
 were licensable": build to a standard that would survive being licensed, and
 revisit the terms when a title has actually shipped on it and a second platform
