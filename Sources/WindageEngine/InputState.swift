@@ -34,7 +34,7 @@ public final class InputState {
     /// | R2 | fire | fire |
     /// | L3 | sprint | sprint latch |
     /// | R3 | — | one scroll notch (magnification) |
-    /// | d-pad | — | discrete steps (Coldkeel's turrets) |
+    /// | d-pad | — | discrete steps (scope turrets, weapon select) |
     ///
     /// **Square and Triangle stay unbound even in a title that has neither a reload nor a second
     /// weapon**, because a player will press them looking for both, and because a title that later
@@ -240,17 +240,17 @@ public final class InputState {
 
     /// Whether the player is **braced** — resting the weapon on something rather than holding it up.
     ///
-    /// Latched like the crouch, and generic on purpose: a bipod is Coldkeel's version, a wall lean or
-    /// a sandbag would be another title's. What the engine knows is that it is a held posture the
-    /// player toggles; what it *means* is the game's business.
+    /// Latched like the crouch, and generic on purpose: a bipod is one version of it, a wall lean or
+    /// a sandbag is another. What the engine knows is that it is a held posture the player toggles;
+    /// what it *means* is the game's business.
     ///
     /// **`B` on the keyboard, L1 on a controller** — see the control map on ``InputState``.
     public private(set) var isBraced = false
 
     public func toggleBrace() { isBraced.toggle() }
 
-    /// Give it up. A game calls this when its own rules say bracing has ended — Coldkeel folds the
-    /// bipod when the player stands or runs.
+    /// Give it up. A game calls this when its own rules say bracing has ended — a deployed bipod
+    /// folds when the player stands or runs.
     public func releaseBrace() { isBraced = false }
 
     private var braceButtonWasPressed = false

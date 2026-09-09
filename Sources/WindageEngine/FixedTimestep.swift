@@ -8,7 +8,7 @@ import Foundation
 /// Advances simulation in fixed increments, independently of how often — or how irregularly —
 /// frames arrive.
 ///
-/// **Why this exists, rather than simulating with each frame's own delta.** A bullet in Coldkeel is
+/// **Why this exists, rather than simulating with each frame's own delta.** A bullet in a shooter is
 /// in flight for seconds, under gravity and drag, and each step's result feeds the next. Integrate
 /// that with a variable delta and the same shot lands somewhere different on a 60 Hz display than
 /// on a 120 Hz one, and somewhere different again on a frame that happened to stutter. A shot that

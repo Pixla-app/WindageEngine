@@ -95,7 +95,7 @@ final class SampleGame: GameLoop {
     /// Uniform slots per frame, and therefore the hard ceiling on things drawn.
     ///
     /// **Being over it silently drops the tail of the scene** — the same fault that once made
-    /// Coldkeel's rifle disappear from the player's hands and read as a rendering bug. `rebuild()`
+    /// a viewmodel disappear from the player's hands and read as a rendering bug. `rebuild()`
     /// says so out loud rather than leaving it to be discovered.
     private static let maxDrawables = 128
     private static let uniformStride = (MemoryLayout<Uniforms>.stride + 255) & ~255
@@ -546,8 +546,8 @@ final class SampleGame: GameLoop {
 
         // **Sized against the drawable, not in raw pixels.** The viewport is in *pixels*, and on a
         // Retina display that is twice the points — so text asked for at "20" rendered at ten points
-        // and was reported as unreadable. Scaling against a 1080-pixel reference is what Coldkeel
-        // already does, and it is resolution-independent rather than tuned to one machine.
+        // and was reported as unreadable. Scaling against a 1080-pixel reference is
+        // resolution-independent rather than tuned to one machine.
         let scale = max(viewportSize.y / 1080, 0.75)
         let title = 30 * scale, body = 21 * scale, hint = 17 * scale
         let margin = 22 * scale

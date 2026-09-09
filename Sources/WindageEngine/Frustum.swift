@@ -10,15 +10,15 @@ import simd
 /// **Five planes, not six.** See `init` — the engine's infinite far plane has no far plane to
 /// extract, which is the first thing this probe turned up.
 ///
-/// **Extracted from Brassgrave's probe on 2026-09-08, when Coldkeel needed it too.** It was written
-/// as that title's divergence — trenches are dense, close, occluding geometry where most of the map
-/// is behind a wall of earth — under a note saying Coldkeel was right not to cull, because a sniper
-/// range is an open plain where nearly everything is in front of the player.
+/// **Extracted 2026-09-08, once two different games wanted it.** It was written for dense, close,
+/// occluding geometry — trenches, where most of a map is behind a wall of earth — under a note
+/// saying an open plain does not need culling, because nearly everything on one is in front of the
+/// player.
 ///
-/// **That stopped being true when the range got a colony, ruins and 260 sprigs of flora.** A 65°
-/// field of view is under a fifth of the circle; the rest of an 854-object scene is behind the
-/// player's shoulders. Two consumers, working tested code — which is what the extraction rule asks
-/// for.
+/// **That is only true while an open scene is also a sparse one.** A 65° field of view is under a
+/// fifth of the circle, so in an 854-object scene most of it sits behind the player's shoulders
+/// whether or not anything occludes it. Working, tested code from two consumers, which is what the
+/// extraction rule asks for.
 ///
 /// ### The asymmetry that decides every detail here
 ///

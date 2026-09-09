@@ -22,7 +22,7 @@ import simd
 /// ### What the engine knows about a level, and what it refuses to know
 ///
 /// The engine knows a level is **things placed in space** and **points that mean something**. It does
-/// not know what they mean. `Marker.kind` is a string the *game* interprets: Coldkeel reads
+/// not know what they mean. `Marker.kind` is a string the *game* interprets: one game reads
 /// `"target"` and `"firing-position"`, a pirate game would read `"anchorage"`, and the engine reads
 /// neither. The same goes for ``Placement/tags``.
 ///
@@ -33,7 +33,7 @@ import simd
 /// ### Heights are anchored, not absolute
 ///
 /// A placement stores **how it meets the ground**, not the height it happened to sit at when someone
-/// pressed save. Terrain changes — Coldkeel's valley grew a cross-section and every structure in it
+/// pressed save. Terrain changes — a valley grows a cross-section and every structure in it
 /// moved tens of metres — and a level of absolute Y values silently becomes a level of floating and
 /// buried buildings. See ``Anchor``.
 /// **`nonisolated`, like every other value type here.** A level is data; loading one is I/O and
@@ -210,7 +210,7 @@ nonisolated extension Level {
     /// What the engine needs from the game to turn an anchored placement into a world position.
     ///
     /// **Closures rather than a protocol the game must conform to, and rather than the engine owning
-    /// terrain.** Only the game knows what its ground is — Coldkeel's is a height *function* with no
+    /// terrain.** Only the game knows what its ground is — one game's is a height *function* with no
     /// mesh behind it — and only the game knows how big its meshes are. What the engine does know is
     /// what an anchor *means*, and that meaning is identical in every game, so it lives here instead
     /// of being re-derived per title.

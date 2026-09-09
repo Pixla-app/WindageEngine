@@ -14,8 +14,8 @@ import simd
 /// wrong and both looked plausible.
 struct ShadowCascadeTests {
 
-    /// The set these tests were written against — Coldkeel's valley, kept verbatim so the extraction
-    /// is checkable against the behaviour it had before it moved.
+    /// The set these tests were written against — a long-range outdoor game's, kept verbatim so the
+    /// extraction is checkable against the behaviour it had before it moved.
     private let cascades = ShadowCascades(splits: [30, 90, 260, 850])
 
     private let sun = simd_normalize(SIMD3<Float>(-0.42, 0.72, -0.55))

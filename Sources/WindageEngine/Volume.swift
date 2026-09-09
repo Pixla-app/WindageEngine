@@ -12,18 +12,18 @@ import simd
 /// everything you only shoot at. While the hit test took scene objects, *owning a GPU mesh was the
 /// price of being hittable*, and anything that could not pay it had to bring its own.
 ///
-/// Coldkeel paid that price twice. Its logic package builds and tests without Metal, so `Target` and
-/// `Sentry` could not be scene objects, so both hand-rolled their own world bounds — and firing one
-/// round ran four hit tests where three were the same box-against-segment code. Brinewake is what
-/// turned that from untidy into untenable: on a ship every crate, rail and hatch on the deck moves,
-/// so each one would have been another special case with its own bounds and its own loop.
+/// One game paid that price twice. Its logic package builds and tests without Metal, so its targets
+/// could not be scene objects, so each hand-rolled its own world bounds — and firing one round ran
+/// four hit tests where three were the same box-against-segment code. A scene where things *move*
+/// turns that from untidy into untenable: if every crate, rail and hatch on a moving deck is its own
+/// special case, each brings its own bounds and its own loop.
 ///
 /// So a volume is an extent plus a transform, with no opinion about drawing. `SceneObject` owns one;
 /// a game's own moving things own one; and ``firstHit(segmentFrom:to:against:)`` tests a shot once
 /// against everything that can stop it.
 ///
-/// > The extraction rule was met before this moved in: it arrived as working, tested code from
-/// > Brinewake's probe, with the duplication it removes already visible in a shipping title.
+/// > The extraction rule was met before this moved in: it arrived as working, tested code, with the
+/// > duplication it removes already visible in a second consumer.
 public nonisolated struct Volume {
 
     /// The extent in model space — the thing's own size, before it is placed anywhere.

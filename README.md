@@ -1,14 +1,13 @@
 # Windage Engine
 
-The studio's shared Swift/Metal foundation. **`WE`** prefix. **`windageengine.com`** — with
-`windagengine.com` registered defensively for the dropped second `e` and redirecting to it; see
-`../docs/NAMING.md`.
+A Swift 6 and Metal 4 foundation for native macOS first- and third-person games. **`WE`** prefix.
+**`windageengine.com`**.
 
-> **Its own repository, and its own product, since 2026-09-07.** It sat inside the Pixla Games
-> studio repo under `Studio/` while it was "shared studio source"; it is not that. It is meant to be
-> cloned and built by people who have no relationship with that studio and will never see its
-> internals. Filing it inside someone's private folder said the engine was an implementation detail
-> of one studio — it is the opposite.
+> **This repository depends on no game.** It builds, runs and tests on its own, and everything it
+> demonstrates it demonstrates through `WindageSample`, which lives here. Capabilities arrive here
+> by being *extracted* from a working game — that is the quality rule below — but nothing that
+> arrives keeps a reference to where it came from. A game is a consumer of this engine, never a
+> component of it.
 
 ## Run it
 
@@ -35,71 +34,56 @@ diff is the change. That is the point of it — see **The sample game** below.
 
 ## What it is, and what it deliberately is not
 
-It is the part of a native Pixla Games title that was identical every time it was written: frame
-pacing, frames in flight, the depth convention, mesh loading, camera, input, the maths.
+It is the part of a native macOS game that was identical every time it was written: frame pacing,
+frames in flight, the depth convention, mesh loading, camera, input, the maths.
 
 It is **not** a general-purpose engine, and it is not trying to become Unity. There is no scene
 graph, no ECS, no material system, no editor. Those are the parts that cannot be designed correctly
-from one game, and inventing them before a second title stresses them differently is how a studio
-ends up maintaining an engine instead of shipping games.
+from one game, and inventing them before a second game stresses them differently is how you end up
+maintaining an engine instead of shipping something with it.
 
-**Everything here was extracted from working, tested code in Coldkeel — never designed speculatively.**
-That rule is the whole quality control. If a thing has one consumer and no proven seam, it stays in
-the title until a second title shows where the seam actually is.
+**Everything here was extracted from working, tested code — never designed speculatively.** That rule
+is the whole quality control. If a thing has one consumer and no proven seam, it stays in that
+consumer until a second one shows where the seam actually is.
 
-## Priority: the engine comes first (2026-08-26)
+## The extraction rule, and the trap it exists to avoid
 
-**The extraction rule above is unchanged** — a capability enters this package only once real, working,
-tested code has proved where the seam actually is. What follows is not a loosening of that. It is the
-*sequencing* around it, which was previously implicit and got read as "the engine happens when a game
-happens to need it".
+A capability enters this package only once real, working, tested code has proved where the seam
+actually is. That is the whole quality control, and it has a specific failure mode on the other side
+of it.
 
-1. **The engine comes first — above every title, including Coldkeel.** No engine, no games. Work that
-   makes the foundation right outranks work that makes one title further along.
-2. **Coldkeel is second**, and is the primary driver: the most active title, and the one whose working
-   code is where extractions come from today.
-3. **The other locked-in titles are third — but not deferred.** Each gets a **minimal, unpolished
-   build now**, built specifically to exercise whatever makes that title's needs genuinely *diverge*
-   from Coldkeel's and from each other's.
+**Extraction from one game is also how you build a foundation shaped like that one game.** A sniper
+game has long sightlines, few actors and a shot that takes a second to land. An engine extracted only
+from something like that will be quietly excellent at it and quietly wrong everywhere else — and
+nothing will say so until a second game is far enough along that the mistake is expensive.
 
-### Why the third point is not a contradiction
+**A small probe of a genuinely different game shape is the cheapest instrument for finding those
+divergences while they are still cheap to act on** — a scene that changes while it runs, geometry
+that mostly cannot be seen, light that is not one sun, ground that moves. Each is a few hundred lines
+and its tests, and it exists to stress this package rather than to become a game.
 
-Extraction from one game is how you build a foundation shaped like that one game. Coldkeel is a
-sniper title: long sightlines, few actors, a shot that takes a second to land. An engine extracted
-only from it will be quietly excellent at that and quietly wrong everywhere else — and nothing will
-say so until a second title is far enough along that the mistake is expensive.
-
-A skeletal build of each locked-in title is the cheapest possible instrument for finding those
-divergences **while they are still cheap to act on**. It is not a head start on those titles; it is a
-test rig for this package.
-
-**Not every title needs every capability, and that is the point.** The goal is that by the time full
-development shifts to one of them, the capability it needs already exists here and is already proven —
-rather than that title stopping for three months to grow the engine sideways.
-
-> **What this does not license.** A divergence found by a skeleton is a *reason to look*, not a
-> licence to build speculatively. The rule still holds: something enters this package when working
-> code proves the seam. A skeleton that merely suggests a title *might* want something is a note, not
-> a feature.
+> **What that does not license.** A divergence a probe suggests is a *reason to look*, not a licence
+> to build speculatively. Something enters this package when working code proves the seam. A probe
+> that merely suggests a game *might* want something is a note, not a feature.
 
 ### It worked, and the first thing it produced is `Volume` (2026-08-26)
 
-Brinewake's probe was built for **ground that moves**. That worry turned out to be a non-issue —
-world-space interpolation error at ship turn rates is a *micrometre*, measured against the real 120 Hz
-step — and the probe is worth more for having disproved it than it would have been for confirming it.
+A probe for **ground that moves** — a deck under the player's feet — was written against a worry that
+turned out to be a non-issue: world-space interpolation error at ship turn rates is a *micrometre*,
+measured against the real 120 Hz step. It is worth more for having disproved that than it would have
+been for confirming it.
 
 Looking for that seam is what surfaced the real one. `SceneObject` coupled an `MTKMesh` to a
 `BoundingBox`, and the hit test took scene objects, so **owning a GPU mesh was the price of being
-hittable**. Coldkeel had already paid it twice without the cost being visible as a seam: `Target` and
-`Sentry` each hand-rolled their own world bounds, the renderer ran four hit tests where three were the
-same code, and ranging quietly asked a *different* set of things than shooting did — a sentry could be
-shot but not ranged. Brinewake is what made it untenable rather than untidy: on a deck, everything
-moves, so every crate would have been another special case.
+hittable**. A shipping game had already paid it twice without the cost being visible as a seam: two
+kinds of target each hand-rolled their own world bounds, the renderer ran four hit tests where three
+were the same code, and ranging quietly asked a *different* set of things than shooting did — a
+target could be shot but not ranged. A deck where everything moves is what made that untenable rather
+than untidy: every crate would have been another special case.
 
-So `Volume` — an extent plus a transform, no mesh — came in, and Coldkeel's four hit paths became two
-(volumes, then the terrain height march, which is legitimately different). **It arrived as working,
-tested code with the duplication it removes already visible in a shipping title**, which is the bar,
-and it is the first thing to enter this package from a second title rather than from Coldkeel.
+So `Volume` — an extent plus a transform, no mesh — came in, and four hit paths became two (volumes,
+then a terrain height march, which is legitimately different). **It arrived as working, tested code
+with the duplication it removes already visible in a shipping game**, which is the bar.
 
 Two details worth not undoing:
 
@@ -110,19 +94,10 @@ Two details worth not undoing:
   loops. A reticle that reads a distance the round will not travel is worse than no readout, because
   the player acts on it.
 
-### Which titles
-
-The shooter lane, from the catalogue in `~/PixlaGames/CLAUDE.md`: **Gunhollow**, **Brassgrave**,
-**Sedgefall**, **Brinewake**. All four are Windage Engine titles by the studio's own stack rule, and
-all four have names, domains and trademark screening done.
-
-**Royal Valor is explicitly outside this**, and stays outside. It is the fantasy MMO, it is not in the
-shooter lane, and nothing here is expected to reach it.
-
 ## Skinned animation is tractable here — probed 2026-09-06
 
-**The engine cannot animate a character, and that is its single biggest gap**: five shooter titles
-sit on it and every one of them will want one. Before treating that as a plan, the load-bearing
+**The engine cannot animate a character, and that is its single biggest gap**: any game with a person
+or a creature in it will want one. Before treating that as a plan, the load-bearing
 assumption got tested — *does Model I/O actually import UsdSkel, or does it silently drop it?*
 
 A hand-written eight-vertex, two-joint `.usda` loaded through `MDLAsset`:
@@ -140,7 +115,7 @@ MDLObject  name=Root
 
 **All of it comes through** — joint indices and weights as vertex attributes, the skeleton with its
 joint paths and bind transforms, and an `MDLAnimationBindComponent` tying the mesh to it. So the
-parsing is not work this studio owns, and no third-party importer is needed.
+parsing is not work this package owns, and no third-party importer is needed.
 
 **`MeshLoader` needs no structural change either.** It already takes a `semantics` map from the game,
 so asking for `MDLVertexAttributeJointIndices` and `MDLVertexAttributeJointWeights` is a dictionary
@@ -211,19 +186,19 @@ The tooling that does all of this is `Studio/Characters/` — see its README.
 
 ## The split
 
-| Engine owns | A title owns |
+| Engine owns | A game owns |
 |---|---|
 | When things happen: pacing, frames in flight, the render pass | What happens: pipelines, uniforms, draws |
 | Depth convention (reversed-Z), depth buffer, clear values | Shaders, materials, lighting values |
 | Camera, input, simulation clock, mesh loading, maths | Scene content, game rules |
 
-A title implements `GameLoop` (four methods) and hands itself to `FrameRenderer`.
+A game implements `GameLoop` (four methods) and hands itself to `FrameRenderer`.
 
 ## Reversed-Z is enforced here on purpose
 
 Reversed-Z needs the projection, the depth compare function and the clear value to agree, and a
 mismatch renders **nothing at all** rather than rendering badly. Three constants that must match,
-spread across three files, in every title, is a trap that will eventually be sprung. So
+spread across three files, in every game built on it, is a trap that will eventually be sprung. So
 `FrameRenderer` owns the clear value, `makeDepthStencilState()` hands back the matching compare, and
 `matrix_perspective_right_hand_reverse_z` is the projection. Use all three and they cannot disagree.
 
@@ -241,7 +216,7 @@ back on write, so the round trip is exact. Verified on-device by reading pixels 
 authored arrives as `#00C2FF` on screen.
 
 `HUDRenderer` draws rectangles, lines and **text** in screen space. **There is still no layout and
-no widgets** — those arrive when a title needs them and can show what shape they should be.
+no widgets** — those arrive when a game needs them and can show what shape they should be.
 
 **Shapes and text share one pipeline.** `FontAtlas` reserves a fully opaque texel that solid
 geometry samples, so "coverage" is 1 for a rectangle and the maths is identical either way. One
@@ -256,7 +231,7 @@ which is the direction that stays sharp.
 
 ## Distribution-agnostic, deliberately (2026-08-26)
 
-**This package is not the thing being distributed — a title is — so it must not assume how.** It has
+**This package is not the thing being distributed — a game is — so it must not assume how.** It has
 to run sandboxed or not:
 
 - **Never assume a writable location outside the container.** No hard-coded absolute paths, nothing
@@ -265,14 +240,11 @@ to run sandboxed or not:
 - **Load resources from bundles**, not arbitrary disk paths.
 
 **The expensive part of App Store distribution was never the sandbox — it is retrofitting file access
-that assumed free rein.** Holding this constraint costs nothing and keeps both doors open, so a title
+that assumed free rein.** Holding this constraint costs nothing and keeps both doors open, so a game
 can ship direct *or* on the store without the engine changing.
 
-A title picks its own store; see `~/PixlaGames/CLAUDE.md`. Direct notarized download is the studio's
-default, and that is a title-level default, not a constraint this package may encode.
-
-> Coldkeel currently ships sandboxed because its template set it that way. **A title's local fact must
-> never become an engine assumption**, which is exactly why it is written here.
+A game picks its own store, and that is the game's local fact, never a constraint this package may
+encode. **The engine must run sandboxed or not**, because it is not the thing being distributed.
 
 ## Conventions## Conventions
 
@@ -283,16 +255,13 @@ default, and that is a title-level default, not a constraint this package may en
 - **Swift 6 language mode**, tools version 6.2.
 - **Metal 4 only.** `FrameRenderer.init` returns nil without `supportsFamily(.metal4)`.
 
-## How a title consumes it
+## How a game consumes it
 
-A local Swift package reference by relative path. From a title at
-`~/PixlaGames/<Title>/<Title>-Client/`, that path is `../../Studio/WindageEngine`.
+A Swift package dependency — by URL, or by relative path for a checkout sitting beside the game.
 
-> **The consequence, stated plainly:** each title is its own git repository and the engine lives in
-> the studio repo, so a title does **not** build from a fresh checkout of its own repo alone — the
-> studio repo has to be checked out alongside it at the expected relative path. That is the price of
-> one shared foundation with no package registry, and it is worth knowing before someone clones a
-> title on a new machine and finds it will not build.
+> **A relative-path dependency means the consuming project does not build from its own checkout
+> alone** — this repository has to be checked out beside it at the expected path. Depending on it by
+> URL avoids that entirely and is the better default for anybody who is not developing both at once.
 
 ## The sample game (2026-09-07)
 
@@ -308,7 +277,7 @@ It deliberately has:
 
 - **Levels that are files, not code.** `courtyard.json` and `ruins.json` ship in
   `WindageSampleCore`'s resources and are loaded through `Level.load(named:bundle:)` — the same call
-  a title makes. **They used to be Swift functions that built a `Level`**, generated to disk on first
+  a game makes. **They used to be Swift functions that built a `Level`**, generated to disk on first
   run, and that was the sample teaching the opposite of what the format claims: a level assembled by
   a function says the file is an export. The files were generated once from those functions, so the
   courtyard is byte-for-byte the courtyard it always was, and the functions are gone.
@@ -324,7 +293,7 @@ compiles no Metal at all — Xcode does, SwiftPM's CLI does not — so anything 
 `makeDefaultLibrary(bundle:)` failed outside Xcode, with a blank window and nothing useful logged.
 `ShaderLibrary` now falls back to compiling the `.metal` source at runtime, and both the HUD and the
 sample go through it. That bug had been latent since the engine was written and could not have been
-found by Coldkeel, which is an Xcode app.
+found by a consumer that is an Xcode app.
 
 Two smaller ones it also surfaced: Swift's `print` is fully buffered when stdout is not a terminal,
 so a piped run of the sample showed nothing at all until it set `setbuf(stdout, nil)`; and a sun
@@ -342,10 +311,10 @@ ships.
 **All of the editing lives in the engine and none of it needs a window.** A selection, a set of
 operations, an undo stack and a dirty flag have nothing to do with rendering and everything to do
 with the format — so they run in `swift test` in milliseconds, and the sample only turns keys into
-them and draws the result. It is the same argument the studio makes for splitting a game's logic out
+them and draws the result. It is the same argument for splitting a game's logic out
 of its app target: an editor testable only by clicking is an editor nobody tests.
 
-It also means **the game that ships is not the editor**. A title can embed one, a separate tool can
+It also means **the game that ships is not the editor**. A game can embed one, a separate tool can
 drive one, and neither reimplements what "nudge the selected thing 0.5 m" means.
 
 Deliberately absent: gizmos, snapping, multi-select, prefabs, a scene graph. Those cannot be designed
@@ -356,8 +325,8 @@ under.
 > the level file and nothing read it, so you walked through every wall — a file saying something
 > untrue is worse than a file not saying it. `BoundingBox` had ray and segment tests but no
 > point-in-box test, the most basic query it could have. And the engine logged gamepad connections
-> as **`"Coldkeel: …"`** — another product's name, which any third party would have seen in their own
-> console.
+> under the name of the *game* it was extracted from — a product that was not running, which
+> anybody else would have seen in their own console.
 
 ## A game loop, and what it needed (2026-09-07)
 
@@ -366,7 +335,7 @@ with *state* worked — a pause that is not a stall, an outcome, progress kept b
 sample became a small game: touch every marked crate before the clock runs out.
 
 **`SaveStore` is the one thing that had to come into the engine.** The distribution rule says the
-engine may never assume a writable location outside its container, because a title may go to the App
+engine may never assume a writable location outside its container, because a game may go to the App
 Store — and that rule is easy to state and easy to break, since the natural thing to write is a path
 and a path beside the executable works right up until somebody sandboxes the app. So there is one
 place that knows where a game may write. It writes atomically, because a crash mid-write leaves a
@@ -378,10 +347,10 @@ score is a disappointment, refusing to launch is a bug report.
 pausing is a game's decision and the engine does not have to provide it. Modes, objectives, scoring
 and win conditions all sat in the game with no engine change at all.
 
-### The sample is split the way a title is
+### The sample is split the way a game should be
 
 `WindageSampleCore` (logic, no window) + `WindageSample` (the app) + tests against the core — the
-same split `~/PixlaGames/CLAUDE.md` requires of every title, for the same reason: a win condition, a
+same split this package recommends to any game, for the same reason: a win condition, a
 clock, a pause and a save are exactly the things that fail quietly, and none of them need a drawable.
 
 > **And one the tests found that running it did not.** `SampleRun` kept its progress in a shared
@@ -392,7 +361,7 @@ clock, a pause and a save are exactly the things that fail quietly, and none of 
 
 > **Two things running it found that its tests did not.** The HUD asked for text at "20" and got ten
 > points, because the viewport is in *pixels* and a Retina drawable is twice the points — reported as
-> unreadable. It scales against a 1080-pixel reference now, as Coldkeel already did. And the collect
+> unreadable. It scales against a 1080-pixel reference now. And the collect
 > radius was measured to a crate's centre without allowing for the crate's own width, so the player
 > stood visibly against one and nothing happened.
 
@@ -404,7 +373,7 @@ at the listener.
 
 **Positional on purpose.** The whole reason this engine spatialises is that a sound should come from
 where the thing is; a sample that played everything flat would leave the positional path — the part
-with the head-related work in it — exercised by nobody but Coldkeel.
+with the head-related work in it — exercised by nothing in this repository.
 
 **The sounds are generated, not shipped.** `Tools/make_sample_sounds.py` synthesises three short WAVs
 from sine partials, the same way the meshes are hand-written OBJ. Somebody who clones this repo can
@@ -448,18 +417,20 @@ save written now is v2 and never writes the old field back.
 ## Shadow cascades (2026-09-09)
 
 `ShadowCascades` — the split distances, the light basis, texel snapping, per-cascade depth bias and
-the blend bands. **Extracted from Coldkeel**, where it had worked and been tested for two weeks.
+the blend bands. **Extracted from a shipping game**, where they had worked and been tested for two
+weeks.
 
 **The extraction is what turned its constants into parameters, and that is the whole value of doing
 it.** It was written for one valley: four splits ending at 850 m, because that is the shot that game
-is about. None of the maths cares — but they were `static let`s, so a second title could have the
+is about. None of the maths cares — but they were `static let`s, so a second game could have the
 mechanism only by taking a sniper range's geometry with it. The sample's courtyard is sixty metres
 across and would have spent 99% of every shadow texel on empty ground.
 
-So a cascade set is a value you configure, and a title's numbers live with the title:
+So a cascade set is a value you configure, and a game's numbers live with the game:
 
 ```swift
-let cascades = ShadowCascades(splits: [30, 90, 260, 850])   // Coldkeel's valley
+let far  = ShadowCascades(splits: [30, 90, 260, 850])   // a long-range outdoor game
+let near = ShadowCascades(splits: [8, 22, 55, 120])     // an interior, or a small arena
 ```
 
 Three things in it are load-bearing and easy to undo by accident, all inherited from the game that
@@ -475,23 +446,23 @@ proved them:
   be wider than the whole near cascade.
 
 **The tests moved with the code rather than being rewritten from it**, and still run against
-Coldkeel's own numbers — so the extraction is checkable against the behaviour it had before it moved.
-That is the studio's rule after a rewrite-from-memory of this exact light basis was very nearly
+the same numbers — so the extraction is checkable against the behaviour it had before it moved.
+That is the standing rule after a rewrite-from-memory of this exact light basis was very nearly
 committed, wrong, during an earlier split.
 
 **What did not come:** the pass itself. A texture, a pipeline and an encoder either work or draw
-nothing, and one title's arrangement of them has proven no seam.
+nothing, and one game's arrangement of them has proven no seam.
 
 ## Culling (2026-09-08)
 
-`Frustum` — the planes of a view-projection and a conservative box test. **Extracted from
-Brassgrave's probe**, which is what a probe is for.
+`Frustum` — the planes of a view-projection and a conservative box test. **Extracted from a probe**,
+which is what a probe is for.
 
-It was written as that title's divergence: trenches are dense, close, occluding geometry. It carried
-a note saying Coldkeel was right not to cull, because a sniper range is an open plain where nearly
+It was written for a different game shape: trenches are dense, close, occluding geometry. It carried
+a note saying an open plain does not need culling, because a plain is somewhere nearly
 everything is in front of the player. **That stopped being true** when the range gained a colony,
 ruins and 260 sprigs of flora — a 65° field of view is under a fifth of the circle, and the rest of
-an 854-object scene is behind the player's shoulders. Measured in Coldkeel:
+an 854-object scene is behind the player's shoulders. Measured in a game using it:
 
 | facing | drawn of 870 |
 |---|---|
@@ -512,13 +483,13 @@ expecting six either carries a plane that always passes or divides by zero norma
 
 ## Testing
 
-`swift test --package-path Studio/WindageEngine`. Tests live with the code they cover; a title
+`swift test`. Tests live with the code they cover; a game
 keeps only the tests that are about *its* assets and *its* pipeline.
 
 > **SwiftPM's CLI does not compile Metal.** Xcode compiles the package's `.metal` sources into
 > `default.metallib` inside the resource bundle; `swift build` silently ignores them. So `swift test`
 > exercises everything except the shaders, and anything needing a GPU has to be verified by running
-> a title. The `.metal` file is declared in `resources:` so that SwiftPM still synthesises
+> a game. The `.metal` file is declared in `resources:` so that SwiftPM still synthesises
 > `Bundle.module`, which is where the pipeline looks for its library.
 
 ## Building it as if it were licensable
@@ -546,7 +517,7 @@ before they could ship commercially.
 These are good practice for one consumer and prerequisites for many, so they are worth doing whether
 or not a licence ever happens:
 
-1. **Keep the API honest about what it owns.** No title-specific assumptions leaking in; `MeshLoader`
+1. **Keep the API honest about what it owns.** No game-specific assumptions leaking in; `MeshLoader`
    taking a semantics map instead of importing a game's `ShaderTypes` is the model.
 2. **Semantic versioning from the first outside consumer**, and a changelog. Cheap now, impossible
    to reconstruct later.
@@ -562,11 +533,12 @@ or not a licence ever happens:
 - **Do not add a platform abstraction layer speculatively.** Windows support is a real port, not an
   `#ifdef`, and writing the abstraction before the second platform exists produces the wrong seams —
   the same trap as designing an engine from one game.
-- **Do not build an editor.** It is the single largest cost in an engine and the studio does not need
-  one yet.
+- **Do not build a standalone editor application.** It is the single largest cost in an engine, and
+  `LevelEditor` already covers the shape that matters: a game embeds it and edits its own levels in
+  place.
 - **Do not take on support obligations.** A licence means answering questions on someone else's
   schedule; that is a business decision, not an engineering one, and it competes directly with
-  shipping titles.
+  shipping games.
 
 ### The repository says "all rights reserved", on purpose (2026-09-08)
 
@@ -590,6 +562,6 @@ licence's own `Required Notice:` mechanism.
 `LICENSE` reserves every right until the PolyForm text goes in, which happens when the engine is
 actually handed to somebody. That is a five-minute swap on the day, not an open question.
 
-**Revisit when two things are true:** a Pixla Games title has actually shipped on this engine, and a
+**Revisit when two things are true:** a game has actually shipped on this engine, and a
 second platform exists. Before that, licensing would be selling an unproven foundation for a
 single platform — which is a worse product than the games it is meant to be making.

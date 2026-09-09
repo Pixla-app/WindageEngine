@@ -12,14 +12,14 @@ import simd
 /// bands draw a *plausible* picture when they are wrong — a seam, a crawling edge, a shadow detached
 /// from its caster. That half wants tests, and tests should not want a GPU.
 ///
-/// **Extracted from Coldkeel 2026-09-09, and the extraction is what turned its constants into
-/// parameters.** It was written for one valley: four splits ending at 850 m because that is the shot
-/// that game is about. Nothing in the maths cares, but the numbers were `static let`s, which meant a
-/// second title could have the mechanism only by taking a sniper range's geometry with it. A
-/// courtyard sixty metres across wants splits an order of magnitude tighter and would have had
-/// shadow maps spending 99% of their texels on empty ground.
+/// **Extracted 2026-09-09, and the extraction is what turned its constants into parameters.** It
+/// was written for one valley: four splits ending at 850 m, because that was the longest shot in the
+/// game that produced it. Nothing in the maths cares — but the numbers were `static let`s, so a
+/// second game could have the mechanism only by taking a sniper range's geometry with it. A
+/// courtyard sixty metres across wants splits an order of magnitude tighter, and would otherwise
+/// spend 99% of every shadow texel on empty ground.
 ///
-/// So this is a value you configure, and a title's own numbers live with the title.
+/// So this is a value you configure, and a game's own numbers live with the game.
 public nonisolated struct ShadowCascades {
 
     /// View-space distance at which each cascade stops applying, in world units.
@@ -88,10 +88,9 @@ public nonisolated struct ShadowCascades {
 
     /// How many cascades an object of this size is worth recording into, counting from the nearest.
     ///
-    /// **A caster narrower than a shadow texel cannot cast a shadow — it can only cast noise.** In
-    /// Coldkeel's valley the far cascade spans half a kilometre across 2048 texels, so a half-metre
-    /// stone is two thirds of one texel there: recording it costs a draw and produces at best a
-    /// flickering speck.
+    /// **A caster narrower than a shadow texel cannot cast a shadow — it can only cast noise.** With
+    /// a far cascade spanning half a kilometre across 2048 texels, a half-metre stone is two thirds
+    /// of one texel: recording it costs a draw and produces at best a flickering speck.
     ///
     /// Derived from the texel size rather than assigned per object type, so it stays right if the
     /// splits or the resolution ever move. A third of the object's width is the threshold — below

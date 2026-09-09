@@ -180,9 +180,10 @@ struct BoundingBoxContainsTests {
 
 /// **The engine must not say another product's name.**
 ///
-/// Its gamepad connect/disconnect messages were logged as `"Coldkeel: …"` — found by running the
-/// sample, where a controller plugged in and the console announced a game that was not running. A
-/// third party would have seen the same thing in their own app.
+/// Its gamepad connect/disconnect messages were logged under the name of the *game* it was first
+/// extracted from — found by running the sample, where a controller was plugged in and the console
+/// announced a product that was not running. Anybody else would have seen the same thing in their
+/// own app.
 struct EngineIdentityTests {
     @Test func theEngineNamesItself() {
         #expect(Engine.name == "Windage Engine")

@@ -9,7 +9,7 @@ import simd
 
 /// Guards the reversed-Z depth convention.
 ///
-/// Coldkeel maps the near plane to depth **1** and infinite distance to depth **0**, the opposite of
+/// The engine maps the near plane to depth **1** and infinite distance to depth **0**, the opposite of
 /// the conventional near-0/far-1 the Xcode template shipped with. Float depth holds most of its
 /// precision near zero, so this puts the precision at range — which is the whole point of a game
 /// about reading a target at 800 m.
