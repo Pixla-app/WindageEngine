@@ -106,16 +106,78 @@ a skeleton or a joint palette is, and a game cannot teach you a better answer th
 industry already uses. What a game *would* teach you is a material system's shape, which is exactly
 why that one is in the third row.
 
-### When engine-first is legitimate, and when it is not
+### When engine-first is legitimate — three buckets, not one rule
 
-The rule against speculative work is about **architecture** — scene graphs, ECS, material systems,
-anything where there is no single right answer and one game's needs would decide it wrongly for
-everybody. It is not a rule against building a capability whose shape is already settled across the
-whole industry.
+**An earlier version of this document said "nothing is built until a game needs it", and that rule is
+wrong on its own.** It is circular while an engine is small: nobody needs what nobody can use, so
+"wait for demand" is a rule that keeps an engine at 3,000 lines for ever. The rule it was reaching
+for is narrower, and there are three cases rather than one:
 
-Skinned animation has one: a skeleton, a bind pose, a joint palette, matrices per joint per frame.
-Building that here, proven by the sample, is engine-first *and* correct. Designing a material system
-before two games have disagreed about one is not.
+| bucket | what it means | what to do |
+|---|---|---|
+| **Settled shape** | Everybody's version looks the same because the problem has one good answer. A skeleton, a joint palette, a particle emitter, a shadow pass, a tone-map curve, a rebindable input map. | **Build it on a roadmap.** No game has to ask first — a game could not teach you a better answer than the one the whole industry already uses. The sample proves it works. |
+| **Contested architecture** | Reasonable engines disagree, and one game's needs would decide it wrongly for everybody. Whether objects live in a node tree or an ECS; how scripting attaches; how a scene is serialised. | **Defer.** Not for ever — until either a real need forces it, or you deliberately pick a side and write down why. |
+| **Enormous cost** | Correct, wanted, and measured in person-years. A standalone editor application, a second platform backend, a physics solver, networking. | **A business decision, not an engineering one.** Decide it explicitly, with the cost stated. |
+
+Only the middle bucket waits on a game. The first is most of what an engine owes anybody, and it is
+where a roadmap belongs.
+
+## Where this engine actually stands
+
+**About 3,000 lines.** Godot is roughly a million; Unreal several. That comparison is only useful for
+one thing: **this cannot become a general-purpose engine, and any plan that assumes it will is a plan
+to never ship anything.**
+
+Measured against something narrower and reachable — *what a native macOS first- or third-person game
+needs to ship* — the picture is a real product with real gaps.
+
+### Present
+
+Frame pacing and frames in flight · fixed timestep · reversed-Z depth · camera · keyboard, mouse and
+gamepad input with stick shaping · mesh loading through Model I/O · maths · bounding boxes, volumes
+and one segment hit test · frustum culling · shadow cascade arithmetic · a versioned level format
+with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
+library that survives having no Xcode · and a complete sample game exercising all of it.
+
+### Missing, and the order it is worth building in
+
+**Settled shape — build these; no game has to ask.**
+
+| | why it is next, or not |
+|---|---|
+| **Skinned animation** | The hard blocker. No game with a person or a creature in it can use this engine at all. Probed: Model I/O imports UsdSkel. |
+| **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. Animation needs it, so it arrives with it. |
+| **The shadow pass** | The maths is here; the pass is written twice outside. Extract when a third consumer says what the seam is. |
+| **Materials and a texture path** | Every consumer currently hand-rolls albedo/roughness uniforms and its own texture loading. This is the largest *routine* gap after animation. |
+| **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
+| **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
+| **A character controller** | Walking, ground-following, step height, crouch, slide. Written outside already, and every first-person game rewrites it. |
+| **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
+| **Input rebinding, settings persistence** | Small, unglamorous, and the difference between a demo and something shippable. |
+
+**Contested — defer, and say so rather than pretending they are unwanted.**
+
+| | the actual state of play |
+|---|---|
+| **Scene node model / ECS** | An ECS stores objects as arrays of components processed by systems, instead of objects with methods — good for thousands of entities. **Godot has none. Unreal's is optional and recent. Unity's is a separate opt-in stack.** Shipping without one is the norm, not a shortcut. Pick a side when something forces it. |
+| **Scripting** | A second language for gameplay. It exists to let non-programmers and fast iteration in. A one-person engine in Swift has neither problem yet. |
+| **Scene serialisation beyond a level file** | The level format covers placements and markers. A general "save any object graph" format is the same decision as the node model, and follows it. |
+
+**Enormous cost — business decisions, with the cost stated.**
+
+| | what it really costs |
+|---|---|
+| **A standalone editor application** | **Unity's editor is larger than its runtime.** This is where solo engines die. `LevelEditor` already gives the shape that matters — a game embeds it and edits in place, the way id and Valve games did. |
+| **Windows / console backends** | A real port of the platform layer, not an `#ifdef`. The single change that would most widen the audience, and the one Mac-first defers on purpose. |
+| **Physics** | Rigid bodies, constraints, a solver. Most engines license one rather than write it. |
+| **Networking** | Replication, prediction, reconciliation. A genre decision before an engineering one. |
+
+### So who would use it, and when
+
+**Not "an engine for everyone" — an engine for a native macOS first- or third-person game.** That
+audience is small, which the section below says plainly. The honest bar for it being *usable by
+somebody else* is the first table above, down to and including materials and a character controller.
+Everything below that line is polish; everything above it is somebody being unable to start.
 
 ## The extraction rule, and the trap it exists to avoid
 

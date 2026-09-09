@@ -67,6 +67,22 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
   full of one studio's product names, roadmap and folder paths, rewritten to describe consumer
   *shapes*. Three paths pointed at a directory that does not exist in this repo.
 
+## The roadmap, and the rule that produces it
+
+**`README.md` §"Where this engine actually stands" is the real answer to "what is missing".** Read it
+before planning anything — it enumerates the gap honestly (this is ~3,000 lines; Godot is ~a million)
+and sorts what is missing into three buckets:
+
+- **Settled shape** — everybody's version looks alike, so build it on a roadmap. No game has to ask.
+  Animation, transform hierarchy, materials, post-processing, particles, a character controller, LOD.
+- **Contested architecture** — ECS, a scene node model, scripting. Defer, and say so; shipping
+  without them is the norm, not a shortcut.
+- **Enormous cost** — an editor application, a second platform, physics, networking. Business
+  decisions with the cost written down.
+
+> **"Nothing gets built until a game needs it" was too blunt and is corrected.** It is circular while
+> an engine is small: nobody needs what nobody can use. Only the *contested* bucket waits on a game.
+
 ## Next — in order
 
 1. **Skinned animation.** The single biggest gap: no game with a person or a creature in it can use
