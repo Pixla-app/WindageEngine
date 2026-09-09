@@ -285,8 +285,9 @@ It deliberately has:
   ground quad. A sample that needs an asset pack cannot be run by whoever just cloned this.
 - **No Xcode project.** `swift run WindageSample`. Anything requiring a project is a thing the reader
   must own before they can start.
-- **No cleverness.** One directional light, no textures, no shadows. A sample with impressive
-  rendering teaches the reader about the rendering.
+- **No cleverness.** One directional light, no textures. A sample with impressive rendering teaches
+  the reader about the rendering. It does draw **cascaded shadows**, because a sample with no
+  shadows cannot show that the shadow maths in this package works — see below.
 
 **It found an engine bug on its first run, which is the entire argument for it.** `swift build`
 compiles no Metal at all — Xcode does, SwiftPM's CLI does not — so anything calling
@@ -452,6 +453,34 @@ committed, wrong, during an earlier split.
 
 **What did not come:** the pass itself. A texture, a pipeline and an encoder either work or draw
 nothing, and one game's arrangement of them has proven no seam.
+
+## Shadows in the sample (2026-09-09)
+
+The sample draws four cascaded shadow maps. It exists as a second implementation of the pass, and it
+earned its keep before it drew anything:
+
+**The depth bias was silently coupled to the scene's scale, and no one game could have shown it.** It
+was a literal in the light's *normalised* depth units — `0.00035 * cascadeBiasScale` — which means a
+different number of metres for every value of `lightDepthRange`. At a range of 1500 the far
+cascade's bias worked out to **sixteen metres**, so in a courtyard whose tallest object is three
+metres, every fragment biased itself to "lit" and not one shadow appeared. Nothing was wrong while
+there was only one scene scale, which is exactly the class of fault a second consumer exists to find.
+
+`ShadowCascades.normalizedDepthBias(forCascade:)` derives it from the **world size of a texel**
+instead, because that is what the error inside a texel is proportional to; `biasTexels` is therefore
+in texels and is scale-free. Three tests pin it.
+
+**The pass itself is still in the sample, not in this package.** A shadow pass has to bind a
+particular vertex layout and a particular per-object uniform buffer, and what the general seam looks
+like is a question a *third* implementation answers better than a second one guessing. What the two
+already agree on — the texture array, the front-face cull, the reversed-Z depth state, the
+slope-scaled bias — is the shape to extract when something else needs it.
+
+> **The sun moved, and it is level data, not code.** Both sample levels had the sun behind the
+> camera, which is invisible without shadows and useless with them: every shadow falls away from the
+> viewer and hides behind its own caster. A side sun lights the faces the player is looking at *and*
+> throws its shadows across them. That is a `sunYaw` in `courtyard.json`, which is the point of
+> levels being files.
 
 ## Culling (2026-09-08)
 

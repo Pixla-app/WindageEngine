@@ -61,12 +61,17 @@ public nonisolated struct ShadowCascades {
     /// is looking at instead of half-wasted behind them.
     public let focusFraction: Float
 
+    /// Constant depth bias, measured in shadow **texels**. Scale-free on purpose — see
+    /// ``normalizedDepthBias(forCascade:)`` for what the alternative cost.
+    public let biasTexels: Float
+
     public init(splits: [Float],
                 resolution: Int = 2048,
                 lightDepthRange: Float = 1500,
                 blendFraction: Float = 0.12,
                 extentFraction: Float = 0.62,
-                focusFraction: Float = 0.45) {
+                focusFraction: Float = 0.45,
+                biasTexels: Float = 1.5) {
         precondition(!splits.isEmpty, "a cascade set needs at least one split")
         self.splits = splits
         self.resolution = resolution
@@ -74,6 +79,7 @@ public nonisolated struct ShadowCascades {
         self.blendFraction = blendFraction
         self.extentFraction = extentFraction
         self.focusFraction = focusFraction
+        self.biasTexels = biasTexels
     }
 
     public var count: Int { splits.count }
@@ -134,6 +140,25 @@ public nonisolated struct ShadowCascades {
     }
 
     public var splitVector: SIMD4<Float> { vector { splits[$0] } }
+
+    /// Constant depth bias for a cascade, in the light's **normalised** depth units — what a shader
+    /// adds to a fragment's own depth before comparing it against the recorded occluder.
+    ///
+    /// **Derived from the texel's world size, not from a tuned constant, and that is a fix rather
+    /// than a flourish.** The depth error inside one shadow texel is proportional to how much world
+    /// that texel spans, so the bias has to be too. It shipped as a literal `0.00035 *
+    /// cascadeBiasScale` in normalised units, which silently coupled it to ``lightDepthRange``: the
+    /// same literal is a *centimetre* in a scene 30 m deep and **16 metres** in one ranged to 1500,
+    /// and 16 metres of bias deletes every shadow in a courtyard. Extracting this from the game it
+    /// was tuned in is what made that visible — nothing was wrong while there was only one scale.
+    ///
+    /// `biasTexels` is therefore in texels, which is scale-free.
+    public func normalizedDepthBias(forCascade index: Int) -> Float {
+        (texelSize(forCascade: index) * biasTexels) / (2 * lightDepthRange)
+    }
+
+    /// The four-cascade shader interface for ``normalizedDepthBias(forCascade:)``.
+    public var depthBiasVector: SIMD4<Float> { vector { normalizedDepthBias(forCascade: $0) } }
 
     public var blendStartVector: SIMD4<Float> { vector { blendStart(forCascade: $0) } }
 

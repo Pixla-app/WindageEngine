@@ -14,13 +14,16 @@ what changed recently and what is next.
 
 ## State — 2026-09-09
 
-159 tests. `WindageSample` is the engine's own game and the standing check that the public API is
+162 tests. `WindageSample` is the engine's own game and the standing check that the public API is
 usable by somebody who did not write the engine.
 
 **What is in the package:** frame pacing and frames in flight (`FrameRenderer`, `FixedTimestep`), the
 reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshLoader`, `Math`,
 `BoundingBox`, `Volume` and the one hit test, `Frustum`, `ShadowCascades`, `Level` and `LevelEditor`,
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`.
+
+**What the sample shows:** a lit, shadowed scene with a moving camera, two levels loaded from JSON,
+an in-game level editor, positional audio, a win/lose loop and a save — all against the public API.
 
 ## Done 2026-09-08/09
 
@@ -37,11 +40,20 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
   *shapes*. A README that told a cloner to look in `~/PixlaGames/` was describing an engine nobody
   else could own.
 
+- **Shadows in the sample.** Four cascades, front-face culled, 3x3 comparison filtering, blended
+  across the splits. It found a real fault before it drew anything: the constant depth bias was in
+  normalised depth units, so it silently scaled with `lightDepthRange` — sixteen metres of bias in a
+  courtyard three metres tall, and no shadows at all. It derives from the world size of a texel now.
+  Both levels' suns moved to the side, in the level files, because a sun behind the camera hides
+  every shadow behind its own caster.
+
 ## Next
 
-1. **Shadows in the sample.** The engine owns the cascade maths but the pass itself is still in a
-   game, and the sample draws an unlit-looking courtyard. The sample being a second consumer of that
-   pass is what would prove the seam and let it come across.
+1. **The shadow pass is implemented twice now** — here and in the game it came from. What the two
+   agree on is the texture array, the front-face cull, the reversed-Z depth state and the
+   slope-scaled bias; what they do not is how a game binds its own vertex layout and per-object
+   uniforms. That is the seam to find, and a third implementation would answer it better than a
+   second one guessing.
 2. **Skinned animation** — the single biggest gap. Probed 2026-09-06 and found tractable: Model I/O
    does import UsdSkel. See the README section.
 3. **Semantic versioning and a changelog**, from the first outside consumer. Cheap now, impossible to

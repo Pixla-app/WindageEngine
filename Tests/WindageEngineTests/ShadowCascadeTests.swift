@@ -211,4 +211,51 @@ struct ShadowCascadeTests {
             }
         }
     }
+
+    // MARK: - Depth bias
+
+    /// **The bug this pins deleted every shadow in a small scene, and nothing said so.** The bias
+    /// was a literal in the light's *normalised* depth units, which silently coupled it to
+    /// `lightDepthRange`: the same literal is a centimetre in a scene ranged to 30 and sixteen
+    /// metres in one ranged to 1500. A cascade set built for a courtyard drew shadow maps correctly
+    /// and then biased every fragment to "lit".
+    @Test("The depth bias means the same thing in world units at any light depth range")
+    func biasIsScaleFree() {
+        let splits: [Float] = [30, 90, 260, 850]
+        let shallow = ShadowCascades(splits: splits, lightDepthRange: 200)
+        let deep = ShadowCascades(splits: splits, lightDepthRange: 1500)
+
+        for index in 0..<shallow.count {
+            let shallowWorld = shallow.normalizedDepthBias(forCascade: index) * 2 * 200
+            let deepWorld = deep.normalizedDepthBias(forCascade: index) * 2 * 1500
+            #expect(abs(shallowWorld - deepWorld) < 1e-5,
+                    "cascade \(index): \(shallowWorld) m against \(deepWorld) m")
+        }
+    }
+
+    /// The depth error inside one shadow texel is proportional to how much world that texel spans,
+    /// so the bias has to be too — which is what makes it expressible in texels at all.
+    @Test("The bias is a fixed number of texels, whatever the scene's scale")
+    func biasIsAFixedNumberOfTexels() {
+        for cascades in [ShadowCascades(splits: [8, 22, 55, 120], resolution: 1024, lightDepthRange: 200),
+                         ShadowCascades(splits: [30, 90, 260, 850])] {
+            for index in 0..<cascades.count {
+                let world = cascades.normalizedDepthBias(forCascade: index) * 2 * cascades.lightDepthRange
+                let texels = world / cascades.texelSize(forCascade: index)
+                #expect(abs(texels - cascades.biasTexels) < 1e-3,
+                        "cascade \(index) biases by \(texels) texels, not \(cascades.biasTexels)")
+            }
+        }
+    }
+
+    /// A courtyard and a sniper range are not the same scene, and the whole reason this is a value
+    /// rather than a set of constants is that they must be able to differ.
+    @Test("A small scene gets a far finer bias than a large one")
+    func aSmallSceneGetsAFinerBias() {
+        let courtyard = ShadowCascades(splits: [8, 22, 55, 120], resolution: 1024, lightDepthRange: 200)
+        let valley = ShadowCascades(splits: [30, 90, 260, 850])
+        for index in 0..<4 {
+            #expect(courtyard.texelSize(forCascade: index) < valley.texelSize(forCascade: index))
+        }
+    }
 }

@@ -44,6 +44,19 @@ final class SampleGame: GameLoop {
         var sunDirection: SIMD3<Float>
     }
 
+    /// Mirrors `ShadowFrame` in `SampleShaders.metal`. **Frame-wide, so it is written once** — four
+    /// matrices copied into every drawable's uniforms would multiply them by the object count for
+    /// nothing.
+    private struct ShadowFrame {
+        var cascadeViewProjection: (matrix_float4x4, matrix_float4x4, matrix_float4x4, matrix_float4x4)
+        var cascadeSplits: SIMD4<Float>
+        var cascadeBlendStart: SIMD4<Float>
+        var cascadeDepthBias: SIMD4<Float>
+        var cameraPosition: SIMD3<Float>
+        var texelSize: Float
+    }
+    private static let shadowFrameStride = (MemoryLayout<ShadowFrame>.stride + 255) & ~255
+
     private let engine: FrameRenderer
     private let pipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
@@ -55,6 +68,12 @@ final class SampleGame: GameLoop {
     private let audio: AudioEngine?
     private let argumentTable: MTL4ArgumentTable
     private let uniformBuffer: MTLBuffer
+
+    /// **Optional like the audio.** A machine that cannot build the shadow pipeline should still
+    /// show the sample, unlit rather than not at all.
+    private let shadowMap: SampleShadowMap?
+    /// Frame-wide shadow data — written once a frame, not once per object.
+    private let shadowFrameBuffer: MTLBuffer
 
     /// The level, and the editing on top of it. **The engine owns what an edit *means*** — see
     /// `LevelEditor`; this file only turns clicks and keys into those operations and draws the result.
@@ -121,8 +140,16 @@ final class SampleGame: GameLoop {
 
         let vertexDescriptor = SampleGame.vertexDescriptor()
 
+        let shaderLibrary: MTLLibrary
         do {
-            let library = try ShaderLibrary.make(device: device, bundle: .module, sourceNamed: "SampleShaders")
+            shaderLibrary = try ShaderLibrary.make(device: device, bundle: .module, sourceNamed: "SampleShaders")
+        } catch {
+            print("WindageSample: shader library failed — \(error)")
+            return nil
+        }
+
+        do {
+            let library = shaderLibrary
             let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
 
             let vertexFunction = MTL4LibraryFunctionDescriptor()
@@ -151,7 +178,9 @@ final class SampleGame: GameLoop {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 2
+        // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data.
+        tableDescriptor.maxBufferBindCount = 3
+        tableDescriptor.maxTextureBindCount = 1
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -165,6 +194,18 @@ final class SampleGame: GameLoop {
             return nil
         }
         uniformBuffer = buffer
+
+        guard let shadowFrames = device.makeBuffer(
+            length: SampleGame.shadowFrameStride * FrameRenderer.maxFramesInFlight,
+            options: .storageModeShared) else {
+            print("WindageSample: shadow frame buffer failed")
+            return nil
+        }
+        shadowFrameBuffer = shadowFrames
+
+        shadowMap = SampleShadowMap(device: device, library: shaderLibrary,
+                                    vertexDescriptor: vertexDescriptor)
+        if shadowMap == nil { print("WindageSample: no shadows — the scene will be flat-lit") }
 
         // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
         // default, and a character it does not carry draws nothing at all — which is how these
@@ -186,7 +227,8 @@ final class SampleGame: GameLoop {
         // **Everything the GPU reads has to be in the residency set.** A buffer or texture that is
         // not is read as whatever memory happens to be there — which is not a black screen, it is
         // garbage that looks like a shader bug.
-        engine.residencySet.addAllocations([uniformBuffer])
+        engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer])
+        if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
         // Meshes, then the level resolved against them.
@@ -492,19 +534,22 @@ final class SampleGame: GameLoop {
         viewportSize = SIMD2(Float(width), Float(height))
     }
 
-    func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
+    private func uniformOffset(frameSlot: Int, drawable index: Int) -> Int {
+        frameSlot * SampleGame.uniformStride * SampleGame.maxDrawables + index * SampleGame.uniformStride
+    }
+
+    private var visibleDrawableCount: Int { min(drawables.count, SampleGame.maxDrawables) }
+
+    /// **Written before the shadow pass, not during the main one.** The shadow pass reads the same
+    /// `model` matrix the main pass will; writing them in `encode` would record shadows from last
+    /// frame's positions, which reads as shadows lagging behind their casters.
+    private func writeUniforms(frameSlot: Int, interpolation: Float) {
         let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
         let projection = matrix_perspective_right_hand_reverse_z(
             fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
         let viewProjection = simd_mul(projection, view.viewMatrix)
 
-        encoder.setRenderPipelineState(pipeline)
-        encoder.setDepthStencilState(depthState)
-        encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
-
-        let base = frameSlot * SampleGame.uniformStride * SampleGame.maxDrawables
         for (index, drawable) in drawables.prefix(SampleGame.maxDrawables).enumerated() {
-            let offset = base + index * SampleGame.uniformStride
             // The selection glows, because an editor where you cannot tell what is selected is a
             // way to move the wrong thing.
             var albedo = drawable.albedo
@@ -520,9 +565,52 @@ final class SampleGame: GameLoop {
                                     normalMatrix: normalMatrix(from: drawable.transform),
                                     albedo: albedo,
                                     sunDirection: sunDirection)
-            uniformBuffer.contents().advanced(by: offset)
+            uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
-            argumentTable.setAddress(uniformBuffer.gpuAddress + UInt64(offset), index: 1)
+        }
+    }
+
+    /// The shadow pass, before anything is drawn to the screen.
+    func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float) {
+        writeUniforms(frameSlot: frameSlot, interpolation: interpolation)
+        guard let shadowMap else { return }
+
+        let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
+        let matrices = shadowMap.updateMatrices(frameSlot: frameSlot, camera: view,
+                                                sunDirection: sunDirection)
+
+        let cascades = SampleShadowMap.cascades
+        var frame = ShadowFrame(
+            cascadeViewProjection: (matrices[0], matrices[1], matrices[2], matrices[3]),
+            cascadeSplits: cascades.splitVector,
+            cascadeBlendStart: cascades.blendStartVector,
+            cascadeDepthBias: cascades.depthBiasVector,
+            cameraPosition: view.position,
+            texelSize: 1 / Float(cascades.resolution))
+        shadowFrameBuffer.contents().advanced(by: frameSlot * SampleGame.shadowFrameStride)
+            .copyMemory(from: &frame, byteCount: MemoryLayout<ShadowFrame>.size)
+
+        shadowMap.encode(into: commandBuffer,
+                         frameSlot: frameSlot,
+                         drawableCount: visibleDrawableCount,
+                         meshFor: { self.drawables[$0].mesh.mesh },
+                         uniformBuffer: uniformBuffer,
+                         offsetForDrawable: { self.uniformOffset(frameSlot: frameSlot, drawable: $0) })
+    }
+
+    func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(depthState)
+        encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
+
+        argumentTable.setAddress(
+            shadowFrameBuffer.gpuAddress + UInt64(frameSlot * SampleGame.shadowFrameStride), index: 2)
+        if let shadowMap { argumentTable.setTexture(shadowMap.texture.gpuResourceID, index: 0) }
+
+        for (index, drawable) in drawables.prefix(SampleGame.maxDrawables).enumerated() {
+            argumentTable.setAddress(
+                uniformBuffer.gpuAddress + UInt64(uniformOffset(frameSlot: frameSlot, drawable: index)),
+                index: 1)
 
             let mesh = drawable.mesh.mesh
             for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
