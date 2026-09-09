@@ -445,6 +445,43 @@ win would have overwritten the first's record. Best times are per level now, and
 rather than being discarded, so nobody loses a time to a format change. Migration runs one way: a
 save written now is v2 and never writes the old field back.
 
+## Shadow cascades (2026-09-09)
+
+`ShadowCascades` — the split distances, the light basis, texel snapping, per-cascade depth bias and
+the blend bands. **Extracted from Coldkeel**, where it had worked and been tested for two weeks.
+
+**The extraction is what turned its constants into parameters, and that is the whole value of doing
+it.** It was written for one valley: four splits ending at 850 m, because that is the shot that game
+is about. None of the maths cares — but they were `static let`s, so a second title could have the
+mechanism only by taking a sniper range's geometry with it. The sample's courtyard is sixty metres
+across and would have spent 99% of every shadow texel on empty ground.
+
+So a cascade set is a value you configure, and a title's numbers live with the title:
+
+```swift
+let cascades = ShadowCascades(splits: [30, 90, 260, 850])   // Coldkeel's valley
+```
+
+Three things in it are load-bearing and easy to undo by accident, all inherited from the game that
+proved them:
+
+- **The light matrix snaps to whole texels.** Without it, moving the camera slides the sampling grid
+  across the world by sub-texel amounts every frame and every shadow edge crawls.
+- **Bias scales per cascade.** A cascade covering 8× the world per texel needs roughly 8× the bias;
+  one constant for all four either leaves acne in the far cascades or detaches contact shadows in the
+  near one.
+- **Each cascade fades into the next over the last 12% of its own span** — measured from its own
+  span, not from zero, because the splits are geometric and a fixed fraction of the far split would
+  be wider than the whole near cascade.
+
+**The tests moved with the code rather than being rewritten from it**, and still run against
+Coldkeel's own numbers — so the extraction is checkable against the behaviour it had before it moved.
+That is the studio's rule after a rewrite-from-memory of this exact light basis was very nearly
+committed, wrong, during an earlier split.
+
+**What did not come:** the pass itself. A texture, a pipeline and an encoder either work or draw
+nothing, and one title's arrangement of them has proven no seam.
+
 ## Culling (2026-09-08)
 
 `Frustum` — the planes of a view-projection and a conservative box test. **Extracted from
