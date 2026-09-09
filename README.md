@@ -46,6 +46,56 @@ maintaining an engine instead of shipping something with it.
 is the whole quality control. If a thing has one consumer and no proven seam, it stays in that
 consumer until a second one shows where the seam actually is.
 
+## How this engine gets built, and how everyone else builds one
+
+**Nearly every engine worth using was extracted from a game, and kept a game attached.** This is not
+a compromise or a stage to grow out of — it is the industry's normal shape, and the exceptions are
+the cautionary tales.
+
+| engine | the game that drove it |
+|---|---|
+| id Tech | a specific id title per generation — Doom, Quake, Doom 3, Rage. The engine was licensable *because* a game had shipped on it. |
+| Unreal | written for *Unreal*; UE3 for *Gears of War*; UE4 and 5 developed alongside *Fortnite*, where features land before general release. |
+| Source | Quake → Half-Life → Source, never without a game. |
+| CryEngine · Frostbite · Decima · RE Engine | Far Cry · Battlefield · Killzone · Resident Evil 7. |
+| Godot | extracted from commissioned games over roughly seven years before it was opened up. |
+| Unity | **the outlier**: engine-first, from an abandoned game. Its long-standing reputation for being wide and shallow is the usual cost of having no single game holding it to account. |
+
+**So "a game drives the engine" is the standard, and it is not the thing to avoid. Coupling is.**
+Those are different, and the difference is the whole discipline here:
+
+| | |
+|---|---|
+| **Driving** — correct, and how this works | A game is where you *discover* what the engine needs. The problem is found in real code, under real load, with a player looking at it. |
+| **Coupling** — the failure | The engine references that game, needs it to build, ships its constants, or documents its product name. Then the engine is a component of one product and nobody else can own it. |
+
+### What that means in practice here
+
+1. **This repository never mentions a game.** It builds, runs and tests alone. A capability arrives
+   stripped of where it came from — see the shadow cascades, whose splits were one game's sightline
+   and are now a constructor argument.
+2. **`WindageSample` is this engine's own game**, and it is the thing that proves an extraction. If a
+   capability cannot be used by the sample through the public API, the API is wrong. It has caught a
+   missing Metal compile, a buffered `print`, an ASCII-only font atlas and a depth bias that was
+   secretly tied to one scene's scale.
+3. **Probes cover shapes the sample is the wrong instrument for** — a scene that changes while it
+   runs, geometry that mostly cannot be seen, light that is not one sun, ground that moves. A few
+   hundred lines and their tests, never a game.
+4. **A second sample arrives only when a capability needs a shape the first cannot express.** Skinned
+   animation needs a character, and a courtyard of boxes cannot show one; that is a real reason.
+   "More demos" is not.
+
+### When engine-first is legitimate, and when it is not
+
+The rule against speculative work is about **architecture** — scene graphs, ECS, material systems,
+anything where there is no single right answer and one game's needs would decide it wrongly for
+everybody. It is not a rule against building a capability whose shape is already settled across the
+whole industry.
+
+Skinned animation has one: a skeleton, a bind pose, a joint palette, matrices per joint per frame.
+Building that here, proven by the sample, is engine-first *and* correct. Designing a material system
+before two games have disagreed about one is not.
+
 ## The extraction rule, and the trap it exists to avoid
 
 A capability enters this package only once real, working, tested code has proved where the seam
