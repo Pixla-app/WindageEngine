@@ -21,9 +21,13 @@ Source, CryEngine, Frostbite, Decima and Godot were every one of them extracted 
 title, and Unity — the engine-first outlier — is the cautionary tale. **`README.md` §"How this engine
 gets built" carries the table and the reasoning; read it before proposing a different arrangement.**
 
-> **That is about where problems get *found*, and it is not licence to write a game's name in here.**
-> The two are separate and both hold: a game is the discovery ground, and this repository still
-> mentions none.
+> **Two separate rules, and both hold.** A game is where problems get *found*; this repository still
+> mentions none. Nothing about the first licenses writing a product name into the second.
+>
+> **And a driving game does not have to contain everything this engine can do** — that inference is
+> wrong and expensive, and the README's table says where capabilities actually come from. Most of
+> what an engine owes a game has a settled industry shape and needs no game to discover it. The next
+> task is one of those.
 
 What that means for the next session, concretely:
 

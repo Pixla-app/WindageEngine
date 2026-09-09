@@ -85,6 +85,27 @@ Those are different, and the difference is the whole discipline here:
    animation needs a character, and a courtyard of boxes cannot show one; that is a real reason.
    "More demos" is not.
 
+### The game does **not** have to contain everything the engine can do
+
+**This is the inference to avoid, because it is the expensive one.** "A game drives the engine" does
+not mean the game must exercise every capability before the engine may have it. Fortnite does not
+touch most of Unreal. Half-Life 2 did not use everything in Source. A driving game is a *source of
+real problems*, not a specification.
+
+Capabilities arrive from three places, and only the first needs a game:
+
+| where it comes from | example | the test it must pass |
+|---|---|---|
+| **A game hit the problem** | shadow cascades, the level format, the one hit test | working, tested code proves the seam — then it is extracted and stripped of that game |
+| **Every game of this kind needs it, and its shape is settled** | skinned animation, audio, input, mesh loading | the shape is an industry standard, not a guess; the sample proves it is usable |
+| **Nobody has needed it yet** | scene graph, ECS, material system, editor application | *do not build it* |
+
+The second row is the one that answers "how do I build the engine when no game is pushing on it".
+Most of what an engine owes a game is in it. It is not speculative work: nobody has to discover what
+a skeleton or a joint palette is, and a game cannot teach you a better answer than the one the whole
+industry already uses. What a game *would* teach you is a material system's shape, which is exactly
+why that one is in the third row.
+
 ### When engine-first is legitimate, and when it is not
 
 The rule against speculative work is about **architecture** — scene graphs, ECS, material systems,
