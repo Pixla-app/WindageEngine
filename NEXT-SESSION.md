@@ -21,6 +21,10 @@ Source, CryEngine, Frostbite, Decima and Godot were every one of them extracted 
 title, and Unity — the engine-first outlier — is the cautionary tale. **`README.md` §"How this engine
 gets built" carries the table and the reasoning; read it before proposing a different arrangement.**
 
+> **That is about where problems get *found*, and it is not licence to write a game's name in here.**
+> The two are separate and both hold: a game is the discovery ground, and this repository still
+> mentions none.
+
 What that means for the next session, concretely:
 
 - **The engine's roadmap is its own.** It comes from the gaps listed below, not from what some game
