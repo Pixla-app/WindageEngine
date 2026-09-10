@@ -353,7 +353,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                texture2d<float> baseColorMap [[texture(1)]],
                                texture2d<float> normalMap [[texture(2)]],
                                texturecube<float> environmentSpecular [[texture(3)]],
-                               texturecube<float> environmentIrradiance [[texture(4)]])
+                               texturecube<float> environmentIrradiance [[texture(4)]],
+                               texture2d<float> ormMap [[texture(5)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -374,11 +375,22 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                 * uniforms.materialBaseColor
                 * float4(uniforms.albedo, 1.0);
 
-    const float metallic = saturate(uniforms.materialParams.x);
+    // **Occlusion, roughness and metalness from one texture: R, G, B.** That is glTF's packing, and
+    // the channel each slot reads is `TextureSlot.packedChannel` — USD names it per input and Model
+    // I/O drops which, so the convention is assumed rather than read. It is also right for an
+    // unpacked greyscale map, whose green channel is its value, which is why the convention holds.
+    //
+    // **Not sRGB.** These are numbers, not colour; decoded as sRGB a roughness of 0.5 arrives as 0.21
+    // and the whole scene looks wet. `TextureSlot.isColor` decides that on the loading side.
+    const float3 orm = ormMap.sample(surfaceSampler, in.uv).rgb;
+
+    // Multiplied, so a surface with no map keeps its material's own values — the white fallback is
+    // exactly the identity here.
+    const float metallic = saturate(uniforms.materialParams.x * orm.b);
     // **Clamped away from zero.** A perfectly smooth surface is a delta function: the highlight is
     // infinitely small and infinitely bright, which on screen is a single flickering pixel that
     // crawls as the camera moves. Every renderer floors it somewhere.
-    const float roughness = clamp(uniforms.materialParams.y, 0.045, 1.0);
+    const float roughness = clamp(uniforms.materialParams.y * orm.g, 0.045, 1.0);
     const float alpha = roughness * roughness;
 
     // **Shading normal from the map, geometric normal kept for the shadow lookup.** Perturbing the
@@ -434,13 +446,17 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     // light over the hemisphere; Lambert's BRDF is albedo/pi, and skipping the division makes every
     // ambient-lit surface pi times too bright.
     const float3 irradiance = environmentIrradiance.sample(environmentSampler, n).rgb;
-    const float3 ambientDiffuse = diffuseColour * irradiance / M_PI_F;
+    // **Occlusion applies to the ambient term only.** It stands for light a crevice does not receive
+    // from its surroundings; applying it to the sun as well would darken a surface the sun is plainly
+    // shining straight into, which is a shadow the shadow map already has an opinion about.
+    const float occlusion = orm.r;
+    const float3 ambientDiffuse = diffuseColour * irradiance / M_PI_F * occlusion;
 
     const float3 reflected = reflect(-v, n);
     const float lod = roughness * uniforms.materialParams.z;
     const float3 prefiltered = environmentSpecular.sample(environmentSampler, reflected,
                                                           level(lod)).rgb;
-    const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV);
+    const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV) * occlusion;
 
     return float4(direct + ambientDiffuse + ambientSpecular, base.a);
 }

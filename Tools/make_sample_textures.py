@@ -53,6 +53,34 @@ def shade(base, amount):
     return tuple(max(0, min(255, int(c * amount))) for c in base)
 
 
+def orm_map(height, roughness, metallic, occlusion_strength=0.6):
+    """Occlusion, roughness and metalness packed into one texture: **R, G, B**.
+
+    That is glTF's packing and what every exporter writes — one file instead of three, a third of the
+    memory and one sample in the shader rather than three. `roughness` and `metallic` are functions of
+    the height at a texel, so the three agree with each other and with the colour they sit under.
+
+    **Occlusion comes from the height field**, darkening what is recessed. It is a cheap stand-in for
+    the light a crevice does not receive, and it is the channel that makes a normal-mapped surface
+    stop looking like a flat sticker of a bumpy one.
+    """
+    size = len(height)
+    lo = min(min(row) for row in height)
+    hi = max(max(row) for row in height)
+    span = max(hi - lo, 1e-6)
+    rows = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            depth = (height[y][x] - lo) / span          # 0 recessed, 1 proud
+            occlusion = 1.0 - occlusion_strength * (1.0 - depth)
+            row.append((int(max(0.0, min(1.0, occlusion)) * 255),
+                        int(max(0.0, min(1.0, roughness(x, y, depth))) * 255),
+                        int(max(0.0, min(1.0, metallic(x, y, depth))) * 255)))
+        rows.append(row)
+    return rows
+
+
 def normal_map(height, strength=2.0):
     """Slope of a height field, encoded as a tangent-space normal.
 
@@ -202,6 +230,21 @@ def figure():
     return rows
 
 
+# **The figure's surface varies, and it is the only one that can say so.** A metallic-roughness map
+# reaches the engine through USD and not through OBJ — Model I/O reads neither `map_Pr` nor `map_Pm` —
+# so the static meshes, which are OBJ, carry a single roughness each and the figure carries a map.
+#
+# Deep grain is bare metal and polished; the proud surface between is a duller lacquer over it. That
+# gives the three channels something to disagree about, which is the point: a map nobody can tell from
+# a constant tests nothing.
+def figure_roughness(x, y, depth):
+    return 0.55 - 0.35 * (1.0 - depth)
+
+
+def figure_metallic(x, y, depth):
+    return 0.15 + 0.85 * (1.0 - depth) ** 1.5
+
+
 if __name__ == "__main__":
     surfaces = (("crate", crate, crate_height, 3.0),
                 ("stone", stone, stone_height, 2.5),
@@ -210,3 +253,6 @@ if __name__ == "__main__":
     for name, colour, height, strength in surfaces:
         write_png(OUT / ("%s.png" % name), colour())
         write_png(OUT / ("%s_normal.png" % name), normal_map(height(), strength))
+
+    write_png(OUT / "figure_orm.png",
+              orm_map(figure_height(), figure_roughness, figure_metallic))

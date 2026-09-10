@@ -19,6 +19,34 @@ public nonisolated enum TextureSlot: String, Sendable, Hashable, CaseIterable {
     case ambientOcclusion
     case emissive
 
+    /// Which channel of its texture this slot reads, for the slots that are packed together.
+    ///
+    /// ### One file, three maps, and Model I/O loses which is which
+    ///
+    /// Occlusion, roughness and metalness are each a single number, so they are conventionally packed
+    /// into one RGB texture — **R occlusion, G roughness, B metalness**, which is glTF's packing and
+    /// what every exporter writes. One file instead of three: a third of the memory, a third of the
+    /// bindings, one sample in the shader instead of three.
+    ///
+    /// **A USD file says which channel each input reads and Model I/O does not pass it on.** Measured:
+    /// a `UsdPreviewSurface` with `roughness` connected to a texture's `.g` and `metallic` to its `.b`
+    /// arrives as two properties, both naming the same file, with nothing to say they differ. So the
+    /// convention has to be assumed, and this is where it is written down rather than guessed at each
+    /// call site.
+    ///
+    /// **It is also right for an unpacked map**, which is the reason the convention survives: a
+    /// standalone roughness map is greyscale, so its green channel is its value. Reading a fixed
+    /// channel works for both, and that is why glTF fixed one.
+    public var packedChannel: Int? {
+        switch self {
+        case .ambientOcclusion: 0
+        case .roughness: 1
+        case .metallic: 2
+        // Base colour, normals and emission use all three channels and are never packed with others.
+        case .baseColor, .normal, .emissive: nil
+        }
+    }
+
     /// Whether this map holds a **colour** or **numbers**.
     ///
     /// A colour map is authored in sRGB — the encoding a monitor expects, which spends more of its
@@ -144,6 +172,17 @@ nonisolated extension Material {
 
             if let source = properties.lazy.compactMap({ $0.textureSource }).first {
                 textures[slot] = source
+                // **A map's scalar is the identity, not the type's default**, because the two are
+                // multiplied. This is the 0.18 trap again in a second place: a file that connects
+                // `metallic` to a texture supplies **no scalar at all**, so the field keeps whatever
+                // this type initialises it to — and `metallic` initialises to 0, which multiplies the
+                // map away entirely. A metal character comes out a dielectric one, and nothing says
+                // so. Measured on a `UsdPreviewSurface` with all three channels connected.
+                switch slot {
+                case .metallic: metallic = 1
+                case .roughness: roughness = 1
+                default: break
+                }
             }
 
             // Only meaningful without a map — see the 0.18 note above.

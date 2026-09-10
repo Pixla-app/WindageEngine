@@ -124,6 +124,60 @@ struct MaterialTests {
         #expect(Material.roughness(fromSpecularExponent: 1e9) >= 0)
     }
 
+    /// **The 0.18 trap in a second place, and it was nearly shipped.** A file that connects
+    /// `metallic` to a texture supplies *no scalar at all*, so the field keeps whatever the type
+    /// initialises it to — and `metallic` initialises to 0. Multiplied by the map, that is zero
+    /// everywhere: a metal character renders as a dielectric one, with nothing to say why.
+    ///
+    /// A slot with a map takes the identity for the operation it is used in, which for a multiplied
+    /// factor is 1.
+    @Test("A slot with a map takes the identity scalar, not the type's default")
+    func mappedSlotsTakeIdentityScalars() throws {
+        let url = try #require(Bundle.module.url(forResource: "packed-orm", withExtension: "usda"))
+        let asset = MDLAsset(url: url)
+        var found: MDLMaterial?
+        func descend(_ object: MDLObject) {
+            if let mesh = object as? MDLMesh {
+                for case let submesh as MDLSubmesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
+                    if found == nil { found = submesh.material }
+                }
+            }
+            for child in object.children.objects { descend(child) }
+        }
+        for index in 0..<asset.count { descend(asset.object(at: index)) }
+
+        let material = Material(try #require(found))
+        #expect(material[.metallic] != nil, "the metalness map did not come through")
+        #expect(material[.roughness] != nil)
+        #expect(material.metallic == 1, "a metalness map multiplied by 0 is not metal")
+        #expect(material.roughness == 1, "a roughness map multiplied by 0.65 is not the map")
+    }
+
+    /// And a slot with no map keeps the file's own number, or a plausible one.
+    @Test("An unmapped slot keeps its scalar")
+    func unmappedSlotsKeepScalars() throws {
+        let material = try loadMaterial()
+        #expect(material[.metallic] == nil)
+        #expect(abs(material.metallic - 0.1) < 1e-5)
+        #expect(abs(material.roughness - 0.65) < 1e-5)
+    }
+
+    /// **The convention Model I/O drops.** A USD file says which channel each input reads — roughness
+    /// from `.g`, metalness from `.b` — and the material that arrives names the same file for both
+    /// with nothing to distinguish them. glTF's packing is the assumption, written down once.
+    @Test("The packed slots read glTF's channels, and the unpacked ones read none")
+    func packedChannels() {
+        #expect(TextureSlot.ambientOcclusion.packedChannel == 0)
+        #expect(TextureSlot.roughness.packedChannel == 1)
+        #expect(TextureSlot.metallic.packedChannel == 2)
+        for slot in [TextureSlot.baseColor, .normal, .emissive] {
+            #expect(slot.packedChannel == nil, "\(slot.rawValue) uses every channel")
+        }
+        // Distinct, or two of them would read the same number out of one texture.
+        let packed = TextureSlot.allCases.compactMap(\.packedChannel)
+        #expect(Set(packed).count == packed.count)
+    }
+
     /// A materials array shorter than the submeshes indexing it is an out-of-bounds crash at draw
     /// time, in a loop with nothing to do with loading. Padding happens at load, once.
     @Test("The materials list is padded to the submesh count")

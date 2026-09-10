@@ -743,6 +743,49 @@ kept in the history because it is the right first step: it costs one instruction
 between metal reading as metal and reading as a bug, and it is enough to get the BRDF correct before
 adding a cube map to the list of things that might be wrong.
 
+## Occlusion, roughness and metalness from a texture (2026-09-10)
+
+The last material slots with nothing behind them. They are each a single number, so they are packed
+into one RGB texture — **R occlusion, G roughness, B metalness**, glTF's packing — which is a third of
+the memory, a third of the bindings and one sample instead of three.
+
+### What Model I/O carries, measured
+
+- **USD carries all four.** Metalness, roughness, occlusion and emissive arrive as textures on the
+  right semantics.
+- **It drops which channel each reads.** A `UsdPreviewSurface` with roughness connected to a texture's
+  `.g` and metalness to its `.b` arrives as two properties naming the same file, with nothing to
+  distinguish them. So the convention is assumed, and `TextureSlot.packedChannel` is where it is
+  written down rather than guessed at each call site.
+
+  **The same channel is right for an unpacked map**, which is why the convention survives contact with
+  reality: a standalone roughness map is greyscale, so its green channel is its value. Reading a fixed
+  channel works for both, and that is why glTF fixed one.
+- **OBJ carries none of it.** `map_Pr` and `map_Pm` are read and discarded, exactly like the `Pr`/`Pm`
+  scalars before them. What *does* arrive is `map_Ns` as a **`specularExponent` texture**, and
+  `map_Ka` as emission — so an OBJ can vary shininess across a surface, in exponents rather than in
+  roughness. **Not wired up**: it is a differently shaped quantity needing its own per-texel
+  conversion, and nothing needs it. Recorded because the next person will look for it.
+
+### The 0.18 trap, in a second place, nearly shipped
+
+**A file that connects `metallic` to a texture supplies no scalar for it at all.** So the field kept
+whatever `Material` initialises it to — and `metallic` initialises to 0. Multiplied by the map, that
+is zero everywhere: a metal character renders as a dielectric one, and nothing says why.
+
+It was caught by looking at the figure and asking why it seemed less metallic than before, then
+measuring what the material actually reported. **A slot with a map takes the identity for the
+operation it is used in** — white for a tint, 1 for a multiplied factor — which is the same rule the
+base-colour case already needed and which is now applied in both places.
+
+### Two decisions in the shader
+
+**White is exactly the right fallback**, because the three are multiplied: a surface with no map keeps
+its material's own values untouched. And **occlusion applies to the ambient terms only** — it stands
+for light a crevice does not receive from its surroundings, and applying it to the sun as well would
+darken a surface the sun is plainly shining into, which is a shadow the shadow map already has an
+opinion about.
+
 ## Image-based lighting (2026-09-10)
 
 A surface takes light from its **whole** environment, and how it takes it depends on how rough it is:

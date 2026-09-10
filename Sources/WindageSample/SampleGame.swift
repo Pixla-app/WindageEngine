@@ -206,7 +206,8 @@ final class SampleGame: GameLoop {
                              transform: matrix_float4x4,
                              albedo: SIMD3<Float>,
                              maps: [MTLTexture],
-                             normals: [MTLTexture])] = []
+                             normals: [MTLTexture],
+                             orm: [MTLTexture])] = []
 
     /// What the player cannot walk through, and what a click can pick.
     ///
@@ -235,8 +236,14 @@ final class SampleGame: GameLoop {
     /// The base-colour and normal map for each of a mesh's submeshes, resolved once at load.
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var normalMaps: [String: [MTLTexture]] = [:]
+    /// Occlusion, roughness and metalness in one texture — R, G, B, which is glTF's packing.
+    ///
+    /// **Taken from the roughness slot, because all three name the same file.** A packed map is one
+    /// file three slots point at, so `TextureStore` loads it once and any of the three would do.
+    private var ormMaps: [String: [MTLTexture]] = [:]
     private var figureMaps: [MTLTexture] = []
     private var figureNormalMaps: [MTLTexture] = []
+    private var figureORMMaps: [MTLTexture] = []
 
     /// The up axis the figure's file declares. Identity for the built-in one, and not necessarily
     /// for a bought Z-up asset.
@@ -380,8 +387,8 @@ final class SampleGame: GameLoop {
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
         tableDescriptor.maxBufferBindCount = 4
-        // 0: shadow cascades · 1: base colour · 2: normal map · 3: environment · 4: irradiance.
-        tableDescriptor.maxTextureBindCount = 5
+        // 0: shadow · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: packed ORM.
+        tableDescriptor.maxTextureBindCount = 6
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -490,6 +497,7 @@ final class SampleGame: GameLoop {
                 meshes[name] = mesh
                 baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
                 normalMaps[name] = resolveMaps(of: mesh, slot: .normal, named: name)
+                ormMaps[name] = resolveMaps(of: mesh, slot: .roughness, named: name)
                 engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
                 engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
             } else {
@@ -575,6 +583,7 @@ final class SampleGame: GameLoop {
             figureMaps = resolveBaseColorMaps(of: mesh, named: stem)
         }
         figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: stem)
+        figureORMMaps = resolveMaps(of: mesh, slot: .roughness, named: stem)
 
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
@@ -621,6 +630,7 @@ final class SampleGame: GameLoop {
         figureMesh = mesh
         figureMaps = resolveBaseColorMaps(of: mesh, named: "figure")
         figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: "figure")
+        figureORMMaps = resolveMaps(of: mesh, slot: .roughness, named: "figure")
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
         if let textures { engine.residencySet.addAllocations(textures.allocations) }
@@ -734,7 +744,8 @@ final class SampleGame: GameLoop {
                                                       SIMD4(position, 1))) * mesh.nodeTransform
             drawables.append((mesh, transform, SampleGame.albedo(for: placement),
                               baseColorMaps[placement.mesh] ?? [],
-                              normalMaps[placement.mesh] ?? []))
+                              normalMaps[placement.mesh] ?? [],
+                              ormMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
@@ -1249,7 +1260,9 @@ final class SampleGame: GameLoop {
                 // one to, and a mesh with a painted body and a metal fitting is two submeshes.
                 bindSurface(maps.indices.contains(submeshIndex) ? maps[submeshIndex] : nil,
                             drawable.normals.indices.contains(submeshIndex)
-                                ? drawable.normals[submeshIndex] : nil)
+                                ? drawable.normals[submeshIndex] : nil,
+                            drawable.orm.indices.contains(submeshIndex)
+                                ? drawable.orm[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,
@@ -1283,7 +1296,7 @@ final class SampleGame: GameLoop {
     /// **Something is always bound.** The alternative is a shader that branches on whether a texture
     /// exists, or a second pipeline compiled without one — a branch per fragment, or twice the
     /// pipelines. White multiplies to nothing.
-    private func bindSurface(_ base: MTLTexture?, _ normal: MTLTexture?) {
+    private func bindSurface(_ base: MTLTexture?, _ normal: MTLTexture?, _ orm: MTLTexture?) {
         if let resolved = base ?? textures?.white {
             argumentTable.setTexture(resolved.gpuResourceID, index: 1)
         }
@@ -1291,6 +1304,11 @@ final class SampleGame: GameLoop {
         // which tilts every surface diagonally and lights the whole scene wrongly.
         if let resolved = normal ?? textures?.flatNormal {
             argumentTable.setTexture(resolved.gpuResourceID, index: 2)
+        }
+        // **White is exactly right here**, because the shader multiplies: a surface with no map keeps
+        // its material's own occlusion, roughness and metalness untouched.
+        if let resolved = orm ?? textures?.white {
+            argumentTable.setTexture(resolved.gpuResourceID, index: 5)
         }
     }
 
@@ -1317,7 +1335,9 @@ final class SampleGame: GameLoop {
             for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
                 bindSurface(figureMaps.indices.contains(submeshIndex) ? figureMaps[submeshIndex] : nil,
                             figureNormalMaps.indices.contains(submeshIndex)
-                                ? figureNormalMaps[submeshIndex] : nil)
+                                ? figureNormalMaps[submeshIndex] : nil,
+                            figureORMMaps.indices.contains(submeshIndex)
+                                ? figureORMMaps[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,

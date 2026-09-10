@@ -120,9 +120,22 @@ def SkelRoot "Figure"
             uniform token info:id = "UsdPreviewSurface"
             color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
             normal3f inputs:normal.connect = </Figure/Skin/Bump.outputs:rgb>
-            float inputs:metallic = 0.9
-            float inputs:roughness = 0.45
+            float inputs:occlusion.connect = </Figure/Skin/ORM.outputs:r>
+            float inputs:roughness.connect = </Figure/Skin/ORM.outputs:g>
+            float inputs:metallic.connect = </Figure/Skin/ORM.outputs:b>
             token outputs:surface
+        }
+
+        def Shader "ORM"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @figure_orm.png@
+            float2 inputs:st.connect = </Figure/Skin/Reader.outputs:result>
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float outputs:r
+            float outputs:g
+            float outputs:b
         }
 
         def Shader "Bump"

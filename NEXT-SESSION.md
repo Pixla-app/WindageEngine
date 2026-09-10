@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-284 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+287 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,36 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — packed material maps (0.5.1)
+
+**Occlusion, roughness and metalness from a texture** — the last slots with nothing behind them.
+Packed R/G/B, which is glTF's packing, so one file serves three slots. `TextureSlot.packedChannel`
+says which channel each reads.
+
+### The 0.18 trap in a second place, and it was nearly shipped
+
+**A file that connects `metallic` to a texture supplies no scalar for it at all**, so the field kept
+`Material`'s own default — and `metallic` defaults to 0. Multiplied by the map that is zero
+everywhere: a metal figure rendering as a dielectric one, with nothing to say why. Caught by looking
+at the figure, thinking it looked less metallic than before, and measuring what the material reported.
+
+**A slot with a map takes the identity for the operation it is used in** — white for a tint, 1 for a
+multiplied factor. The base-colour case already needed that rule; it is applied in both places now.
+
+### What Model I/O carries, measured
+
+- **USD carries all four** — metalness, roughness, occlusion, emissive — **and drops which channel
+  each reads**. The convention is assumed. It is right for an unpacked greyscale map too, which is
+  why glTF fixed one.
+- **OBJ carries none of it.** `map_Pr` and `map_Pm` are read and discarded. What does arrive is
+  `map_Ns` as a `specularExponent` **texture** and `map_Ka` as emission — an OBJ can vary shininess
+  spatially, in exponents. Not wired up: differently shaped, and nothing needs it.
+
+### Two in the shader
+
+White is exactly the right fallback because the three are multiplied. And occlusion applies to the
+ambient terms only — applying it to the sun would darken a surface the sun is plainly shining into.
 
 ## Done 2026-09-10 — a level says what sky it is under (0.5.0)
 
@@ -457,9 +487,9 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
-   `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as
-   scalars. A metallic-roughness *map* is the same wiring again and needs an asset that has one.
+1. **Emissive is the one slot still unread.** `Material` carries it, `TextureStore` resolves it, and
+   nothing samples it — because nothing in the sample glows. It is the same wiring again and wants an
+   asset with a lit panel or a screen on it.
 
 3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format

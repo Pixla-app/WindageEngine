@@ -12,6 +12,47 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.5.1] — 2026-09-10
+
+**Occlusion, roughness and metalness from a texture**, which were the last material slots with
+nothing behind them.
+
+### Fixed
+
+- **A slot with a map now takes the identity scalar.** *The 0.18 trap in a second place, and it was
+  nearly shipped.* A file that connects `metallic` to a texture supplies **no scalar at all**, so the
+  field kept whatever `Material` initialises it to — and `metallic` initialises to 0. Multiplied by
+  the map, that is zero everywhere: a metal character renders as a dielectric one with nothing to say
+  why. Mapped slots take 1, which is the identity for a multiplied factor.
+
+### Added
+
+- **`TextureSlot.packedChannel`** — which channel of its texture a slot reads: **R occlusion, G
+  roughness, B metalness**, glTF's packing.
+- **The sample's figure carries a packed ORM map**, and its shader multiplies the three through.
+
+### What Model I/O does and does not carry, measured
+
+- **USD carries all four**: metalness, roughness, occlusion and emissive arrive as textures on the
+  right semantics.
+- **It drops which channel each reads.** A `UsdPreviewSurface` with roughness connected to a texture's
+  `.g` and metalness to its `.b` arrives as two properties naming the same file, with nothing to
+  distinguish them. The convention has to be assumed, which is what `packedChannel` writes down.
+  **It is also right for an unpacked map** — a standalone roughness map is greyscale, so its green
+  channel is its value, and that is why glTF fixed a convention at all.
+- **OBJ carries none of it.** `map_Pr` and `map_Pm` are read and discarded, like the scalars before
+  them. What *does* arrive is `map_Ns` as a **`specularExponent` texture** and `map_Ka` as emission —
+  so an OBJ can vary shininess spatially, in exponents rather than roughness. Not wired up: it is a
+  differently shaped quantity needing its own conversion, and nothing needs it.
+
+### Two decisions in the shader
+
+- **White is exactly the right fallback**, because the three are multiplied: a surface with no map
+  keeps its material's own values untouched.
+- **Occlusion applies to the ambient terms only.** It stands for light a crevice does not receive from
+  its surroundings; applying it to the sun as well would darken a surface the sun is plainly shining
+  into, which is a shadow the shadow map already has an opinion about.
+
 ## [0.5.0] — 2026-09-10
 
 **A level says what sky it is under.** It said where the sun was — two entries in `settings` — and

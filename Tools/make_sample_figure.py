@@ -388,6 +388,11 @@ def write(path):
     # and a microfacet one. Metal does not — it has no diffuse at all, so its entire appearance is the
     # reflection, and if the environment term is missing it is simply black. USD is also the only
     # format here that can say "metal": Model I/O reads no metalness from an OBJ at all.
+    #
+    # **Its occlusion, roughness and metalness come from one packed map**, R/G/B, which is glTF's
+    # packing. USD names a channel per input; Model I/O drops which, so the convention is assumed —
+    # see `TextureSlot.packedChannel`. The scalars are gone: a map and a constant multiplied together
+    # would make the constant a second place to look when the surface is wrong.
     out.append(MATERIAL)
 
     with open(path, "w") as handle:
@@ -406,9 +411,22 @@ MATERIAL = """
             uniform token info:id = "UsdPreviewSurface"
             color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
             normal3f inputs:normal.connect = </Figure/Skin/Bump.outputs:rgb>
-            float inputs:metallic = 0.9
-            float inputs:roughness = 0.45
+            float inputs:occlusion.connect = </Figure/Skin/ORM.outputs:r>
+            float inputs:roughness.connect = </Figure/Skin/ORM.outputs:g>
+            float inputs:metallic.connect = </Figure/Skin/ORM.outputs:b>
             token outputs:surface
+        }
+
+        def Shader "ORM"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @figure_orm.png@
+            float2 inputs:st.connect = </Figure/Skin/Reader.outputs:result>
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float outputs:r
+            float outputs:g
+            float outputs:b
         }
 
         def Shader "Bump"
