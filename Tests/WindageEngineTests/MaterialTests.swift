@@ -151,6 +151,8 @@ struct MaterialTests {
         #expect(material[.roughness] != nil)
         #expect(material.metallic == 1, "a metalness map multiplied by 0 is not metal")
         #expect(material.roughness == 1, "a roughness map multiplied by 0.65 is not the map")
+        #expect(material[.emissive] != nil, "the emissive map did not come through")
+        #expect(material.emissive == SIMD3(repeating: 1), "an emissive map multiplied by 0 is dark")
     }
 
     /// And a slot with no map keeps the file's own number, or a plausible one.

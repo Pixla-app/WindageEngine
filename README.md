@@ -743,6 +743,49 @@ kept in the history because it is the right first step: it costs one instruction
 between metal reading as metal and reading as a bug, and it is enough to get the BRDF correct before
 adding a cube map to the list of things that might be wrong.
 
+## Emission (2026-09-10)
+
+The last material slot with nothing reading it. Every slot `Material` carries now reaches a pixel.
+
+### Three things about emission itself
+
+- **It is added, not lit.** Nothing multiplies it: not the sun's angle, not the shadow map, not the
+  ambient occlusion. A glowing seam that dimmed when a shadow crossed it would be a lamp that goes out
+  when you stand in front of it.
+- **A whole object that emits looks flat, and correctly so.** An emitting surface has no light
+  direction, so there is nothing for shading to vary. Real emissive surfaces are a strip or a panel,
+  confined by a **map** — which is exactly what an OBJ crate cannot have, so the sample's objectives
+  glow gently enough that the planks and the sun still carry their shape.
+- **A PNG cannot hold a value above 1**, so an emissive map alone is never brighter than white, and a
+  seam that is exactly white does not read as lit. How much brighter is a look decision, so it is the
+  game's multiplier rather than the texture's.
+
+### The game owns the value, not the material times the game
+
+Multiplying them was the first attempt and it **silently produced nothing**: an OBJ material's
+emission is always zero, so a crate the game wanted lit came out as zero times whatever it asked for.
+The material's emission is a *default* the caller may use, override or ignore, because only the caller
+knows whether this surface is powered right now.
+
+**The sample's objectives emit instead of swapping colour.** They used to change albedo, which is a
+colour a surface *is* — so a collected crate and an uncollected one differed the way two paints
+differ. Emission is light the surface makes; it survives being in shadow, and it goes above 1 so the
+tone map has somewhere to roll it.
+
+### What OBJ carries, measured: nothing
+
+`Ke` and `map_Ke` are both read and discarded — the emission property comes back as an **always-black
+`.color`** whatever the file says. Emission joins metalness and roughness maps as USD-only here.
+`map_Ka` does arrive as an emission *texture*, which is the ambient map landing on the emission
+semantic; a legacy quirk rather than a path worth relying on.
+
+### The identity-scalar rule, third instance
+
+A file that connects `emissiveColor` to a texture supplies no scalar for it, so the field kept
+`Material`'s default of zero and multiplied the map away — the same fault as metalness and as the 0.18
+base colour before it. **Three slots needed this for the same reason, which is what makes it a rule
+rather than three fixes**: a slot with a map takes the identity for the operation it is used in.
+
 ## Occlusion, roughness and metalness from a texture (2026-09-10)
 
 The last material slots with nothing behind them. They are each a single number, so they are packed

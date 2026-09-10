@@ -19,6 +19,7 @@ struct Uniforms {
     float4   materialBaseColor;
     float4   materialParams;  // x metallic, y roughness, z highest specular mip
     float4   sunColour;       // the level's sun, in radiance; w unused
+    float4   emissive;        // what this surface emits, in radiance; w unused
 };
 
 constant int kCascadeCount = 4;
@@ -354,7 +355,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                texture2d<float> normalMap [[texture(2)]],
                                texturecube<float> environmentSpecular [[texture(3)]],
                                texturecube<float> environmentIrradiance [[texture(4)]],
-                               texture2d<float> ormMap [[texture(5)]])
+                               texture2d<float> ormMap [[texture(5)]],
+                               texture2d<float> emissiveMap [[texture(6)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -458,5 +460,14 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                                           level(lod)).rgb;
     const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV) * occlusion;
 
-    return float4(direct + ambientDiffuse + ambientSpecular, base.a);
+    // **Added, not lit.** Emission is light the surface makes, so nothing multiplies it: not the
+    // sun's angle, not the shadow map, not the ambient occlusion. A glowing seam that dimmed when a
+    // shadow crossed it would be a lamp that goes out when you stand in front of it.
+    //
+    // The map is sRGB like any colour, and its values pass 1 once the material's own emission scales
+    // them — which is what makes a seam read as lit rather than as painted, because the tone map has
+    // somewhere above white to roll it into.
+    const float3 emitted = uniforms.emissive.rgb * emissiveMap.sample(surfaceSampler, in.uv).rgb;
+
+    return float4(direct + ambientDiffuse + ambientSpecular + emitted, base.a);
 }

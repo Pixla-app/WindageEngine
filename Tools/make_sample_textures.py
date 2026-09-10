@@ -237,6 +237,31 @@ def figure():
 # Deep grain is bare metal and polished; the proud surface between is a duller lacquer over it. That
 # gives the three channels something to disagree about, which is the point: a map nobody can tell from
 # a constant tests nothing.
+def figure_emissive(height):
+    """A glow down in the grain, and nothing on the surface between.
+
+    **Emissive is radiance a surface produces**, not a colour it is — so the numbers here go above 1
+    and the tone map deals with them, which is the whole reason this is worth having on a metal
+    figure: a seam brighter than white next to a reflection reads as lit rather than as painted.
+    """
+    size = len(height)
+    lo = min(min(row) for row in height)
+    hi = max(max(row) for row in height)
+    span = max(hi - lo, 1e-6)
+    rows = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            depth = (height[y][x] - lo) / span
+            # Only the deepest fifth glows, and sharply, so it reads as a seam rather than a haze.
+            glow = max(0.0, 1.0 - depth * 5.0) ** 2
+            row.append((int(min(1.0, 0.15 * glow) * 255),
+                        int(min(1.0, 0.85 * glow) * 255),
+                        int(min(1.0, 1.00 * glow) * 255)))
+        rows.append(row)
+    return rows
+
+
 def figure_roughness(x, y, depth):
     return 0.55 - 0.35 * (1.0 - depth)
 
@@ -256,3 +281,4 @@ if __name__ == "__main__":
 
     write_png(OUT / "figure_orm.png",
               orm_map(figure_height(), figure_roughness, figure_metallic))
+    write_png(OUT / "figure_emissive.png", figure_emissive(figure_height()))

@@ -113,6 +113,9 @@ final class SampleGame: GameLoop {
         /// The level's sun, in radiance. **`w` unused** — a `float4` so neither side has to reason
         /// about the padding after a `float3`.
         var sunColour: SIMD4<Float>
+        /// What this surface emits, in radiance: the material's own emission times whatever the game
+        /// wants of it right now. **`w` unused**, for the same padding reason.
+        var emissive: SIMD4<Float>
 
         init(viewProjection: matrix_float4x4,
              model: matrix_float4x4,
@@ -121,7 +124,8 @@ final class SampleGame: GameLoop {
              sunDirection: SIMD3<Float>,
              material: Material,
              specularLOD: Float,
-             sunColour: SIMD3<Float>) {
+             sunColour: SIMD3<Float>,
+             emissive: SIMD3<Float>) {
             self.viewProjection = viewProjection
             self.model = model
             self.normalMatrix = normalMatrix
@@ -130,6 +134,13 @@ final class SampleGame: GameLoop {
             self.materialBaseColor = material.baseColor
             self.materialParams = SIMD4(material.metallic, material.roughness, specularLOD, 0)
             self.sunColour = SIMD4(sunColour, 0)
+            // **The game's value, not the material's times the game's.** Multiplying them was the
+            // first attempt and it silently produced nothing: an OBJ material's emission is always
+            // zero — Model I/O reads neither `Ke` nor `map_Ke` — so a crate the game wanted lit was
+            // zero times whatever the game asked for. The material's emission is a *default* the game
+            // may use, override or ignore, and defaulting is the caller's job because only the caller
+            // knows whether this surface is currently powered.
+            self.emissive = SIMD4(emissive, 0)
         }
     }
 
@@ -207,7 +218,8 @@ final class SampleGame: GameLoop {
                              albedo: SIMD3<Float>,
                              maps: [MTLTexture],
                              normals: [MTLTexture],
-                             orm: [MTLTexture])] = []
+                             orm: [MTLTexture],
+                             glow: [MTLTexture])] = []
 
     /// What the player cannot walk through, and what a click can pick.
     ///
@@ -236,6 +248,7 @@ final class SampleGame: GameLoop {
     /// The base-colour and normal map for each of a mesh's submeshes, resolved once at load.
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var normalMaps: [String: [MTLTexture]] = [:]
+    private var emissiveMaps: [String: [MTLTexture]] = [:]
     /// Occlusion, roughness and metalness in one texture — R, G, B, which is glTF's packing.
     ///
     /// **Taken from the roughness slot, because all three name the same file.** A packed map is one
@@ -244,6 +257,7 @@ final class SampleGame: GameLoop {
     private var figureMaps: [MTLTexture] = []
     private var figureNormalMaps: [MTLTexture] = []
     private var figureORMMaps: [MTLTexture] = []
+    private var figureEmissiveMaps: [MTLTexture] = []
 
     /// The up axis the figure's file declares. Identity for the built-in one, and not necessarily
     /// for a bought Z-up asset.
@@ -282,6 +296,9 @@ final class SampleGame: GameLoop {
     /// **A ceiling, not the rig's joint count.** The buffer is allocated before any rig is loaded,
     /// so it has to be sized for a plausible character rather than for the one that turns up. A
     /// hundred joints is a humanoid with fingers.
+    /// How much brighter than white the figure's seams burn.
+    private static let figureGlow: Float = 2.2
+
     private static let maxJoints = 128
     private static let jointPaletteStride =
         (MemoryLayout<matrix_float4x4>.stride * maxJoints + 255) & ~255
@@ -387,8 +404,8 @@ final class SampleGame: GameLoop {
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
         tableDescriptor.maxBufferBindCount = 4
-        // 0: shadow · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: packed ORM.
-        tableDescriptor.maxTextureBindCount = 6
+        // 0: shadow · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM · 6: glow.
+        tableDescriptor.maxTextureBindCount = 7
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -498,6 +515,7 @@ final class SampleGame: GameLoop {
                 baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
                 normalMaps[name] = resolveMaps(of: mesh, slot: .normal, named: name)
                 ormMaps[name] = resolveMaps(of: mesh, slot: .roughness, named: name)
+                emissiveMaps[name] = resolveMaps(of: mesh, slot: .emissive, named: name)
                 engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
                 engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
             } else {
@@ -584,6 +602,7 @@ final class SampleGame: GameLoop {
         }
         figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: stem)
         figureORMMaps = resolveMaps(of: mesh, slot: .roughness, named: stem)
+        figureEmissiveMaps = resolveMaps(of: mesh, slot: .emissive, named: stem)
 
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
@@ -631,6 +650,7 @@ final class SampleGame: GameLoop {
         figureMaps = resolveBaseColorMaps(of: mesh, named: "figure")
         figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: "figure")
         figureORMMaps = resolveMaps(of: mesh, slot: .roughness, named: "figure")
+        figureEmissiveMaps = resolveMaps(of: mesh, slot: .emissive, named: "figure")
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
         if let textures { engine.residencySet.addAllocations(textures.allocations) }
@@ -745,7 +765,8 @@ final class SampleGame: GameLoop {
             drawables.append((mesh, transform, SampleGame.albedo(for: placement),
                               baseColorMaps[placement.mesh] ?? [],
                               normalMaps[placement.mesh] ?? [],
-                              ormMaps[placement.mesh] ?? []))
+                              ormMaps[placement.mesh] ?? [],
+                              emissiveMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
@@ -1135,16 +1156,28 @@ final class SampleGame: GameLoop {
         let viewProjection = simd_mul(projection, view.viewMatrix)
 
         for (index, drawable) in drawables.prefix(SampleGame.maxDrawables).enumerated() {
-            // The selection glows, because an editor where you cannot tell what is selected is a
-            // way to move the wrong thing.
             var albedo = drawable.albedo
-            // An objective still to reach is bright; one already touched goes dull, so progress is
-            // visible in the world and not only in the corner of the screen.
+
+            // **An objective still to reach emits; one already taken does not.** It used to swap its
+            // albedo instead, which is a colour a surface *is* — so a collected crate and an
+            // uncollected one differed the way two paints differ. Emission is light the surface makes,
+            // it survives being in shadow, and it is above 1 so the tone map rolls it towards white:
+            // it reads as powered rather than as painted.
+            var emissive = drawable.mesh.material(forSubmesh: 0).emissive
             if let slot = objectiveDrawables.firstIndex(of: index) {
-                albedo = run.collected.indices.contains(slot) && run.collected[slot]
-                    ? SIMD3(0.30, 0.34, 0.30) : SIMD3(0.30, 0.80, 0.45)
+                let taken = run.collected.indices.contains(slot) && run.collected[slot]
+                // **Modest, because the whole crate emits and emission is unshaded.** A surface that
+                // makes its own light has no light direction, so an object emitting over all of it is
+                // flat by definition — which is why a real emissive surface is a strip or a panel,
+                // confined by a *map*. `box.obj` cannot have one: Model I/O reads neither `Ke` nor
+                // `map_Ke` from an OBJ. So the glow stays low enough that the planks and the sun's
+                // shading still carry the shape, and the emission reads as a tint from within.
+                emissive = taken ? .zero : SIMD3(0.05, 0.40, 0.18)
+                albedo = taken ? SIMD3(0.34, 0.36, 0.34) : SIMD3(0.42, 0.62, 0.45)
             }
-            if isEditing && index == editor.selection { albedo = SIMD3(1.0, 0.85, 0.25) }
+            // The selection glows too, because an editor where you cannot tell what is selected is a
+            // way to move the wrong thing.
+            if isEditing && index == editor.selection { emissive = SIMD3(1.6, 1.2, 0.3) }
             // **The first submesh's material, and the sample is honest that this is a shortcut.**
             // Uniforms here are per drawable, so a mesh whose submeshes differ in roughness would
             // get the first one's for all of them. Every mesh in this sample has one submesh; a game
@@ -1156,7 +1189,8 @@ final class SampleGame: GameLoop {
                                     sunDirection: sunDirection,
                                     material: drawable.mesh.material(forSubmesh: 0),
                                     specularLOD: environmentLOD,
-                                    sunColour: sunIrradiance)
+                                    sunColour: sunIrradiance,
+                                    emissive: emissive)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -1171,7 +1205,13 @@ final class SampleGame: GameLoop {
                                     sunDirection: sunDirection,
                                     material: figureMesh?.material(forSubmesh: 0) ?? Material(),
                                     specularLOD: environmentLOD,
-                                    sunColour: sunIrradiance)
+                                    sunColour: sunIrradiance,
+                                    // **Times three, and that is the game's call.** A PNG cannot hold
+                                    // a value above 1, so an emissive map alone can never be brighter
+                                    // than white — and a seam that is exactly white does not read as
+                                    // lit. How much brighter is a look decision, so it lives here.
+                                    emissive: (figureMesh?.material(forSubmesh: 0).emissive ?? .zero)
+                                        * SampleGame.figureGlow)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 
@@ -1262,7 +1302,9 @@ final class SampleGame: GameLoop {
                             drawable.normals.indices.contains(submeshIndex)
                                 ? drawable.normals[submeshIndex] : nil,
                             drawable.orm.indices.contains(submeshIndex)
-                                ? drawable.orm[submeshIndex] : nil)
+                                ? drawable.orm[submeshIndex] : nil,
+                            drawable.glow.indices.contains(submeshIndex)
+                                ? drawable.glow[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,
@@ -1296,7 +1338,8 @@ final class SampleGame: GameLoop {
     /// **Something is always bound.** The alternative is a shader that branches on whether a texture
     /// exists, or a second pipeline compiled without one — a branch per fragment, or twice the
     /// pipelines. White multiplies to nothing.
-    private func bindSurface(_ base: MTLTexture?, _ normal: MTLTexture?, _ orm: MTLTexture?) {
+    private func bindSurface(_ base: MTLTexture?, _ normal: MTLTexture?, _ orm: MTLTexture?,
+                             _ glow: MTLTexture?) {
         if let resolved = base ?? textures?.white {
             argumentTable.setTexture(resolved.gpuResourceID, index: 1)
         }
@@ -1309,6 +1352,11 @@ final class SampleGame: GameLoop {
         // its material's own occlusion, roughness and metalness untouched.
         if let resolved = orm ?? textures?.white {
             argumentTable.setTexture(resolved.gpuResourceID, index: 5)
+        }
+        // **White again, and again because it is multiplied.** A surface with no emissive map emits
+        // whatever its material says — which for almost everything is nothing at all.
+        if let resolved = glow ?? textures?.white {
+            argumentTable.setTexture(resolved.gpuResourceID, index: 6)
         }
     }
 
@@ -1337,7 +1385,9 @@ final class SampleGame: GameLoop {
                             figureNormalMaps.indices.contains(submeshIndex)
                                 ? figureNormalMaps[submeshIndex] : nil,
                             figureORMMaps.indices.contains(submeshIndex)
-                                ? figureORMMaps[submeshIndex] : nil)
+                                ? figureORMMaps[submeshIndex] : nil,
+                            figureEmissiveMaps.indices.contains(submeshIndex)
+                                ? figureEmissiveMaps[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,

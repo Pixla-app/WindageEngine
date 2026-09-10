@@ -181,6 +181,7 @@ nonisolated extension Material {
                 switch slot {
                 case .metallic: metallic = 1
                 case .roughness: roughness = 1
+                case .emissive: emissive = .one
                 default: break
                 }
             }

@@ -12,6 +12,53 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.5.2] — 2026-09-10
+
+**Emission** — the last material slot with nothing reading it. Every slot `Material` carries now
+reaches a pixel.
+
+### Fixed
+
+- **The identity-scalar rule extended to emission.** Third instance of the same trap: a file that
+  connects `emissiveColor` to a texture supplies no scalar, so the field kept `Material`'s default of
+  zero and multiplied the map away. **Three slots needed this for the same reason** — base colour, the
+  metallic-roughness pair, and emission — which is what makes it a rule rather than three fixes.
+
+### Added
+
+- **The sample's figure has glowing seams**, from an emissive map in its USD material.
+- **Objectives emit instead of swapping colour.** An uncollected crate is lit from within and a
+  collected one is not. It used to change its albedo, which is a colour a surface *is* — so the two
+  states differed the way two paints differ.
+
+### What OBJ carries, measured
+
+**Nothing.** `Ke` and `map_Ke` are both read and discarded; the emission property comes back as an
+always-black `.color` regardless of the file. Emission joins metalness and roughness maps as USD-only.
+(`map_Ka` does arrive as an emission *texture* — the ambient map mapped onto the emission semantic,
+which is a legacy quirk rather than a path worth relying on.)
+
+### Three things about emission itself
+
+- **It is added, not lit.** Nothing multiplies it: not the sun's angle, not the shadow map, not the
+  ambient occlusion. A glowing seam that dimmed when a shadow crossed it would be a lamp that goes
+  out when you stand in front of it.
+- **A whole object that emits looks flat**, and correctly so — an emitting surface has no light
+  direction. Real emissive surfaces are a strip or a panel, confined by a *map*, which is exactly
+  what an OBJ crate cannot have. So the sample's crates glow gently enough that the planks and the
+  sun still carry their shape.
+- **A PNG cannot hold a value above 1**, so an emissive map alone is never brighter than white — and
+  a seam that is exactly white does not read as lit. How much brighter is a look decision, so it is
+  the game's multiplier rather than the texture's.
+
+### And one about who owns the value
+
+**The game's emission is authoritative, not the material's times the game's.** Multiplying them was
+the first attempt and it silently produced nothing: an OBJ material's emission is always zero, so a
+crate the game wanted lit was zero times whatever it asked for. The material's emission is a
+*default* the caller may use, override or ignore — because only the caller knows whether this surface
+is powered right now.
+
 ## [0.5.1] — 2026-09-10
 
 **Occlusion, roughness and metalness from a texture**, which were the last material slots with

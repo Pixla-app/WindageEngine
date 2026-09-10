@@ -56,6 +56,35 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
 
+## Done 2026-09-10 — emission (0.5.2)
+
+**The last material slot with nothing reading it.** Every slot `Material` carries now reaches a pixel.
+The figure has glowing seams from an emissive map; objectives emit instead of swapping albedo, so a
+collected crate and an uncollected one differ by being lit rather than by being two paints.
+
+### The identity-scalar rule, third instance
+
+A file that connects `emissiveColor` to a texture supplies no scalar, so the field kept `Material`'s
+default of zero and multiplied the map away. **Base colour, the metallic-roughness pair, and
+emission all needed this for the same reason** — which is what makes it a rule rather than three
+fixes.
+
+### Three things about emission
+
+- **Added, not lit.** Nothing multiplies it — not the sun's angle, not the shadow map, not occlusion.
+  A seam that dimmed in shadow would be a lamp that goes out when you stand in front of it.
+- **A whole object that emits looks flat**, correctly: an emitting surface has no light direction.
+  Real ones are a strip or a panel, confined by a map — which an OBJ cannot carry.
+- **A PNG cannot exceed 1**, so a map alone is never brighter than white and does not read as lit.
+  The multiplier is the game's, because how bright is a look decision.
+
+### And who owns the value
+
+**The game's, not the material's times the game's.** Multiplying was the first attempt and produced
+nothing: an OBJ material's emission is always zero — `Ke` and `map_Ke` are both discarded, and the
+property comes back an always-black `.color` — so a crate the game wanted lit was zero times whatever
+it asked for.
+
 ## Done 2026-09-10 — packed material maps (0.5.1)
 
 **Occlusion, roughness and metalness from a texture** — the last slots with nothing behind them.
@@ -487,9 +516,12 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Emissive is the one slot still unread.** `Material` carries it, `TextureStore` resolves it, and
-   nothing samples it — because nothing in the sample glows. It is the same wiring again and wants an
-   asset with a lit panel or a screen on it.
+1. **Emission lights nothing but itself.** A glowing seam does not illuminate the surface beside it,
+   because there is no light in the scene except the sun and the environment. That is what a
+   punctual-light system is for, and there isn't one — the engine has a single directional sun and an
+   environment map. **Local lights are the biggest remaining gap in what a game can express**, and
+   `Sedgefall`'s probe already asked the question that matters: which lights reach a point, within a
+   budget. Settled shape.
 
 3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format

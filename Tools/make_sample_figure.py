@@ -414,7 +414,18 @@ MATERIAL = """
             float inputs:occlusion.connect = </Figure/Skin/ORM.outputs:r>
             float inputs:roughness.connect = </Figure/Skin/ORM.outputs:g>
             float inputs:metallic.connect = </Figure/Skin/ORM.outputs:b>
+            color3f inputs:emissiveColor.connect = </Figure/Skin/Glow.outputs:rgb>
             token outputs:surface
+        }
+
+        def Shader "Glow"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @figure_emissive.png@
+            float2 inputs:st.connect = </Figure/Skin/Reader.outputs:result>
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float3 outputs:rgb
         }
 
         def Shader "ORM"
