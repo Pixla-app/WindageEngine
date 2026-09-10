@@ -43,9 +43,39 @@ public enum TextureStoreError: Error, CustomStringConvertible, Sendable {
 /// and nothing here has asked for that yet.
 public final class TextureStore {
 
+    /// Which corner of the image the mesh's `v = 0` is meant to land on.
+    ///
+    /// ### The flip, and why the engine owns it
+    ///
+    /// **Metal puts texture coordinate (0, 0) at an image's top-left. USD and OBJ put `st` (0, 0) at
+    /// its bottom-left.** Something has to reconcile those, exactly once, and if it is not the engine
+    /// then it is every game — and the failure is silent on any texture that happens to be roughly
+    /// symmetrical, which is most of them.
+    ///
+    /// **It was found on a character whose texture is a palette.** Its colour map is a 32×32 grid of
+    /// swatches with a magenta row along the bottom, so a vertical flip does not soften an edge — it
+    /// hands a limb a completely different colour. The sample's own crate, stone and ground textures
+    /// had been flipped the whole time and looked fine, because noise and brickwork read the same
+    /// upside down.
+    ///
+    /// Every format Model I/O reads — USD, USDZ, OBJ, PLY, STL, Alembic — puts `v = 0` at the bottom,
+    /// so ``bottomLeft`` is the default. ``topLeft`` is here for glTF-derived UVs, which are the other
+    /// way round, and for anything a game generates itself.
+    public enum TextureOrigin: Sendable, Hashable {
+        /// `v = 0` is the bottom of the image: the convention of everything Model I/O imports.
+        case bottomLeft
+        /// `v = 0` is the top of the image: glTF's convention, and Metal's own.
+        case topLeft
+
+        var loaderOrigin: MTKTextureLoader.Origin {
+            self == .bottomLeft ? .bottomLeft : .topLeft
+        }
+    }
+
     private struct Key: Hashable {
         let source: TextureSource
         let isColor: Bool
+        let origin: TextureOrigin
     }
 
     private let device: MTLDevice
@@ -104,11 +134,14 @@ public final class TextureStore {
     /// - Parameter isColor: whether to decode sRGB on the way in. Take it from
     ///   ``TextureSlot/isColor`` rather than deciding per call site — that is the whole reason it is
     ///   a property of the slot.
+    /// - Parameter origin: which corner the mesh's `v = 0` means. Leave it alone for anything loaded
+    ///   through ``MeshLoader`` — see ``TextureOrigin``.
     @discardableResult
     public func texture(_ source: TextureSource,
                         isColor: Bool,
+                        origin: TextureOrigin = .bottomLeft,
                         bundle: Bundle = .main) throws -> MTLTexture {
-        let key = Key(source: source, isColor: isColor)
+        let key = Key(source: source, isColor: isColor, origin: origin)
         if let cached = cache[key] { return cached }
 
         let url: URL
@@ -132,6 +165,8 @@ public final class TextureStore {
             .textureStorageMode: NSNumber(value: MTLStorageMode.private.rawValue),
             .generateMipmaps: NSNumber(value: true),
             .SRGB: NSNumber(value: isColor),
+            // Flips the image on the way in, so a bottom-left `v` lands where the file meant it to.
+            .origin: origin.loaderOrigin.rawValue,
         ]
 
         do {
@@ -150,6 +185,7 @@ public final class TextureStore {
     /// not stop a level loading — a level that will not open because one map is misspelled is a
     /// worse failure than a crate that is the wrong shade.
     public func textures(for material: Material,
+                         origin: TextureOrigin = .bottomLeft,
                          bundle: Bundle = .main,
                          reportingTo report: ((String) -> Void)? = nil) -> [TextureSlot: MTLTexture] {
         var result: [TextureSlot: MTLTexture] = [:]
@@ -159,7 +195,7 @@ public final class TextureStore {
                 continue
             }
             do {
-                result[slot] = try texture(source, isColor: slot.isColor, bundle: bundle)
+                result[slot] = try texture(source, isColor: slot.isColor, origin: origin, bundle: bundle)
             } catch {
                 report?("material '\(material.name)' \(slot.rawValue): \(error)")
                 result[slot] = fallback(for: slot)

@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-244 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+246 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,26 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — every texture was upside down (0.2.0)
+
+**Metal puts texture (0, 0) at an image's top-left; USD and OBJ put `st` (0, 0) at its bottom-left.**
+Nothing reconciled them, so every textured asset had loaded flipped since the day textures were
+added. `TextureStore` now loads with a bottom-left origin by default; `.topLeft` is available for
+glTF-derived UVs.
+
+**Minor bump, not patch** — it changes what existing code does, correctly.
+
+### Why it survived
+
+The sample's own textures are planks, brickwork and noise, and every one reads the same upside down.
+It took a bought character whose texture is a **palette** — a 32×32 grid of swatches with a magenta
+row along the bottom — for the flip to stop softening an edge and start putting the wrong colour on a
+limb. The character tool photographs what it made, so there was a reference to compare against.
+
+> **The lesson is about the test asset.** Four generated textures, none able to fail visibly. The
+> regression fixture is red on top and blue on the bottom now, because an image that looks the same
+> either way up tests nothing about which way up it is.
 
 ## Done 2026-09-09 — a real character, actually run (0.1.4)
 

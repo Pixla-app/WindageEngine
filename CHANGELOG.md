@@ -12,6 +12,36 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.2.0] — 2026-09-09
+
+**Every texture was upside down, and nothing could tell.** Metal puts texture coordinate (0, 0) at an
+image's top-left; USD and OBJ put `st` (0, 0) at its bottom-left. Nothing reconciled them, so every
+textured asset loaded flipped — invisibly, on anything roughly symmetrical, which is most textures.
+
+**A minor bump rather than a patch**, because it changes what existing code does: a consumer's
+textures will flip, correctly.
+
+### Fixed
+
+- **`TextureStore` loads with a bottom-left origin by default**, matching every format Model I/O
+  reads — USD, USDZ, OBJ, PLY, STL, Alembic.
+
+### Added
+
+- **`TextureStore.TextureOrigin`** and an `origin:` parameter on `texture(_:isColor:origin:bundle:)`
+  and `textures(for:origin:bundle:reportingTo:)`. `.topLeft` is there for glTF-derived UVs, which are
+  the other way round, and for anything a game generates itself. The cache key includes it.
+
+### How it was found, since it explains why it survived this long
+
+The sample's crate, stone and ground textures had been flipped since the day they were added, and
+looked entirely correct: noise and brickwork read the same upside down. It took a bought character
+whose texture is a **palette** — a 32×32 grid of swatches with a magenta row along the bottom — for
+the flip to stop softening an edge and start handing a limb the wrong colour. Compared against the
+photograph the character tool produces, it was unmistakable.
+
+The regression test uses a fixture that is red on top and blue on the bottom, for the same reason.
+
 ## [0.1.4] — 2026-09-09
 
 **A real character was loaded into the sample rather than probed with a script**, and it found a gap

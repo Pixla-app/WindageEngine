@@ -317,6 +317,24 @@ system is a different thing and is not here**: no shader graph, no permutations,
 authoring. That is the contested part, where engines genuinely disagree, and where one game's needs
 would decide it wrongly for everybody.
 
+### The v axis, and a bug that hid in plain sight
+
+**Metal puts texture coordinate (0, 0) at an image's top-left. USD and OBJ put `st` (0, 0) at its
+bottom-left.** Something has to reconcile those exactly once, and `TextureStore` does it — every
+texture is loaded with a bottom-left origin, matching every format Model I/O reads.
+
+**It was wrong from the day textures were added and nothing could tell.** The sample's crate, stone
+and ground maps are planks, brickwork and noise, and every one of them reads the same upside down. It
+took a bought character whose texture is a **palette** — a 32×32 grid of swatches with a magenta row
+along the bottom — for a vertical flip to stop softening an edge and start handing a limb a
+completely different colour.
+
+> **The lesson is about the test asset, not the code.** Four generated textures, none of which could
+> fail visibly. The regression test now uses a fixture that is red on top and blue on the bottom,
+> because a test image that looks the same either way up is testing nothing about which way up it is.
+
+`.topLeft` remains available for glTF-derived UVs, which are the other way round.
+
 ### sRGB is a property of the slot, not a decision per call site
 
 A colour map is authored in sRGB, because that is what a monitor expects and what spends more range

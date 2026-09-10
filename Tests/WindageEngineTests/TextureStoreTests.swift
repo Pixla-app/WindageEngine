@@ -82,6 +82,42 @@ struct TextureStoreTests {
         #expect(reports.count == 1)
     }
 
+    /// **The flip, pinned.** Metal puts texture (0, 0) at an image's top-left; USD and OBJ put
+    /// `st` (0, 0) at its bottom-left. Load without reconciling them and every textured asset is
+    /// upside down — silently, on anything roughly symmetrical, which is most textures. It took a
+    /// character whose texture is a palette of swatches to make it visible.
+    ///
+    /// The fixture is red on top and blue on the bottom precisely because the suite's other images
+    /// are noise and brickwork, which read the same either way up.
+    @Test("v = 0 lands on the bottom of the image, as every format Model I/O reads intends")
+    func defaultOriginIsBottomLeft() throws {
+        guard let store = try makeStore() else { return }
+        let url = try #require(Bundle.module.url(forResource: "red-top-blue-bottom",
+                                                 withExtension: "png"))
+        let texture = try store.texture(.url(url), isColor: false)
+
+        // Texture row 0 is what `v = 0` samples.
+        var texel = [UInt8](repeating: 0, count: 4)
+        texture.getBytes(&texel, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+        let red = texel[2], blue = texel[0]        // BGRA
+        #expect(blue > red, "v = 0 sampled the top of the image; every USD and OBJ asset is flipped")
+    }
+
+    /// glTF's UVs are the other way round, so the flip has to be refusable.
+    @Test("A top-left origin is available and is a different texture")
+    func topLeftOriginIsAvailable() throws {
+        guard let store = try makeStore() else { return }
+        let url = try #require(Bundle.module.url(forResource: "red-top-blue-bottom",
+                                                 withExtension: "png"))
+        let bottom = try store.texture(.url(url), isColor: false, origin: .bottomLeft)
+        let top = try store.texture(.url(url), isColor: false, origin: .topLeft)
+        #expect(bottom !== top, "the cache key does not include the origin")
+
+        var texel = [UInt8](repeating: 0, count: 4)
+        top.getBytes(&texel, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+        #expect(texel[2] > texel[0], "a top-left origin should put the image's top row at v = 0")
+    }
+
     @Test("Everything loaded is offered to the residency set")
     func allocationsIncludeLoadedTextures() throws {
         guard let store = try makeStore() else { return }
