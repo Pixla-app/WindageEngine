@@ -250,6 +250,48 @@ final class SampleGame: GameLoop {
     /// Which lights have a tile this frame, recomputed with the light set.
     private var shadowCasters: [(lightIndex: Int, caster: ShadowAtlas.Caster)] = []
 
+    // MARK: - Something in a hand
+
+    /// The lanterns the figures carry.
+    ///
+    /// **The canonical use of a hierarchy, and the one the engine's own notes named**: a thing hung
+    /// off a joint, of a pose, of an object. One node per figure, each attached externally, so the
+    /// only thing that changes per frame is the array of hands.
+    private var lanterns: TransformHierarchy?
+    /// Where each lantern sits in `drawables` — and therefore in `volumes`, which is the same order.
+    private var lanternDrawables: [Int] = []
+    /// Where each lantern's light sits in `lightSet.lights`.
+    private var lanternLights: [Int] = []
+    /// Which joint they hang off in whatever rig actually loaded.
+    private var lanternJoint: Int?
+    /// How many of `volumes` came from the level, before the lanterns were appended.
+    private var levelVolumeCount: Int { volumes.count - lanternDrawables.count }
+
+    /// A 16 cm box, held just off the joint it hangs from.
+    ///
+    /// **In the joint's frame, not the world's, which is what makes this a grip rather than a
+    /// follow.** The offset turns with the joint, so the lantern tips as the arm does; a version that
+    /// merely copied the hand's *position* would stay upright and read as a balloon on a string.
+    ///
+    /// > **The offset is small, and picking it took several attempts.** The bind pose puts this joint
+    /// > 48 cm out along the arm and the arm mesh reaches 74, so 26 cm along the joint's +X reads as
+    /// > "the hand" — and with the arm down it is exactly that, verified by looking. **Raised, it is
+    /// > not:** the drawn limb stops a hand's length short of where that arithmetic says the hand
+    /// > went, and the lantern floats above the figure's head.
+    /// >
+    /// > **A joint's frame is where the rig says the joint is. It is not a promise about where the
+    /// > mesh got drawn**, and the gap between the two is the asset's business rather than the
+    /// > engine's. A rig with a real hand joint would not have the question; this one ends at a
+    /// > forearm, so the grip is a number set by looking — which is what an attachment point in a
+    /// > tool is for, and this sample has no tool.
+    private static let lanternGrip: matrix_float4x4 = {
+        let size: Float = 0.16
+        return matrix_float4x4(columns: (SIMD4(size, 0, 0, 0),
+                                         SIMD4(0, size, 0, 0),
+                                         SIMD4(0, 0, size, 0),
+                                         SIMD4(0.05, -0.09, 0, 1)))
+    }()
+
     /// Cubes for the lamps that point nowhere. **Fewer of these than tiles, and deliberately** — six
     /// passes each is the cost, so the sample takes the engine's mean default rather than dressing
     /// it up.
@@ -584,7 +626,14 @@ final class SampleGame: GameLoop {
         shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
         shadowAtlas = ShadowAtlas(device: device, size: 2048, tilesPerSide: 4)
         if shadowAtlas == nil { print("WindageSample: no shadow atlas — lamps will reach through walls") }
-        shadowCubes = ShadowCubes(device: device)
+        // **Four rather than the engine's two.** The ruins holds two braziers and the figures carry
+        // lanterns, which is exactly the "a level should be choosing" case the default is mean about
+        // — so the sample chooses, out loud, instead of inheriting a number.
+        // **Six smaller cubes rather than two large ones.** The ruins holds two braziers and three
+        // carried lanterns, which is exactly the "a level should be choosing" case the engine's
+        // default is mean about — so the sample chooses, out loud, and pays for it in resolution
+        // rather than in lamps that do not cast. Six faces at 384² is 21 MB.
+        shadowCubes = ShadowCubes(device: device, size: 384, lightCount: 6)
         if shadowCubes == nil { print("WindageSample: no shadow cubes — point lights will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
@@ -866,6 +915,93 @@ final class SampleGame: GameLoop {
         }
     }
 
+    /// Gives every figure something to carry.
+    ///
+    /// **The lanterns are ordinary drawables**, appended after the level's. That is not a shortcut —
+    /// it is what makes the point: a thing placed by a hierarchy is drawn, shadowed, culled and lit
+    /// by exactly the same code as a thing placed by a level file, because the hierarchy produces a
+    /// world transform and nothing else.
+    private func rebuildLanterns() {
+        lanterns = nil
+        lanternJoint = nil
+        lanternDrawables.removeAll(keepingCapacity: true)
+        guard !figures.isEmpty, let rig = figureRig, let mesh = meshes["box"] else { return }
+        guard let joint = SampleGame.lanternJoint(in: rig.skeleton) else {
+            print("WindageSample: no hand-shaped joint in this rig — nobody is carrying anything")
+            return
+        }
+        lanternJoint = joint
+        print("WindageSample: lanterns hang off '\(rig.skeleton.jointPaths[joint])'")
+
+        for _ in figures.indices {
+            drawables.append((mesh, matrix_identity_float4x4, SIMD3(repeating: 1),
+                              baseColorMaps["box"] ?? [], normalMaps["box"] ?? [],
+                              ormMaps["box"] ?? [], emissiveMaps["box"] ?? []))
+            lanternDrawables.append(drawables.count - 1)
+            // **Appended to `volumes` in the same breath**, because the two are index-aligned and the
+            // shadow passes cull against `volumes`. A lantern missing from it would be drawn and cast
+            // nothing, which reads as the cube being broken.
+            volumes.append(Volume(local: mesh.bounds, transform: matrix_identity_float4x4))
+        }
+
+        lanterns = try? TransformHierarchy(
+            attachments: figures.indices.map { .external($0) },
+            localTransforms: Array(repeating: SampleGame.lanternGrip, count: figures.count),
+            externalCount: figures.count)
+    }
+
+    /// The joint a lantern hangs off, in whatever rig actually loaded.
+    ///
+    /// **The built-in figure's waving arm is its left one, and that is a fact about the clip rather
+    /// than about rigs.** An external character names its joints whatever its own toolchain did, so
+    /// the exact path is tried first and then a few shapes of name — and if none of them match, the
+    /// figures carry nothing and say so, rather than hanging a lantern off a shin.
+    private static func lanternJoint(in skeleton: Skeleton) -> Int? {
+        if let index = skeleton.index(ofJoint: "root/spine/arm_l/forearm_l") { return index }
+        func leaf(_ path: String) -> String {
+            (path.split(separator: "/").last.map(String.init) ?? path).lowercased()
+        }
+        for shape in ["hand_l", "lefthand", "hand", "forearm_l", "forearm", "wrist"] {
+            if let index = skeleton.jointPaths.firstIndex(where: { leaf($0).contains(shape) }) {
+                return index
+            }
+        }
+        return nil
+    }
+
+    /// Puts every lantern where its hand is, and its light with it.
+    ///
+    /// ### The scale, which is the whole finding
+    ///
+    /// **A child inherits its parent's scale, and a rig authored in centimetres hands its wrist a
+    /// hundredfold one.** That factor belongs to the arm — the forearm genuinely is fifty units long
+    /// in the rig's own space — and it is exactly wrong for something merely *hung* there: the
+    /// lantern comes out at one percent of its size, in a position that is otherwise correct, which
+    /// reads as the wrong mesh rather than as the wrong space.
+    ///
+    /// `matrix_without_scale` at the call site rather than a flag inside the hierarchy, because this
+    /// is a decision about *what is being attached*, and only the caller can see that.
+    private func placeLanterns() {
+        guard var rig = lanterns, let joint = lanternJoint, !lanternDrawables.isEmpty else { return }
+        rig.refresh(attachedTo: figures.map {
+            matrix_without_scale($0.transform * $0.pose.modelTransform(ofJoint: joint))
+        })
+        for (slot, index) in lanternDrawables.enumerated() {
+            let world = rig.worldTransform(of: slot)
+            drawables[index].transform = world
+            volumes[index].transform = world
+            if slot < lanternLights.count, lanternLights[slot] < lightSet.lights.count {
+                lightSet.lights[lanternLights[slot]].position = SIMD3(world.columns.3.x,
+                                                                      world.columns.3.y,
+                                                                      world.columns.3.z)
+            }
+        }
+        lanterns = rig
+        // **Every frame now, because a light that moves changes which cube it deserves** — and, more
+        // to the point, a cube recorded from where the lamp was last is a shadow that lags the hand.
+        cubeCasters = assignShadowCubes()
+    }
+
     /// Prefilters the level's sky into the two cubes image-based lighting needs.
     ///
     /// **The sun here is the level's sun.** An environment lit from somewhere the sun is not reads as
@@ -921,7 +1057,9 @@ final class SampleGame: GameLoop {
             if placement.tags.contains("solid") { solidVolumes.append(volume) }
         }
         rebuildFigures()
+        rebuildLanterns()
         rebuildLights()
+        placeLanterns()
         reportClustersNextFrame = true
         reportCubeDrawsNextFrame = true
         if drawables.count > SampleGame.maxDrawables {
@@ -975,6 +1113,17 @@ final class SampleGame: GameLoop {
             lights.append(PunctualLight(position: position + SIMD3(0, 0.6, 0),
                                         colour: SIMD3(0.6, 6.0, 2.6), range: 4.5))
         }
+        // **A lamp per lantern, seeded from where the lantern already is.** `rebuildLights` runs
+        // again every time an objective is collected, and a light that spent one frame at the world
+        // origin is a flash in the corner of the level nobody can explain afterwards.
+        lanternLights.removeAll(keepingCapacity: true)
+        for index in lanternDrawables {
+            let at = drawables[index].transform.columns.3
+            lanternLights.append(lights.count)
+            lights.append(PunctualLight(position: SIMD3(at.x, at.y, at.z),
+                                        colour: SIMD3(1.0, 0.72, 0.42) * 26, range: 6.5))
+        }
+
         // **The budget is only used for the report now.** Clustering removed the per-draw limit; what
         // is left is the warning that a level has crowded a point, which is still worth knowing.
         lightSet = LightSet(lights: lights, budget: 4)
@@ -1202,7 +1351,10 @@ final class SampleGame: GameLoop {
     /// work in a mode the sample does not have.
     func pickUnderCrosshair() {
         let origin = camera.position
-        let hit = Volume.firstHit(origin: origin, direction: camera.forward, against: volumes,
+        // **Not the lanterns.** The editor's selection is an index into the level's placements, and
+        // a lantern has none — clicking one would select something that is not there.
+        let hit = Volume.firstHit(origin: origin, direction: camera.forward,
+                                  against: Array(volumes.prefix(levelVolumeCount)),
                                   maxDistance: 200)
         editor.select(hit?.index)
         rebuild()
@@ -1304,6 +1456,9 @@ final class SampleGame: GameLoop {
                                     blendedWith: figures[index].wave,
                                     weight: figures[index].waveWeight)
         }
+        // **After the poses, never before.** A lantern placed from last step's pose is a hand and a
+        // held object a frame apart, which is the one artefact everybody recognises as wrong.
+        placeLanterns()
     }
 
     /// Where a step actually ends, given that solid things are solid.
@@ -1390,6 +1545,12 @@ final class SampleGame: GameLoop {
                 emissive = taken ? .zero : SIMD3(0.05, 0.40, 0.18)
                 albedo = taken ? SIMD3(0.34, 0.36, 0.34) : SIMD3(0.42, 0.62, 0.45)
             }
+            // A lantern is a lamp with a body: the light is a `PunctualLight` and this is the part
+            // you can see. Well above 1 so the tone map rolls it towards white.
+            if lanternDrawables.contains(index) {
+                emissive = SIMD3(3.4, 2.1, 0.9)
+                albedo = SIMD3(1.0, 0.86, 0.62)
+            }
             // The selection glows too, because an editor where you cannot tell what is selected is a
             // way to move the wrong thing.
             if isEditing && index == editor.selection { emissive = SIMD3(1.6, 1.2, 0.3) }
@@ -1465,7 +1626,12 @@ final class SampleGame: GameLoop {
                 // **The near plane travels with the light**, because it is what the shader's
                 // reference depth is made of: `near / distance`. Reading it from a shader constant
                 // instead would be one number written down twice.
-                lights[lightIndex].shadowCube = SIMD4(Float(caster.slice), shadowCubes.nearPlane, 0, 1)
+                // **The face's texel size travels with the light too.** It was a shader constant
+                // written as `2 / 512`, which is a number in two places the moment a game asks for a
+                // different resolution — and the failure is a filter kernel of the wrong width, which
+                // looks like a bias problem rather than like a stale constant.
+                lights[lightIndex].shadowCube = SIMD4(Float(caster.slice), shadowCubes.nearPlane,
+                                                      2 / Float(shadowCubes.size), 1)
             }
         }
         lights.withUnsafeBytes { source in

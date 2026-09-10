@@ -142,7 +142,8 @@ clips, cross-fading and a joint palette, loaded from USD, with clips in files of
 asset-orientation correction for Z-up centimetre exports** · **materials and textures — the
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
-and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
+and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
+or off another thing** · **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
 shadow cubes** ·
@@ -157,7 +158,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | | why it is next, or not |
 |---|---|
 | ~~**Skinned animation**~~ | **Done 2026-09-09.** `Skeleton`, `AnimationClip`, `SkeletonPose` and `RigLoader`; the sample's figures are posed, cross-faded and shadowed. See below. |
-| **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. **Half arrived with animation**: a rig *is* a hierarchy, and `SkeletonPose.modelTransform(ofJoint:)` is where a weapon hangs off a hand. What is still missing is parenting between *objects*. |
+| ~~**A transform hierarchy**~~ | **Done 2026-09-10.** `TransformHierarchy` — attachments, one forward pass, parent-first checked; and `Attachment.external` for the case that reaches outside, which is a weapon on a hand. The sample's figures carry lanterns. See below. |
 | **Animation state** | What plays next, and what interrupts what. The engine cross-fades two clips; deciding *which two* is a game's job today, and there is no evidence yet about where the line sits. Wait for a game to have more than two clips. |
 | ~~**The shadow pass**~~ | **Done 2026-09-09.** `ShadowMap` owns the texture, the depth state, the descriptors and the encoder loop; the game keeps its pipelines. See below. |
 | ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
@@ -914,6 +915,78 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## Things that hang off other things (2026-09-10)
+
+`TransformHierarchy` is parenting: one transform expressed relative to another, resolved in the right
+order, every frame. The sample's figures carry lanterns.
+
+### It is deliberately not a scene graph
+
+A scene graph is an *object model* — nodes that own children and components, are looked up by name,
+and become the unit everything else in the engine is written against. That is a decision this engine
+has not made; it is in the contested list above and it stays there.
+
+**What a game runs into first is much smaller.** This is a list of attachments and a list of
+matrices, owning no objects at all, so the same hierarchy places a drawable, a light and a collision
+volume without knowing that any of them exist.
+
+### The interesting case is the one that reaches outside itself
+
+A rig is already a hierarchy and `SkeletonPose` already resolves it in one forward pass. What it
+cannot do is reach *out* — and the canonical attachment is exactly that: **a weapon in a hand has for
+its parent a joint, inside a pose, that is itself placed by an object's world transform.**
+
+`Attachment.external(_:)` is that made first-class. A node attached externally takes its parent's
+world transform from an array handed to `refresh(attachedTo:)`, so its own local transform stays what
+it should be — **the grip, authored once**. The alternative is a caller rewriting the node's local
+transform every frame, which means keeping the grip somewhere else and doing the multiply by hand.
+
+How many external transforms will arrive is declared when the hierarchy is built, so an
+out-of-range attachment is a load-time error. Left to the call site it would be an index read at
+sixty hertz, and the cheapest thing to do with a bad one is substitute the identity — which puts the
+held object at the world origin, once, in a frame nobody was looking at.
+
+### Parent-first, checked rather than trusted
+
+The same rule `Skeleton` enforces, for the same reason. A hierarchy that violated it would still
+produce a picture, with the child one frame behind the parent — which reads as a lag in the animation
+rather than as a structural fault.
+
+### Scale is inherited, and that is wrong for a held object
+
+**A rig authored in centimetres hands its wrist a hundredfold scale.** That factor belongs to the arm
+— the forearm genuinely is fifty units long in the rig's own space — and it is exactly wrong for
+something merely *hung* there: the lantern is drawn at one percent of its size, in a position that is
+otherwise correct, which reads as the wrong mesh rather than as the wrong space.
+
+`matrix_without_scale` at the call site rather than a "do not inherit scale" flag inside the
+hierarchy, because it is a decision about *what is being attached* and only the caller can see that.
+
+### A joint's frame is not a promise about where the mesh got drawn
+
+The sample figure's bind pose puts its forearm joint 48 cm along the arm, and the arm mesh reaches
+74 — so 26 cm along the joint's +X reads as "the hand", and with the arm down it is exactly that.
+**Raised, it is not:** the drawn limb stops a hand's length short of where that arithmetic says the
+hand went, and a lantern placed there floats above the figure's head.
+
+The gap between a joint's frame and the vertices around it is the asset's business rather than the
+engine's. The useful form of the finding is a warning: **a grip derived from bind-pose arithmetic is
+a guess.** It is a number set by looking, which is what an attachment point in a tool is for — and
+this sample has no tool.
+
+### What it found in the shadow cubes
+
+**The sample assigned cube slices once, at level load.** That is correct for lamps that do not move,
+and the first lamp that did move is what exposed it: a cube recorded from where the lamp *was* is a
+shadow that lags the hand. Now assigned every frame, which is a sort of five elements.
+
+### Measured
+
+Two frames of the same figure, waving and not: the lantern is at the end of the outstretched arm in
+one and raised with it in the other. The lantern lights change **24.5% of the frame** against having
+none, and their own cube shadows — the figure's body blocking the lamp in its own hand — a further
+**4.7%**.
 
 ## Clustered shading (2026-09-10)
 

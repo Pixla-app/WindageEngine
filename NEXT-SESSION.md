@@ -49,7 +49,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-350 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+363 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -59,8 +59,48 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, `Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
-`ClusterGrid` and `ClusteredLights`, and — for the lamps that cast — **`ShadowMap`, `ShadowAtlas`
-and `ShadowCubes`**.
+`ClusterGrid` and `ClusteredLights`, **`TransformHierarchy`**, and — for the lamps that cast —
+`ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — things that hang off other things (0.6.5)
+
+**`TransformHierarchy` is parenting**, and the sample's figures carry lanterns. A list of attachments
+and a list of matrices, owning no objects — so the same hierarchy places a drawable, a light and a
+collision volume without knowing that any of them exist. **Not a scene graph**, which is still in the
+contested list and stays there.
+
+**The interesting case is the one that reaches outside itself.** A rig is already a hierarchy and
+`SkeletonPose` already resolves it; what it cannot do is reach *out*, and a weapon in a hand is
+exactly that — the parent is a joint, inside a pose, that is itself placed by an object's world
+transform. `Attachment.external` makes it first-class, so the node's own local transform stays the
+grip rather than being rewritten every frame by a caller keeping the grip somewhere else anyway.
+**How many externals will arrive is declared up front**, so a bad index is a load-time error and not
+an identity substituted at sixty hertz.
+
+**Scale is inherited, and that is wrong for a held object.** A rig in centimetres hands its wrist a
+hundredfold scale; a lantern hung there is drawn at one percent of its size, in a position that is
+otherwise correct. `matrix_without_scale` at the call site rather than a flag inside the hierarchy —
+it is a decision about what is being attached, and only the caller can see that.
+
+### The finding: a joint's frame is not where the mesh got drawn
+
+The bind pose puts the figure's forearm joint 48 cm along the arm and the mesh reaches 74, so 26 cm
+along the joint's +X reads as "the hand" — and with the arm down it is exactly that. **Raised, it is
+not:** the drawn limb stops a hand's length short, and the lantern floats above the head. That gap
+belongs to the asset, not the engine; the lesson is that **a grip derived from bind-pose arithmetic
+is a guess**, and it is a number set by looking.
+
+### What it found in 0.6.4
+
+**The sample assigned cube slices once, at level load** — correct for lamps that do not move, and the
+first lamp that did move exposed it. A cube recorded from where the lamp *was* is a shadow that lags
+the hand. Assigned every frame now; it is a sort of five elements.
+
+### Measured
+
+Two frames of the same figure, waving and not: the lantern is at the end of the outstretched arm in
+one and raised with it in the other. The lantern lights change **24.5% of the frame** against having
+none; their own cube shadows a further **4.7%**.
 
 ## Done 2026-09-10 — point lights cast too (0.6.4)
 
@@ -702,6 +742,13 @@ and sorts what is missing into three buckets:
 > and the sample found every fault in it.
 
 ## Next — in order
+
+**Every entry below is parked, and that is the honest state of the list.** The last three sessions
+took the top item each time; what is left is either measured as not needed yet or deferred on
+purpose. **The README's own build order is the better place to look for the next task** — its
+"settled shape" table still has particles, a character controller, LOD and instancing, and input
+rebinding, in that order, and the honest bar for somebody else being able to use this engine runs
+down to and including the character controller.
 
 1. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
    be at hundreds — it walks lights against tiles, so the cost grows with both. The GPU version is a

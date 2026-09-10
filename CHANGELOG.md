@@ -12,6 +12,68 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.5] — 2026-09-10
+
+**Things that hang off other things.** `TransformHierarchy` is parenting — one transform expressed
+relative to another, resolved in the right order — and the sample's figures now carry lanterns.
+
+### Added
+
+- **`TransformHierarchy`** — attachments, local transforms, and one forward pass to world transforms.
+  Parent-first is checked at construction, as in `Skeleton`.
+- **`matrix_without_scale(_:)`**.
+
+### It is parenting, and deliberately not a scene graph
+
+A scene graph is an *object model*: nodes that own children and components, are looked up by name,
+and become the unit everything else is written against. That decision is in the README's contested
+list and stays there. **What a game runs into first is much smaller**, and this is that: a list of
+attachments and a list of matrices, owning no objects at all, so the same hierarchy can drive a
+drawable, a light and a collision volume without knowing any of them exist.
+
+### The interesting case is the one that reaches outside
+
+A rig is already a hierarchy and `SkeletonPose` already resolves it. What it cannot do is reach
+*out* — and the canonical attachment, a weapon in a hand, is exactly that: **the parent is a joint,
+inside a pose, that is itself placed by an object's world transform.**
+
+`Attachment.external(_:)` makes that first-class. The node's own local transform stays what it should
+be — the grip, authored once — instead of being rewritten every frame by a caller who then has to
+keep the grip somewhere else anyway. How many external transforms will arrive is declared up front,
+so an out-of-range attachment is a load-time error rather than an identity substituted at sixty hertz.
+
+### Scale is inherited, and that is wrong for a held object
+
+**A rig authored in centimetres hands its wrist a hundredfold scale.** It belongs to the arm — the
+forearm genuinely is fifty units long in that space — and it is exactly wrong for something merely
+hung there: the lantern comes out at one percent of its size, in a position that is otherwise
+correct, which reads as the wrong mesh rather than as the wrong space.
+
+`matrix_without_scale` at the call site, rather than a "do not inherit scale" flag inside the
+hierarchy, because it is a decision about *what is being attached* and only the caller can see that.
+
+### A joint's frame is not a promise about where the mesh got drawn
+
+The bind pose puts the sample figure's forearm joint 48 cm along the arm and the mesh reaches 74, so
+26 cm along the joint's +X reads as "the hand" — and with the arm down it is exactly that. **Raised,
+it is not**: the drawn limb stops a hand's length short of where that arithmetic says the hand went.
+
+That gap is the asset's business rather than the engine's, and the useful form of it is a warning: a
+grip derived from bind-pose arithmetic is a guess. It is a number set by looking, which is what an
+attachment point in a tool is for.
+
+### What it found in 0.6.4
+
+**The sample assigned shadow cubes once, at level load.** Correct for lamps that do not move, and the
+first lamp that did move exposed it — a cube recorded from where the lamp *was* is a shadow that lags
+the hand. Now assigned every frame, which is a sort of five elements.
+
+### Measured
+
+Two frames of the same figure, one waving and one not: the lantern is at the end of the outstretched
+arm in one and raised with it in the other. The lantern lights change **24.5% of the frame**, and
+their own cube shadows — the figure's body blocking the lamp in its own hand — a further **4.7%**.
+
 ## [0.6.4] — 2026-09-10
 
 **Point lights cast now.** Every lamp in the sample stops at a wall, aimed or not, which finishes what
