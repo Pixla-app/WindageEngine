@@ -435,10 +435,41 @@ them. It renders identically to the tidy single-file version it replaced, which 
 loader that only ever sees identity node transforms is a loader whose node handling is untested, and
 that is exactly the bug this arrangement caught.
 
-**One thing a real character still tests that this does not.** Its material named no texture at all —
-the colour map ships beside it as a PNG a game binds by name, because the tool builds that map in
-memory and there is no file to reference. So "the file carries its own texture" stays proved by the
-sample alone.
+### And then it was actually run — 2026-09-09
+
+**Everything above was found by *probing* the character with a script. Probing is also what produced
+the one wrong answer this repository has had to correct**, so the sample gained a way to load a real
+one and it was pointed at a 93-joint, 39,360-vertex character with six clips. It renders: skinned,
+textured, shadowed, animating, at the right scale, standing on the ground.
+
+**Three things that only running it could show.**
+
+- **The engine could not load anything outside its own bundle.** `MeshLoader` and `RigLoader` took a
+  resource name and a `Bundle`, so a character sitting in a pipeline's output folder was unreachable —
+  and so is a mesh a level editor opens, and so is a mod. There are `url:` entry points now, and the
+  bundle calls are the convenience on top. **A gap of that shape cannot be found by a fixture**,
+  because a fixture is a bundle resource by construction.
+- **Facing is per asset, exactly as predicted.** The character's front is not where the sample's
+  markers assumed, and nothing in the file says which way it faces. It is a yaw applied where the
+  thing is placed.
+- **The material names no texture**, also as predicted: the tool builds the colour map in memory, so
+  there is no file for the exporter to reference. It ships beside the model and is bound by name.
+
+**Everything else simply worked** — 93 joints against a 128-joint palette, four influences per vertex
+genuinely in use, the node scale, the clip-per-file loading, the clip files' wrong rest poses, the
+declared up axis. That is what the fixtures were for, and it is the argument for having built them:
+the faults a real asset exposes are cheap to fix *once you know they exist*, and finding them is what
+the real asset is for.
+
+> **One rough edge left alone.** The base file's own clip keeps the exporter's name —
+> `root_A_MOD_BL_Idle_Standing_Femn_Animation_Base_Layer` — because only clip *files* are renamed to
+> their stems, and "RobotPlayer" would be no clearer for an idle. The sample blends the first two
+> clips positionally and prints which two, since that is otherwise a guess.
+
+**Pointing the sample at one:** `WINDAGE_SAMPLE_CHARACTER=/path/to/Name` — a path with no extension.
+It loads `<path>.usdc` for the rig and mesh, every `<path>_*.usdc` beside it as a clip, and
+`<path>_ColorMap.png` as the base colour. Not shipped, because a real character is tens of megabytes
+and belongs to whoever made it, and this repository builds with nothing checked out beside it.
 
 ## The probe that said this was possible — 2026-09-06
 

@@ -196,6 +196,39 @@ struct RigLoaderTests {
         #expect(reports.count == 1)
     }
 
+    /// **An engine that can only load from its own bundle cannot load anything a person chose** — a
+    /// level editor opening a mesh, a mod, a character sitting in a pipeline's output folder. This
+    /// gap existed until something outside the repository was actually loaded.
+    @Test("A rig loads from a URL, not only from a bundle")
+    func rigLoadsFromAURL() throws {
+        let url = try #require(Bundle.module.url(forResource: "offset-rig", withExtension: "usda"))
+        let rig = try RigLoader.load(url: url)
+        #expect(rig.skeleton.jointPaths == ["root", "root/mid"])
+        #expect(rig.clip(named: "Swing") != nil)
+    }
+
+    @Test("Clip files load by URL and are named from their own stems")
+    func clipsLoadFromURLs() throws {
+        let base = try #require(Bundle.module.url(forResource: "offset-rig", withExtension: "usda"))
+        let walk = try #require(Bundle.module.url(forResource: "offset-rig-walk", withExtension: "usda"))
+        let rig = try RigLoader.load(url: base, clipURLs: [walk])
+        #expect(rig.clips.count == 2)
+        #expect(rig.clip(named: "offset-rig-walk") != nil)
+    }
+
+    /// `MDLAsset(url:)` logs and hands back an empty asset rather than throwing, so an unreadable
+    /// clip file is one that contributed nothing — worth saying out loud, since silence here is a
+    /// character that simply never plays that move.
+    @Test("An unreadable clip URL is reported, not fatal")
+    func unreadableClipURLIsReported() throws {
+        let base = try #require(Bundle.module.url(forResource: "offset-rig", withExtension: "usda"))
+        let missing = base.deletingLastPathComponent().appendingPathComponent("not-here.usdc")
+        var reports: [String] = []
+        let rig = try RigLoader.load(url: base, clipURLs: [missing]) { reports.append($0) }
+        #expect(rig.clips.count == 1)
+        #expect(reports.count == 1)
+    }
+
     @Test("A missing file is named in the error")
     func missingFileThrows() {
         #expect(throws: RigLoaderError.self) {

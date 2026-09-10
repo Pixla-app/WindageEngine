@@ -103,7 +103,44 @@ public nonisolated enum RigLoader {
         guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
             throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
         }
-        return try rig(from: MDLAsset(url: url), named: "\(name).\(fileExtension)")
+        return try load(url: url)
+    }
+
+    /// The same, from a file anywhere on disk — see ``MeshLoader/load(url:device:vertexDescriptor:semantics:)``
+    /// for why a bundle is not enough.
+    public static func load(url: URL) throws -> Rig {
+        try rig(from: MDLAsset(url: url), named: url.lastPathComponent)
+    }
+
+    /// A rig from one file and its animations from others, all by URL.
+    ///
+    /// **A clip file's single animation is renamed to the file's own stem**, so
+    /// `…/RobotPlayer_Walk.usdc` becomes `RobotPlayer_Walk` — not
+    /// `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`, which is what the exporter called it.
+    public static func load(url: URL,
+                            clipURLs: [URL],
+                            reportingTo report: ((String) -> Void)? = nil) throws -> Rig {
+        var rig = try load(url: url)
+        for clipURL in clipURLs {
+            let stem = clipURL.deletingPathExtension().lastPathComponent
+            let loaded = clips(url: clipURL)
+            // **An unreadable file comes back empty rather than throwing.** `MDLAsset(url:)` logs and
+            // returns an empty asset, so a missing clip is a file that contributed nothing — worth
+            // saying out loud, since silence here is a character that simply never plays that move.
+            guard !loaded.isEmpty else {
+                report?("\(stem): no animation in \(clipURL.lastPathComponent)")
+                continue
+            }
+            let named = loaded.count == 1 ? [loaded[0].renamed(to: stem)] : loaded
+            let usable = named.filter { clip in
+                let unbound = rig.jointsNotDrivenBy(clip)
+                guard unbound.count == rig.skeleton.jointCount else { return true }
+                report?("\(stem): clip '\(clip.name)' drives none of this rig's joints — dropped")
+                return false
+            }
+            rig = rig.adding(usable)
+        }
+        return rig
     }
 
     /// Loads a rig from one file and its animations from others.
@@ -166,7 +203,12 @@ public nonisolated enum RigLoader {
         guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
             throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
         }
-        return clips(in: MDLAsset(url: url))
+        return clips(url: url)
+    }
+
+    /// The same, from a file anywhere on disk.
+    public static func clips(url: URL) -> [AnimationClip] {
+        clips(in: MDLAsset(url: url))
     }
 
     /// Pulls the rig out of an already-open asset.

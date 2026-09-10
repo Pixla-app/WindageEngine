@@ -12,6 +12,29 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.1.4] — 2026-09-09
+
+**A real character was loaded into the sample rather than probed with a script**, and it found a gap
+no fixture could: the engine could only load from its own bundle.
+
+### Added
+
+- **`MeshLoader.load(url:device:vertexDescriptor:semantics:)`**, **`RigLoader.load(url:)`**,
+  **`RigLoader.load(url:clipURLs:reportingTo:)`** and **`RigLoader.clips(url:)`** — loading from a
+  file anywhere on disk. The bundle calls delegate to these. A character in a pipeline's output
+  folder, a mesh a level editor opens, a mod: all of them are a URL and none is a bundle resource.
+- **The sample loads an external character** from `WINDAGE_SAMPLE_CHARACTER=/path/to/Name` — a path
+  with no extension. It reads `<path>.usdc` for the rig and mesh, every `<path>_*.usdc` beside it as
+  a clip, and `<path>_ColorMap.png` as the base colour.
+
+### What running it confirmed
+
+93 joints against a 128-joint palette, 39,360 vertices, four influences per vertex genuinely in use,
+the node scale, clip-per-file loading, the clip files' wrong rest poses and the declared up axis — all
+handled, by the fixtures built for them. What was **not** predicted: bundle-only loading. What was
+predicted and confirmed: facing is per asset and is not in the file, and the material names no
+texture because the tool builds its colour map in memory.
+
 ## [0.1.3] — 2026-09-09
 
 **A correction, and the defect behind it.** 0.1.1 said a real character "arrives Z-up and in

@@ -47,6 +47,23 @@ public nonisolated enum MeshLoader {
         guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
             throw MeshLoaderError.assetNotFound("\(name).\(fileExtension)")
         }
+        return try load(url: url, device: device, vertexDescriptor: vertexDescriptor,
+                        semantics: semantics)
+    }
+
+    /// The same, from a file anywhere on disk.
+    ///
+    /// **An engine that can only load from its own bundle cannot load anything a person chose.** A
+    /// level editor opening a mesh, a mod, a character sitting in a pipeline's output folder — all of
+    /// them are a URL and none of them is a bundle resource. The bundle call above is the convenience;
+    /// this is the one that does the work.
+    public static func load(
+        url: URL,
+        device: MTLDevice,
+        vertexDescriptor: MTLVertexDescriptor,
+        semantics: [Int: String]
+    ) throws -> [LoadedMesh] {
+        let name = url.lastPathComponent
 
         let modelDescriptor = MTKModelIOVertexDescriptorFromMetal(vertexDescriptor)
 

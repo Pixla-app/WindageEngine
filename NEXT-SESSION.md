@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-241 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+244 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,28 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — a real character, actually run (0.1.4)
+
+**Not probed with a script this time — loaded into the sample and looked at.** A 93-joint,
+39,360-vertex character with six clips renders: skinned, textured, shadowed, animating, at the right
+scale, standing on the ground.
+
+- **The engine could not load anything outside its own bundle.** Both loaders took a resource name and
+  a `Bundle`. There are `url:` entry points now. **A fixture could never have found this**, because a
+  fixture is a bundle resource by construction — which is the whole argument for running a real asset
+  rather than probing one.
+- **Facing is per asset**, as predicted, and is not in the file. The sample applies a half turn for an
+  external character; a game applies whatever its asset needs, where it places the thing.
+- **The material names no texture**, as predicted. The colour map ships beside the model and is bound
+  by name.
+- **Everything else worked** — the palette at real joint counts, four influences genuinely in use, the
+  node scale, clip-per-file loading, the wrong rest poses, the up axis. That is what the fixtures were
+  for.
+
+**Run it:** `WINDAGE_SAMPLE_CHARACTER=/path/to/Name swift run WindageSample` — a path with no
+extension, `<path>.usdc` plus `<path>_*.usdc` clips and `<path>_ColorMap.png`. Not shipped: a real
+character is tens of megabytes and belongs to whoever made it.
 
 ## Done 2026-09-09 — node transforms, and a correction (0.1.3)
 
@@ -270,20 +292,12 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Load the real character into the sample, or decide not to.** Everything it needs now exists and
-   is tested against fixtures that reproduce its shape — but the character itself lives outside this
-   repository and cannot be committed to it, so it has been *probed* rather than *run*. **Probing is
-   what produced the one wrong answer this repository has had to correct**, which is the argument for
-   actually running it: point the sample at it behind an environment variable, look at it, and write
-   down whatever the fixtures did not predict. Expect the material to name no texture, and expect
-   facing to need a yaw.
-
-2. **Materials still stop at base colour in a consumer.** `Material` carries normal, metallic,
+1. **Materials still stop at base colour in a consumer.** `Material` carries normal, metallic,
    roughness, occlusion and emissive slots and the sample binds only the first. Normal mapping is the
    next visible step and it needs **tangents in the vertex layout** — which Model I/O can generate —
    plus a mesh worth mapping.
 
-3. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
+2. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
    renders past 1.0 and writes it straight makes every lit surface clip identically, and each game
    currently supplies its own answer or none.
 

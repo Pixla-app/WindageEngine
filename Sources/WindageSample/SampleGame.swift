@@ -211,8 +211,12 @@ final class SampleGame: GameLoop {
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var figureMaps: [MTLTexture] = []
 
-    /// The up axis the figure's file declares. Identity here, and not for a bought Z-up asset.
+    /// The up axis the figure's file declares. Identity for the built-in one, and not necessarily
+    /// for a bought Z-up asset.
     private var figureOrientation: AssetOrientation = .identity
+
+    /// Whether the figure came from `WINDAGE_SAMPLE_CHARACTER` rather than from the repository.
+    private var usingExternalCharacter = false
 
     private var figureMesh: LoadedMesh?
     private var figureRig: Rig?
@@ -450,8 +454,93 @@ final class SampleGame: GameLoop {
     /// **Everything about the rig comes out of the file** — the joint hierarchy, the bind pose and
     /// both clips. Nothing about this figure is written into this game, which is the check that
     /// matters: a loader that only works on a rig the programmer already knows is not a loader.
+    /// A character from outside the repository, when one is pointed at.
+    ///
+    /// **`WINDAGE_SAMPLE_CHARACTER=/path/to/RobotPlayer`** — a path with no extension. The sample
+    /// loads `<path>.usdc` for the rig and mesh, every `<path>_*.usdc` beside it as a clip, and
+    /// `<path>_ColorMap.png` as the base colour if it is there.
+    ///
+    /// ### Why an environment variable rather than an asset in the repository
+    ///
+    /// A real character is tens of megabytes and belongs to whoever made it; this repository is meant
+    /// to build and run with nothing checked out beside it. But **loading one is the only way to find
+    /// what a generated fixture cannot predict** — and probing one with a script, rather than running
+    /// it, is exactly what produced the one wrong diagnosis this engine has had to correct. So: not
+    /// shipped, and one variable away from being run.
+    private func loadExternalCharacter() -> Bool {
+        guard let base = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHARACTER"],
+              !base.isEmpty else { return false }
+
+        let baseURL = URL(fileURLWithPath: base)
+        let rigURL = baseURL.appendingPathExtension("usdc")
+        guard FileManager.default.fileExists(atPath: rigURL.path) else {
+            print("WindageSample: no character at \(rigURL.path)")
+            return false
+        }
+
+        // Every sibling `<stem>_*.usdc` is a clip file. **Sorted, so the same two clips are picked
+        // every run** — a directory listing is not ordered, and a demo that cross-fades into a
+        // different animation each launch is not a demo of anything.
+        let stem = baseURL.lastPathComponent
+        let siblings = (try? FileManager.default.contentsOfDirectory(
+            at: baseURL.deletingLastPathComponent(), includingPropertiesForKeys: nil)) ?? []
+        let clipURLs = siblings
+            .filter { $0.pathExtension == "usdc" && $0.deletingPathExtension().lastPathComponent != stem
+                      && $0.lastPathComponent.hasPrefix(stem + "_") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        do {
+            figureRig = try RigLoader.load(url: rigURL, clipURLs: clipURLs) {
+                print("WindageSample: character clips — \($0)")
+            }
+        } catch {
+            print("WindageSample: character rig failed — \(error)")
+            return false
+        }
+
+        guard let mesh = try? MeshLoader.load(url: rigURL, device: engine.device,
+                                              vertexDescriptor: SampleGame.skinnedVertexDescriptor(),
+                                              semantics: SampleGame.skinnedSemantics).first else {
+            print("WindageSample: character mesh failed")
+            figureRig = nil
+            return false
+        }
+        figureMesh = mesh
+        figureOrientation = AssetOrientation.read(from: MDLAsset(url: rigURL))
+
+        // **The material names no texture, and that is normal.** The tool builds the colour map in
+        // memory, so there is no file for the exporter to reference; it is written beside the model
+        // instead and bound by name.
+        let colourMap = baseURL.deletingLastPathComponent()
+            .appendingPathComponent("\(stem)_ColorMap.png")
+        if let textures, FileManager.default.fileExists(atPath: colourMap.path),
+           let texture = try? textures.texture(.url(colourMap), isColor: true) {
+            figureMaps = Array(repeating: texture, count: mesh.mesh.submeshes.count)
+        } else {
+            figureMaps = resolveBaseColorMaps(of: mesh, named: stem)
+        }
+
+        engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
+        engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
+        if let textures { engine.residencySet.addAllocations(textures.allocations) }
+
+        if let rig = figureRig {
+            print("WindageSample: character '\(stem)' — \(rig.skeleton.jointCount) joints, "
+                  + "\(mesh.mesh.vertexCount) vertices, \(figureOrientation.upAxis)-up, clips: "
+                  + rig.clips.map(\.name).joined(separator: ", "))
+            if rig.skeleton.jointCount > SampleGame.maxJoints {
+                print("WindageSample: WARNING the rig has more joints than the palette holds")
+                figureRig = nil
+                return false
+            }
+        }
+        usingExternalCharacter = figureRig != nil
+        return usingExternalCharacter
+    }
+
     private func loadFigureAsset() {
         guard skinnedPipeline != nil else { return }
+        if loadExternalCharacter() { return }
         do {
             // **The rig from one file, the second animation from another.** That is how a character
             // exported one clip at a time arrives, and the clip file's own copy of the skeleton is
@@ -504,18 +593,28 @@ final class SampleGame: GameLoop {
     /// game would not prove the level format can carry one, and moving it would mean a rebuild.
     private func rebuildFigures() {
         figures.removeAll(keepingCapacity: true)
-        // "figure-wave" rather than "Wave": a clip file holding one animation has it renamed to the
-        // file's own name, because an exporter's internal name for an animation is not something a
-        // game wants to ask for.
-        guard let rig = figureRig, let idleClip = rig.clip(named: "Idle"),
-              let waveClip = rig.clip(named: "figure-wave") else { return }
+        // **First and second clip, whatever they are called.** The built-in figure names them `Idle`
+        // and `figure-wave`; an external character names them whatever its exporter did. Asking for a
+        // name would work for one of those and silently produce a statue for the other — so the pair
+        // is positional, and printed, because "which two is it blending" is otherwise a guess.
+        guard let rig = figureRig, let idleClip = rig.clips.first else { return }
+        let waveClip = rig.clips.count > 1 ? rig.clips[1] : idleClip
+        if figures.isEmpty {
+            print("WindageSample: figures blend '\(idleClip.name)' into '\(waveClip.name)'")
+        }
 
         for marker in level.markers(ofKind: "figure").prefix(SampleGame.maxFigures) {
             let yaw = marker.yaw
-            let c = cos(yaw), s = sin(yaw)
-            let placement = matrix_float4x4(columns: (SIMD4(c, 0, -s, 0),
+            // **Plus a half turn for an external character, and this is the finding that was
+            // predicted.** Which way an asset faces is not in the file: the built-in figure is
+            // symmetric front to back, and a bought character has a definite front that its own
+            // toolchain points wherever it likes. It is a per-asset yaw, applied where the thing is
+            // placed — which is somewhere a game already has to think.
+            let facing = yaw + (usingExternalCharacter ? .pi : 0)
+            let fc = cos(facing), fs = sin(facing)
+            let placement = matrix_float4x4(columns: (SIMD4(fc, 0, -fs, 0),
                                                      SIMD4(0, 1, 0, 0),
-                                                     SIMD4(s, 0, c, 0),
+                                                     SIMD4(fs, 0, fc, 0),
                                                      SIMD4(marker.position, 1)))
             // **Two corrections, both inside the placement.** The file's declared up axis, and the
             // mesh's own place in the file's node hierarchy — which is where an exported character's
