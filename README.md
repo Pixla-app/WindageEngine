@@ -144,7 +144,8 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
-lighting** · **punctual and spot lights, binned into a cluster grid** · a versioned level format
+lighting** · **punctual and spot lights, binned into a cluster grid, with a shadow atlas** ·
+a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -795,6 +796,56 @@ darkens the lit end. So the cone is tested against the box's bounding **sphere**
 to say yes when the answer was no and never the reverse — and ranking uses distance alone. Same
 asymmetry as `Frustum`: a false positive costs one iteration of a loop, a false negative deletes light
 the player can see.
+
+## Shadows for the lamps (2026-09-10)
+
+A spot light casts now. Until this, a lamp reached through a wall — a real limitation, and the reason
+the sample's ranges were kept short: a light that passes through geometry is only obvious when it
+reaches far enough for it to be.
+
+### An atlas rather than a texture each
+
+A shadow map per light means a texture per light: an allocation and a residency entry appearing and
+disappearing as a level loads, a render pass each, and a shader indexing an array of textures. One
+texture cut into tiles is a fixed allocation, **one render pass for every light** — the viewport moves
+between them — and a single binding the shader samples with an offset.
+
+**Scissored as well as viewported, which is not redundant.** A viewport limits where geometry lands;
+it does not stop a clear or a wide triangle touching a neighbour's tile, and one lamp bleeding into
+another's map is a shadow that appears in the wrong room.
+
+### Spot lights only, and the cost of the rest is written down
+
+A spot's shadow map is one perspective render — the same shape as a cascade, sharing the same
+pipeline, which is why this was affordable at all. **A point light needs six**, one face per
+direction, so shadowing every lamp in a room costs six times what shadowing the aimed ones does.
+
+`ShadowAtlas.viewProjection(for:)` returns **nil** for a light with no cone rather than silently
+shadowing one direction of six. The remaining work is cube tiles in the atlas, six passes per light,
+and a shader that picks a face before it picks a tile — a real piece of work rather than a hard one.
+
+### Four smaller ones
+
+- **The field of view is the cone's outer angle doubled**, and a little more. Less cuts the shadow off
+  inside the lit circle; more spends resolution on nothing.
+- **A lamp pointing straight down is the common case and exactly where a fixed up vector is
+  degenerate** — the cross product is zero, the basis becomes `NaN`, and nothing draws at all.
+- **The shader's constant bias is positive where the rasteriser's is negative.** They are different
+  quantities in different spaces — normalised light depth against a rasteriser offset — and reversed-Z
+  inverts the sign of only one of them. Two biases with the same name and opposite signs is worth a
+  comment at each.
+- **Tiles go to the brightest, longest-reaching lamps.** A light nobody can see casting a shadow
+  nobody can see is the tile to give away first.
+
+### Verified by difference, not by looking
+
+A spot's shadow on open ground is subtle enough that "looks about right" is not verification. The same
+frame was rendered with the per-light shadow flag on and off, and **1.2% of the frame changed**,
+confined to the lit ground.
+
+> **That measurement came before the search for a good camera angle**, and it is the right order. It
+> answered "is this working" in one step, so the time afterwards went into making it *visible* rather
+> than into wondering whether there was anything to see.
 
 ## Clustered shading (2026-09-10)
 

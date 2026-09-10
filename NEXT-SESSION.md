@@ -56,6 +56,38 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
 
+## Done 2026-09-10 — shadows for the lamps (0.6.3)
+
+**A spot light casts now**, so a wall stops it. `ShadowAtlas` is one depth texture cut into tiles, a
+spot's view-projection, and the pass that records every caster into its own tile.
+
+**An atlas rather than a texture each**: a fixed allocation, **one render pass for every light** — the
+viewport moves between them — and a single binding the shader samples with an offset. **Scissored as
+well as viewported**, which is not redundant: a viewport limits where geometry lands and does not stop
+a clear or a wide triangle touching a neighbour's tile.
+
+**Spot lights only.** A spot's map is one perspective render, sharing the cascade pipelines. A point
+light needs **six**, so `viewProjection(for:)` returns nil for a coneless light rather than silently
+shadowing one direction of six. The rest is cube tiles, six passes per light, and a shader that picks
+a face before a tile — real work rather than hard work.
+
+### Four smaller ones
+
+The field of view is the cone's outer angle doubled. **A lamp pointing straight down is the common
+case and exactly where a fixed up vector is degenerate** — zero cross product, `NaN` basis, nothing
+draws. **The shader's constant bias is positive where the rasteriser's is negative**: different
+quantities in different spaces, and reversed-Z inverts only one of them. And tiles go to the
+brightest, longest-reaching lamps.
+
+### Verified by difference, not by looking
+
+A spot's shadow on open ground is subtle enough that "looks about right" is not verification. The same
+frame with the per-light flag on and off: **1.2% of the frame changed**, confined to the lit ground.
+
+> **That measurement came before the hunt for a good camera angle**, which is the right order — it
+> answered "is this working" in one step, so the time afterwards went into making it visible rather
+> than into wondering whether there was anything to see.
+
 ## Done 2026-09-10 — clustered shading (0.6.2)
 
 **A fragment asks which lights reach *it*** rather than inheriting a list chosen for the whole mesh.
@@ -623,9 +655,10 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Local lights cast no shadows**, so a lamp reaches through a wall. Now the largest gap in the
-   lighting: it wants a shadow map per light, a cube map for a point light, and an atlas to hold
-   them. Worth writing down as the cost before anyone assumes it is cheap.
+1. **Point lights still cast nothing.** Spots do. A point light needs a cube — six faces, six passes,
+   and a shader that picks a face before it picks a tile. The atlas is already the place to put them;
+   what it needs is cube-shaped tiles and the face selection. **The cost is six times a spot's**, so
+   it is worth deciding how many lamps in a level genuinely need it before building it.
 
 2. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
    be at hundreds — it walks lights against tiles, so the cost grows with both. The GPU version is a

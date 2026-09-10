@@ -12,6 +12,54 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.3] — 2026-09-10
+
+**Shadows for the lamps.** A spot light casts now, so a wall stops it — which it had not, and which
+was the reason the sample's ranges were kept short.
+
+### Added
+
+- **`ShadowAtlas`** — one depth texture cut into tiles, a spot's view-projection, and the pass that
+  records every caster into its own tile.
+
+### An atlas rather than a texture each
+
+A texture per light is an allocation and a residency entry appearing and disappearing as levels load,
+a render pass each, and a shader indexing an array of textures. One texture cut into tiles is a fixed
+allocation, **one render pass for every light** — the viewport moves between them — and a single
+binding sampled with an offset.
+
+**Scissored as well as viewported**, which is not redundant: a viewport limits where geometry lands
+and does *not* stop a clear or a wide triangle touching a neighbour's tile. One lamp bleeding into
+another's map is a shadow that appears in the wrong room.
+
+### Spot lights only, and the cost of the rest is written down
+
+A spot's shadow map is one perspective render, the same shape as a cascade and sharing its pipeline.
+**A point light needs six** — a cube, one face per direction — so shadowing every lamp costs six times
+what shadowing the aimed ones does. `viewProjection(for:)` returns **nil** for a light with no cone
+rather than silently shadowing one direction of six.
+
+### Four smaller ones
+
+- **The field of view is the cone's outer angle doubled** (and a little more), so the map covers what
+  the light reaches — no less, which cuts the shadow off inside the lit circle, and no more, which
+  spends resolution on nothing.
+- **A lamp pointing straight down is the common case and exactly where a fixed up vector is
+  degenerate.** The cross product is zero, the basis becomes `NaN`, and nothing draws.
+- **The shader's constant bias is positive where the rasteriser's is negative.** They are different
+  quantities in different spaces — one is normalised light depth, the other a rasteriser offset — and
+  reversed-Z inverts the sign of only one of them.
+- **Tiles go to the brightest, longest-reaching lamps.** A light nobody can see casting a shadow
+  nobody can see is the tile to give away first.
+
+### Verified by difference, not by looking
+
+A spot shadow on open ground is subtle enough that "looks about right" is not verification. The same
+frame was rendered with the per-light shadow flag on and off: **1.2% of the frame changed**, confined
+to the lit ground. That is what said the atlas was working before any effort went into finding a
+camera angle that showed it off.
+
 ## [0.6.2] — 2026-09-10
 
 **Clustered shading.** A fragment asks which lights reach *it*, instead of inheriting a list chosen

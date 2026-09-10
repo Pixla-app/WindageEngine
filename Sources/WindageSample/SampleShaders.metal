@@ -20,6 +20,12 @@ struct PunctualLight {
     float4 positionAndRange;      // xyz position, w range
     float4 colourAndAngleOffset;  // rgb radiant intensity, w cone offset
     float4 directionAndAngleScale;// xyz cone direction, w cone scale
+    /// Where this light's shadow map sits in the atlas: xy offset, z scale, **w is whether it has
+    /// one at all**. A point light does not — six faces is a different feature — so it carries 0 and
+    /// takes the same path with the test skipped.
+    float4 shadowTile;
+    /// World to this light's clip space. Unused when `shadowTile.w` is 0.
+    float4x4 shadowViewProjection;
 };
 
 struct Uniforms {
@@ -35,6 +41,15 @@ struct Uniforms {
 };
 
 constant int kCascadeCount = 4;
+
+/// One over the atlas's edge, for the filter's step. **A constant rather than a uniform** because it
+/// is a property of the atlas the engine allocated, not of anything a frame varies.
+constant float kShadowAtlasTexel = 1.0 / 2048.0;
+
+/// Constant depth bias for a spot's map, in the light's normalised depth. Reversed-Z, so **positive**
+/// pushes a fragment towards the light and out of its own shadow — the opposite sign from the
+/// rasteriser's bias during the pass, which is a different quantity in a different space.
+constant float kSpotDepthBias = 0.0016;
 
 
 /// Frame-wide, written once per frame rather than once per object. The per-object `Uniforms` below
@@ -394,7 +409,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                // Not a per-draw list: a fragment reads the cell it is actually in.
                                const device PunctualLight *sceneLights [[buffer(4)]],
                                const device uint2 *clusterRanges [[buffer(5)]],
-                               const device uint *clusterIndices [[buffer(6)]])
+                               const device uint *clusterIndices [[buffer(6)]],
+                               depth2d<float> shadowAtlas [[texture(7)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -549,11 +565,40 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                   * visibilitySmithGGX(NdotV, lampNdotL, alpha);
         const float3 lampDiffuse = (1.0 - lampFresnel) * diffuseColour / M_PI_F;
 
-        // **No shadow term.** These lamps cast none — there is one shadow map and the sun has it —
-        // so a wall does not stop them. That is a real limitation and it is why their ranges are
-        // short: a lamp that reaches through a wall is only obvious when it reaches far enough to.
+        // **A spot's own shadow map, from its tile of the atlas.** A point light carries no tile and
+        // skips this — six faces is a different feature — so it still reaches through a wall.
+        float lampVisibility = 1.0;
+        if (sceneLights[i].shadowTile.w > 0.5) {
+            const float4 lightClip = sceneLights[i].shadowViewProjection
+                                   * float4(in.worldPosition, 1.0);
+            if (lightClip.w > 0.0) {
+                const float3 projected = lightClip.xyz / lightClip.w;
+                // Clip space is −1…1 in x and y; texture space is 0…1 with y downwards.
+                float2 uv = projected.xy * float2(0.5, -0.5) + 0.5;
+                if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+                    // Into this light's own tile. **Everything outside the tile belongs to another
+                    // lamp**, which is why the bounds test above is not optional: a sample that
+                    // wandered would read a shadow from the wrong room.
+                    uv = sceneLights[i].shadowTile.xy + uv * sceneLights[i].shadowTile.z;
+
+                    // Reversed-Z: nearer the light is a larger value, so lit means greater.
+                    const float reference = projected.z + kSpotDepthBias;
+                    const float texel = sceneLights[i].shadowTile.z * kShadowAtlasTexel;
+                    float sum = 0.0;
+                    for (int y = -1; y <= 1; ++y) {
+                        for (int x = -1; x <= 1; ++x) {
+                            sum += shadowAtlas.sample_compare(shadowSampler,
+                                                              uv + float2(x, y) * texel, reference);
+                        }
+                    }
+                    lampVisibility = sum / 9.0;
+                }
+            }
+        }
+        if (lampVisibility <= 0.0) { continue; }
+
         local += (lampDiffuse + lampSpecular) * sceneLights[i].colourAndAngleOffset.rgb
-               * attenuation * angular * lampNdotL;
+               * attenuation * angular * lampNdotL * lampVisibility;
     }
 
     // **Added, not lit.** Emission is light the surface makes, so nothing multiplies it: not the

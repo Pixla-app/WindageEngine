@@ -104,6 +104,9 @@ final class SampleGame: GameLoop {
         var positionAndRange: SIMD4<Float> = .zero
         var colourAndAngleOffset: SIMD4<Float> = .zero
         var directionAndAngleScale: SIMD4<Float> = .zero
+        /// xy atlas offset, z scale, **w whether this light has a map at all**.
+        var shadowTile: SIMD4<Float> = .zero
+        var shadowViewProjection: matrix_float4x4 = matrix_identity_float4x4
 
         init() {}
         init(_ light: PunctualLight) {
@@ -232,6 +235,12 @@ final class SampleGame: GameLoop {
     /// engine genuinely cannot own: two pipelines, compiled against *this game's* shaders and *this
     /// game's* vertex layouts.
     private let shadowMap: ShadowMap?
+
+    /// Shadow maps for the lamps, packed into one texture. **Optional like the cascades**: a machine
+    /// that cannot allocate it should still show the scene, with lamps that reach through walls.
+    private let shadowAtlas: ShadowAtlas?
+    /// Which lights have a tile this frame, recomputed with the light set.
+    private var shadowCasters: [(lightIndex: Int, caster: ShadowAtlas.Caster)] = []
     private let shadowPipeline: MTLRenderPipelineState?
     private let skinnedShadowPipeline: MTLRenderPipelineState?
 
@@ -456,8 +465,9 @@ final class SampleGame: GameLoop {
         // 0: vertices · 1: per-object uniforms · 2: frame data · 3: joints
         // 4: every light in the scene · 5: cluster ranges · 6: cluster light indices.
         tableDescriptor.maxBufferBindCount = 7
-        // 0: shadow · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM · 6: glow.
-        tableDescriptor.maxTextureBindCount = 7
+        // 0: cascades · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM
+        // 6: glow · 7: the lamps' shadow atlas.
+        tableDescriptor.maxTextureBindCount = 8
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -516,6 +526,8 @@ final class SampleGame: GameLoop {
         if textures == nil { print("WindageSample: no texture store — surfaces will be flat colours") }
 
         shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
+        shadowAtlas = ShadowAtlas(device: device, size: 2048, tilesPerSide: 4)
+        if shadowAtlas == nil { print("WindageSample: no shadow atlas — lamps will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
         // about a shadow pass — depth only, no colour attachment, one raster sample, the matching
@@ -576,6 +588,7 @@ final class SampleGame: GameLoop {
         engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer, jointBuffer,
                                             sceneLightBuffer, clusterRangeBuffer, clusterIndexBuffer])
         if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
+        if let shadowAtlas { engine.residencySet.addAllocations(shadowAtlas.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
         // Meshes, then the level resolved against them.
@@ -905,6 +918,7 @@ final class SampleGame: GameLoop {
         // **The budget is only used for the report now.** Clustering removed the per-draw limit; what
         // is left is the warning that a level has crowded a point, which is still worth knowing.
         lightSet = LightSet(lights: lights, budget: 4)
+        shadowCasters = assignShadowTiles()
         if lights.count > SampleGame.maxSceneLights {
             print("WindageSample: WARNING \(lights.count) lights against a buffer of "
                   + "\(SampleGame.maxSceneLights) — the rest will not be lit")
@@ -1377,7 +1391,14 @@ final class SampleGame: GameLoop {
                                         aspectRatio: aspectRatio,
                                         maximumIndices: SampleGame.maxClusterIndices)
 
-        let lights = lightSet.lights.prefix(SampleGame.maxSceneLights).map(PackedLight.init)
+        var lights = lightSet.lights.prefix(SampleGame.maxSceneLights).map(PackedLight.init)
+        if let shadowAtlas {
+            for (lightIndex, caster) in shadowCasters where lightIndex < lights.count {
+                let (offset, scale) = shadowAtlas.tile(caster.tile).uvTransform(atlasSize: shadowAtlas.size)
+                lights[lightIndex].shadowTile = SIMD4(offset.x, offset.y, scale, 1)
+                lights[lightIndex].shadowViewProjection = caster.viewProjection
+            }
+        }
         lights.withUnsafeBytes { source in
             guard let base = source.baseAddress, source.count > 0 else { return }
             sceneLightBuffer.contents()
@@ -1409,6 +1430,25 @@ final class SampleGame: GameLoop {
                   + "\(grid.tilesX)×\(grid.tilesY)×\(grid.slices) clusters — "
                   + "\(clustered.indices.count) entries, busiest cluster holds "
                   + "\(clustered.busiestCluster)")
+        }
+    }
+
+    /// Which lights got a tile of the shadow atlas this frame, and where they look from.
+    ///
+    /// **Spots only, and only as many as there are tiles.** Ranked by how much light they are
+    /// putting out, because a lamp nobody can see casting a shadow nobody can see is the tile to give
+    /// away first.
+    private func assignShadowTiles() -> [(lightIndex: Int, caster: ShadowAtlas.Caster)] {
+        guard let shadowAtlas else { return [] }
+        let candidates = lightSet.lights.enumerated()
+            .filter { $0.element.cone != nil }
+            .sorted { PunctualLight.luminance($0.element.colour) * $0.element.range
+                    > PunctualLight.luminance($1.element.colour) * $1.element.range }
+            .prefix(shadowAtlas.tileCount)
+
+        return candidates.enumerated().compactMap { tile, entry in
+            guard let matrix = ShadowAtlas.viewProjection(for: entry.element) else { return nil }
+            return (entry.offset, ShadowAtlas.Caster(tile: tile, viewProjection: matrix))
         }
     }
 
@@ -1463,6 +1503,14 @@ final class SampleGame: GameLoop {
         }
 
         shadowMap.encode(into: commandBuffer, frameSlot: frameSlot, batches: batches)
+
+        // **The lamps' maps, after the sun's and in one pass of their own.** Same batches, same
+        // pipelines — a spot's shadow map is a perspective render, which is the shape the cascade
+        // pipelines already are.
+        if let shadowAtlas, !shadowCasters.isEmpty {
+            shadowAtlas.encode(into: commandBuffer, frameSlot: frameSlot,
+                               casters: shadowCasters.map(\.caster), batches: batches)
+        }
     }
 
     func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
@@ -1473,6 +1521,7 @@ final class SampleGame: GameLoop {
         argumentTable.setAddress(
             shadowFrameBuffer.gpuAddress + UInt64(frameSlot * SampleGame.shadowFrameStride), index: 2)
         if let shadowMap { argumentTable.setTexture(shadowMap.texture.gpuResourceID, index: 0) }
+        if let shadowAtlas { argumentTable.setTexture(shadowAtlas.texture.gpuResourceID, index: 7) }
         if let environment {
             argumentTable.setTexture(environment.specular.gpuResourceID, index: 3)
             argumentTable.setTexture(environment.irradiance.gpuResourceID, index: 4)
