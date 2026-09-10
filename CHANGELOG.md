@@ -12,6 +12,73 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.4] — 2026-09-10
+
+**Point lights cast now.** Every lamp in the sample stops at a wall, aimed or not, which finishes what
+0.6.3 started and left costed.
+
+### Added
+
+- **`ShadowCubes`** — a cube-array depth texture, the six face matrices, and the pass that records
+  them. Six render passes per light, with two culls that take most of that back.
+- **`ShadowMap.Batch.bounds`** — an optional world-space box per drawable. Additive and defaulted to
+  `nil`, so existing batches compile and behave exactly as before.
+- **`BoundingBox.expanded(by:)`**.
+
+### A cube array, not tiles of the atlas — which is not what 0.6.3 said it would be
+
+The atlas's own note said the missing feature was "cube tiles in the atlas, six passes per light, and
+a shader that picks a face before it picks a tile". Two thirds of that survived the work. **The tiles
+did not**, for two reasons that only appear once the shader is written.
+
+**The face maths has to agree with six matrices, exactly.** Picking a face by hand means reproducing
+the cube convention — which axis becomes *u*, which becomes *v*, which of the six sign flips applies —
+in a shader, and matching it against six matrices built on the CPU. Every one of those is a place for
+a face to come out rotated or mirrored, and what that produces is a *plausible* shadow in the wrong
+direction.
+
+**And a filter kernel cannot cross a tile edge.** A tap that steps off the edge of a face does not
+land on the next texel of that face; it lands on a different face at a right angle. Clamping draws a
+bright seam down all twelve edges of the cube, and not clamping reads a neighbouring lamp's tile.
+
+A `typeCubeArray` texture hands both to the hardware: the sampler takes a **direction**, picks the
+face itself, filters across the seams itself, and compares itself. What is left on this side is the
+six view matrices — and those are pinned against the same convention in the tests.
+
+### The bias is in metres, not in depth
+
+A cube face stores `near / distance`, so a constant added to that depth is **a third of a millimetre
+at one metre and most of a metre at ten**. A bias tuned to remove acne beside the lamp deletes contact
+shadows across the room. Taken off the *distance* instead — scaled by the face's own texel size — it
+is one number at every range.
+
+### Six passes, and what the culls give back
+
+**A caster outside the light's range is skipped for all six faces; one outside a face's `Frustum` is
+skipped for that face.** In the sample's ruins, two casting point lights across 32 drawables:
+**35 objects recorded against 384 unculled**. Thirty-two drawables is what one unculled pass costs, so
+all twelve passes together came to barely more than one of them.
+
+`Frustum` has been in the package since 0.4 and had no consumer inside this repository until now.
+
+### Two smaller ones
+
+- **`right × up == forward` for a cube face, which looks like the wrong handedness and is not.** A
+  cube is sampled from the inside, so its faces are mirrored relative to a camera looking out. The
+  same relation already held for the spot's view and for the cascades, so the winding — and the
+  front-face cull — is unchanged in all three.
+- **The near plane travels with the light** rather than sitting in a shader constant, because it is
+  what the shader's reference depth is made of.
+
+### Verified twice
+
+The six matrices are checked against the sampler's own rule on the CPU: for a spread of directions,
+the face the rule picks and the *uv* it gives have to be where that face's matrix actually lands the
+point. That is the half a screenshot cannot show — a mirrored face still casts a shadow.
+
+The other half was a difference: the same frame with the per-light cube flag on and off changed
+**1.77% of it**, all of it around the two braziers.
+
 ## [0.6.3] — 2026-09-10
 
 **Shadows for the lamps.** A spot light casts now, so a wall stops it — which it had not, and which

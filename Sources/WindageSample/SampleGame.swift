@@ -106,6 +106,14 @@ final class SampleGame: GameLoop {
         var directionAndAngleScale: SIMD4<Float> = .zero
         /// xy atlas offset, z scale, **w whether this light has a map at all**.
         var shadowTile: SIMD4<Float> = .zero
+        /// x cube-array slice, y near plane, **w whether this light has a cube at all**.
+        ///
+        /// **A separate field from `shadowTile` rather than a kind flag sharing it.** The two are
+        /// mutually exclusive in practice — a lamp is either aimed or it is not — but packing them
+        /// into one `float4` means the shader reads `x` as a *uv offset* or as a *slice index*
+        /// depending on a number in `w`, and a field whose meaning depends on another field is the
+        /// kind of thing that survives every test and fails once a level mixes the two.
+        var shadowCube: SIMD4<Float> = .zero
         var shadowViewProjection: matrix_float4x4 = matrix_identity_float4x4
 
         init() {}
@@ -241,6 +249,13 @@ final class SampleGame: GameLoop {
     private let shadowAtlas: ShadowAtlas?
     /// Which lights have a tile this frame, recomputed with the light set.
     private var shadowCasters: [(lightIndex: Int, caster: ShadowAtlas.Caster)] = []
+
+    /// Cubes for the lamps that point nowhere. **Fewer of these than tiles, and deliberately** — six
+    /// passes each is the cost, so the sample takes the engine's mean default rather than dressing
+    /// it up.
+    private let shadowCubes: ShadowCubes?
+    /// Which point lights have a cube this frame.
+    private var cubeCasters: [(lightIndex: Int, caster: ShadowCubes.Caster)] = []
     private let shadowPipeline: MTLRenderPipelineState?
     private let skinnedShadowPipeline: MTLRenderPipelineState?
 
@@ -264,8 +279,44 @@ final class SampleGame: GameLoop {
     /// Which level is loaded. **`var`, and that is the whole point of this pass** — everything about
     /// this game assumed one level, loaded once, because there had only ever been one.
     private var levelIndex = 0
+
+    /// **Two environment overrides, and they exist so a picture can be taken twice.**
+    ///
+    /// Judging a rendering change means comparing two frames, and two frames are only comparable if
+    /// they are the *same* frame — which a sample that always opens on level one at the spawn point,
+    /// and is then walked to the interesting corner by hand, cannot give you. Everything this sample
+    /// has that is worth photographing was found by comparing a before against an after.
+    ///
+    /// - `WINDAGE_SAMPLE_LEVEL=1` — open on that level rather than the first.
+    /// - `WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch` — stand there instead of at the spawn. Angles in
+    ///   degrees, because they are numbers a person types.
+    ///
+    /// **`y` becomes the eye height rather than a one-off position**, because the walk clamps the
+    /// camera to the ground every step: set as a position it would be true for one frame and then
+    /// quietly gone, which is worse than not being settable at all.
+    private static var startingLevel: Int {
+        guard let value = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_LEVEL"],
+              let index = Int(value) else { return 0 }
+        return min(max(index, 0), SampleLevel.names.count - 1)
+    }
+
+    private static var startingCamera: Camera? {
+        guard let value = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CAMERA"] else { return nil }
+        let parts = value.split(separator: ",").compactMap { Float($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 5 else {
+            print("WindageSample: WINDAGE_SAMPLE_CAMERA wants x,y,z,yaw,pitch — ignoring '\(value)'")
+            return nil
+        }
+        return Camera(position: SIMD3(parts[0], parts[1], parts[2]),
+                      yaw: radians_from_degrees(parts[3]),
+                      pitch: radians_from_degrees(parts[4]))
+    }
     private var levelURL: URL { SampleLevel.writableURL(levelIndex) }
     private var levelPath: String
+
+    /// How far the eye is above this sample's flat ground. **A property rather than a literal in the
+    /// step** so `WINDAGE_SAMPLE_CAMERA` can raise it — see `startingCamera`.
+    private let eyeHeight: Float
     private var meshes: [String: LoadedMesh] = [:]
     /// Resolved from the level — anchors against this game's ground, which is simply y = 0.
     /// **Rebuilt whenever the level changes**, because in edit mode it changes constantly.
@@ -368,7 +419,8 @@ final class SampleGame: GameLoop {
         self.engine = engine
         let device = engine.device
 
-        let loaded = SampleLevel.load(0)
+        levelIndex = SampleGame.startingLevel
+        let loaded = SampleLevel.load(levelIndex)
         editor = LevelEditor(level: loaded.level)
         levelPath = loaded.report
 
@@ -380,6 +432,10 @@ final class SampleGame: GameLoop {
         var camera = Camera(position: (spawn?.position ?? SIMD3(0, 0, 12)) + SIMD3(0, 1.7, 0))
         camera.yaw = spawn?.yaw ?? 0
         camera.pitch = radians_from_degrees(Float(spawn?.values["pitch"] ?? 0))
+        // **A viewpoint the environment can override**, so a screenshot is reproducible. See
+        // `startingCamera`.
+        if let placed = SampleGame.startingCamera { camera = placed }
+        self.eyeHeight = camera.position.y
         self.camera = camera
         self.previousCamera = camera
 
@@ -467,7 +523,7 @@ final class SampleGame: GameLoop {
         tableDescriptor.maxBufferBindCount = 7
         // 0: cascades · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM
         // 6: glow · 7: the lamps' shadow atlas.
-        tableDescriptor.maxTextureBindCount = 8
+        tableDescriptor.maxTextureBindCount = 9
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -528,6 +584,8 @@ final class SampleGame: GameLoop {
         shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
         shadowAtlas = ShadowAtlas(device: device, size: 2048, tilesPerSide: 4)
         if shadowAtlas == nil { print("WindageSample: no shadow atlas — lamps will reach through walls") }
+        shadowCubes = ShadowCubes(device: device)
+        if shadowCubes == nil { print("WindageSample: no shadow cubes — point lights will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
         // about a shadow pass — depth only, no colour attachment, one raster sample, the matching
@@ -589,6 +647,7 @@ final class SampleGame: GameLoop {
                                             sceneLightBuffer, clusterRangeBuffer, clusterIndexBuffer])
         if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
         if let shadowAtlas { engine.residencySet.addAllocations(shadowAtlas.allocations) }
+        if let shadowCubes { engine.residencySet.addAllocations(shadowCubes.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
         // Meshes, then the level resolved against them.
@@ -864,6 +923,7 @@ final class SampleGame: GameLoop {
         rebuildFigures()
         rebuildLights()
         reportClustersNextFrame = true
+        reportCubeDrawsNextFrame = true
         if drawables.count > SampleGame.maxDrawables {
             print("WindageSample: WARNING \(drawables.count) drawables against a cap of "
                   + "\(SampleGame.maxDrawables) — the rest of the level will not be drawn")
@@ -919,6 +979,7 @@ final class SampleGame: GameLoop {
         // is left is the warning that a level has crowded a point, which is still worth knowing.
         lightSet = LightSet(lights: lights, budget: 4)
         shadowCasters = assignShadowTiles()
+        cubeCasters = assignShadowCubes()
         if lights.count > SampleGame.maxSceneLights {
             print("WindageSample: WARNING \(lights.count) lights against a buffer of "
                   + "\(SampleGame.maxSceneLights) — the rest will not be lit")
@@ -1207,7 +1268,7 @@ final class SampleGame: GameLoop {
             camera.advance(input.movement, deltaTime: deltaTime)
             // Stay on the ground. The sample has no terrain and no gravity — that is a game's job,
             // and pretending otherwise here would put a physics engine in a walkthrough.
-            camera.position.y = 1.7
+            camera.position.y = eyeHeight
             camera.position = resolved(from: before, to: camera.position)
         }
     }
@@ -1399,6 +1460,14 @@ final class SampleGame: GameLoop {
                 lights[lightIndex].shadowViewProjection = caster.viewProjection
             }
         }
+        if let shadowCubes {
+            for (lightIndex, caster) in cubeCasters where lightIndex < lights.count {
+                // **The near plane travels with the light**, because it is what the shader's
+                // reference depth is made of: `near / distance`. Reading it from a shader constant
+                // instead would be one number written down twice.
+                lights[lightIndex].shadowCube = SIMD4(Float(caster.slice), shadowCubes.nearPlane, 0, 1)
+            }
+        }
         lights.withUnsafeBytes { source in
             guard let base = source.baseAddress, source.count > 0 else { return }
             sceneLightBuffer.contents()
@@ -1452,10 +1521,30 @@ final class SampleGame: GameLoop {
         }
     }
 
+    /// Which point lights got a cube this frame.
+    ///
+    /// **The same ranking as the tiles and a much smaller number.** A cube is six passes, so the
+    /// question "which lamp deserves one" is six times as sharp as it is for a spot — and a level with
+    /// three braziers is going to have to answer it.
+    private func assignShadowCubes() -> [(lightIndex: Int, caster: ShadowCubes.Caster)] {
+        guard let shadowCubes else { return [] }
+        return lightSet.lights.enumerated()
+            .filter { $0.element.cone == nil }
+            .sorted { PunctualLight.luminance($0.element.colour) * $0.element.range
+                    > PunctualLight.luminance($1.element.colour) * $1.element.range }
+            .prefix(shadowCubes.lightCount)
+            .enumerated()
+            .map { slice, entry in
+                (entry.offset, ShadowCubes.Caster(slice: slice, position: entry.element.position,
+                                                  range: entry.element.range))
+            }
+    }
+
     /// The most lights any one cluster held last frame — **the number that decides the worst
     /// fragment's cost**, and the one clustering exists to keep small.
     private(set) var busiestCluster = 0
     private var reportClustersNextFrame = true
+    private var reportCubeDrawsNextFrame = true
 
     /// The shadow pass, before anything is drawn to the screen.
     func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float) {
@@ -1489,7 +1578,10 @@ final class SampleGame: GameLoop {
             count: visibleDrawableCount,
             mesh: { self.drawables[$0].mesh.mesh },
             uniformAddress: { self.uniformBuffer.gpuAddress
-                + UInt64(self.uniformOffset(frameSlot: frameSlot, drawable: $0)) })]
+                + UInt64(self.uniformOffset(frameSlot: frameSlot, drawable: $0)) },
+            // **`volumes` is index-aligned with `drawables`** — the same loop appends to both, which
+            // is the reason the game has one list of "what is there" rather than two.
+            bounds: { self.volumes[$0].worldBounds })]
 
         if let skinnedShadowPipeline, let mesh = figureMesh, visibleFigureCount > 0 {
             batches.append(ShadowMap.Batch(
@@ -1499,7 +1591,12 @@ final class SampleGame: GameLoop {
                 uniformAddress: { self.uniformBuffer.gpuAddress
                     + UInt64(self.uniformOffset(frameSlot: frameSlot, figure: $0)) },
                 jointPaletteAddress: { self.jointBuffer.gpuAddress
-                    + UInt64(self.jointOffset(frameSlot: frameSlot, figure: $0)) }))
+                    + UInt64(self.jointOffset(frameSlot: frameSlot, figure: $0)) },
+                // **The bind pose, widened.** A skinned mesh's bounds are the pose's, not the file's,
+                // and a raised arm leaves the box the loader measured. Half a metre covers this
+                // sample's clips; a game with a vault or a dive computes it from the pose instead.
+                bounds: { Volume(local: mesh.bounds, transform: self.figures[$0].transform)
+                    .worldBounds.expanded(by: 0.5) }))
         }
 
         shadowMap.encode(into: commandBuffer, frameSlot: frameSlot, batches: batches)
@@ -1510,6 +1607,20 @@ final class SampleGame: GameLoop {
         if let shadowAtlas, !shadowCasters.isEmpty {
             shadowAtlas.encode(into: commandBuffer, frameSlot: frameSlot,
                                casters: shadowCasters.map(\.caster), batches: batches)
+        }
+
+        // **And the lamps that point nowhere, six faces each.** Reported once per level because six
+        // times the passes is the sort of cost that should be visible rather than inferred.
+        if let shadowCubes, !cubeCasters.isEmpty {
+            let draws = shadowCubes.encode(into: commandBuffer, frameSlot: frameSlot,
+                                           casters: cubeCasters.map(\.caster), batches: batches)
+            if reportCubeDrawsNextFrame {
+                reportCubeDrawsNextFrame = false
+                let unculled = cubeCasters.count * ShadowCubes.faceCount
+                    * batches.reduce(0) { $0 + $1.count }
+                print("WindageSample: \(cubeCasters.count) point light(s) casting — \(draws) draws "
+                      + "against \(unculled) unculled")
+            }
         }
     }
 
@@ -1522,6 +1633,7 @@ final class SampleGame: GameLoop {
             shadowFrameBuffer.gpuAddress + UInt64(frameSlot * SampleGame.shadowFrameStride), index: 2)
         if let shadowMap { argumentTable.setTexture(shadowMap.texture.gpuResourceID, index: 0) }
         if let shadowAtlas { argumentTable.setTexture(shadowAtlas.texture.gpuResourceID, index: 7) }
+        if let shadowCubes { argumentTable.setTexture(shadowCubes.texture.gpuResourceID, index: 8) }
         if let environment {
             argumentTable.setTexture(environment.specular.gpuResourceID, index: 3)
             argumentTable.setTexture(environment.irradiance.gpuResourceID, index: 4)

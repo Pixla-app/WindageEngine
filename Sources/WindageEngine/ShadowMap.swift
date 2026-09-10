@@ -53,16 +53,27 @@ public final class ShadowMap {
         /// shadow posed one frame behind its character is a shadow that lags a wave.
         public let jointPaletteAddress: ((Int) -> UInt64)?
 
+        /// This drawable's bounds in **world** space, for passes that can cull.
+        ///
+        /// **Optional, and nil means draw everything.** A cascade covers what the camera covers, so
+        /// there is little to cull and nothing to gain; ``ShadowCubes`` renders the same scene six
+        /// times from one point, where a light's range and a face's frustum remove most of it. A
+        /// batch that cannot cheaply say where its objects are keeps the conservative behaviour,
+        /// which costs draws rather than deleting shadows.
+        public let bounds: ((Int) -> BoundingBox)?
+
         public init(pipeline: MTLRenderPipelineState,
                     count: Int,
                     mesh: @escaping (Int) -> MTKMesh,
                     uniformAddress: @escaping (Int) -> UInt64,
-                    jointPaletteAddress: ((Int) -> UInt64)? = nil) {
+                    jointPaletteAddress: ((Int) -> UInt64)? = nil,
+                    bounds: ((Int) -> BoundingBox)? = nil) {
             self.pipeline = pipeline
             self.count = count
             self.mesh = mesh
             self.uniformAddress = uniformAddress
             self.jointPaletteAddress = jointPaletteAddress
+            self.bounds = bounds
         }
     }
 

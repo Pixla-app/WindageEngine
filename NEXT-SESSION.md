@@ -12,6 +12,10 @@ what changed recently and what is next.
 
 **Run it:** `swift run WindageSample` · **Test it:** `swift test`
 
+**Reproduce a screenshot:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_CAMERA=-4,20,4,0,-62 swift run
+WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degrees. `y` is the eye
+height, because the walk clamps to the ground every step.
+
 ---
 
 ## Start here — how the work proceeds
@@ -43,18 +47,62 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
-## State — 2026-09-09
+## State — 2026-09-10
 
-301 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+350 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
 **In the package:** frame pacing and frames in flight (`FrameRenderer`, `FixedTimestep`), the
 reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshLoader`, `Math`,
 `BoundingBox`, `Volume` and the one hit test, `Frustum`, `ShadowCascades`, `Level` and `LevelEditor`,
-`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
-`AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
-`TextureStore`**.
+`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, `Skeleton`,
+`AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
+`ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
+`ClusterGrid` and `ClusteredLights`, and — for the lamps that cast — **`ShadowMap`, `ShadowAtlas`
+and `ShadowCubes`**.
+
+## Done 2026-09-10 — point lights cast too (0.6.4)
+
+**Every lamp in the sample stops at a wall now**, aimed or not. `ShadowCubes` is a cube-array depth
+texture, the six face matrices, and the pass that records them.
+
+**A cube array, not tiles of the atlas — which is not what 0.6.3 predicted.** Two of the three things
+that entry listed survived; the tiles did not, for two reasons that only appear once the shader is
+written. **The face maths would have to agree with six matrices exactly** — which axis becomes *u*,
+which becomes *v*, which of the six sign flips applies — and a mirrored face still casts a shadow, just
+in the wrong place, which reads on screen as a bias problem. **And a filter kernel cannot cross a tile
+edge**: a tap off the edge of a face lands on a different face at a right angle, so clamping draws a
+bright seam down all twelve edges and not clamping reads a neighbouring lamp's tile. The hardware does
+both jobs for a `typeCubeArray`.
+
+**The bias is in metres, not in depth.** A face stores `near / distance`, so the same added constant is
+a third of a millimetre at one metre and most of a metre at ten.
+
+**Six passes per light, and two culls give most of it back.** Range for all six faces, `Frustum` per
+face. The ruins, two casting point lights over 32 drawables: **35 objects recorded against 384
+unculled** — twelve passes for barely more than one unculled one. `ShadowMap.Batch` gained an optional
+`bounds` for it, and this is the first consumer `Frustum` has had inside this repository.
+
+**`right × up == forward` for a cube face**, which looks like the wrong handedness and is not — a cube
+is sampled from the inside. The same relation already held for a spot and for the cascades, so the
+winding and the front-face cull are unchanged. Asserted in the tests, because it is exactly the sort
+of thing somebody "fixes".
+
+### Verified twice, because half of it is invisible
+
+The half a screenshot cannot show is whether the matrices agree with the sampler. `lookup(direction:)`
+writes the sampler's own rule down, nothing calls it at runtime, and the test asserts that for a
+spread of directions the face and *uv* it gives are where that face's matrix actually lands the point.
+
+The half it can show was a difference, as with the spots: the same frame with the cube flag on and off
+changed **1.77% of it**, around the two braziers.
+
+> **The sample gained `WINDAGE_SAMPLE_LEVEL` and `WINDAGE_SAMPLE_CAMERA` for this.** Comparing two
+> frames needs them to be the *same* frame, which a sample that always opens on level one and is then
+> walked to the interesting corner by hand cannot give. `y` sets the eye height rather than a one-off
+> position, because the walk clamps to the ground every step — set as a position it would be true for
+> one frame and then quietly gone.
 
 ## Done 2026-09-10 — shadows for the lamps (0.6.3)
 
@@ -655,19 +703,19 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Point lights still cast nothing.** Spots do. A point light needs a cube — six faces, six passes,
-   and a shader that picks a face before it picks a tile. The atlas is already the place to put them;
-   what it needs is cube-shaped tiles and the face selection. **The cost is six times a spot's**, so
-   it is worth deciding how many lamps in a level genuinely need it before building it.
-
-2. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
+1. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
    be at hundreds — it walks lights against tiles, so the cost grows with both. The GPU version is a
    compute pass over the grid, and the maths here is what it would be written against. **Not needed
    yet**: measured, the sample's ten lights bin in well under a millisecond.
 
-3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
+2. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format
    change rather than an engine one.
+
+3. **A soft shadow is four taps wide on a cube and nine on a spot**, and neither is a penumbra. Both are
+   percentage-closer filters of a fixed radius, so a contact edge and a shadow across a room are
+   equally hard. PCSS or a variance map is the shape of the answer; **nothing in the sample looks
+   wrong for want of it**, which is why it is here rather than above.
 
 ## Standing reminders
 

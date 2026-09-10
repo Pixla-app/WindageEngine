@@ -144,7 +144,8 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
-lighting** · **punctual and spot lights, binned into a cluster grid, with a shadow atlas** ·
+lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
+shadow cubes** ·
 a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
@@ -821,8 +822,9 @@ pipeline, which is why this was affordable at all. **A point light needs six**, 
 direction, so shadowing every lamp in a room costs six times what shadowing the aimed ones does.
 
 `ShadowAtlas.viewProjection(for:)` returns **nil** for a light with no cone rather than silently
-shadowing one direction of six. The remaining work is cube tiles in the atlas, six passes per light,
-and a shader that picks a face before it picks a tile — a real piece of work rather than a hard one.
+shadowing one direction of six. The remaining work was described here as "cube tiles in the atlas, six
+passes per light, and a shader that picks a face before it picks a tile"; **two thirds of that was
+right**, and the section below is what happened to the other third.
 
 ### Four smaller ones
 
@@ -846,6 +848,72 @@ confined to the lit ground.
 > **That measurement came before the search for a good camera angle**, and it is the right order. It
 > answered "is this working" in one step, so the time afterwards went into making it *visible* rather
 > than into wondering whether there was anything to see.
+
+## Point lights cast too (2026-09-10)
+
+Every lamp in the sample stops at a wall now, aimed or not. `ShadowCubes` is a cube-array depth
+texture, the six face matrices, and the pass that records them.
+
+### A cube array rather than tiles of the atlas
+
+The section above predicted cube-shaped tiles inside `ShadowAtlas`. That was the wrong shape, and both
+reasons only appear once the shader is written.
+
+**The face maths has to agree with six matrices exactly.** Picking a face by hand means reproducing
+the cube convention in a shader — which axis becomes *u*, which becomes *v*, which of the six sign
+flips applies — and matching it against six view matrices built on the CPU. Every one of those is a
+place for a face to come out rotated or mirrored, and a mirrored face still casts a shadow. It lands
+somewhere else, and on screen that reads as a bias problem rather than a convention problem.
+
+**And a filter kernel cannot cross a tile edge.** A tap that steps off the edge of a face does not
+land on the next texel of that face; it lands on a different face at a right angle. Clamping draws a
+bright seam down all twelve edges of the cube; not clamping reads a neighbouring lamp's tile.
+
+A `typeCubeArray` texture hands both problems to the hardware. The sampler takes a **direction**,
+picks the face itself, filters across the seams itself, and does its own comparison — so the
+convention is the hardware's and there is nothing left to match. What stays on this side is the six
+view matrices.
+
+### The bias is in metres, not in depth
+
+A cube face stores `near / distance`. **A constant added to that depth is a third of a millimetre at
+one metre and most of a metre at ten**, so a bias tuned to clear acne beside the lamp deletes contact
+shadows across the room. Taking it off the *distance* instead, scaled by the face's own texel size,
+makes it one number at every range — the same reasoning as `ShadowCascades.biasTexels`, arrived at
+from the opposite direction.
+
+### Six passes, and what culling gives back
+
+Six passes per light is the honest cost, and it is why `ShadowCubes` defaults to **two** casting
+lights rather than a comfortable number: a level should be choosing which lamps deserve one.
+
+Two culls take most of it back, and both are in the pass. **A caster outside the light's range is
+skipped for all six faces; one outside a face's `Frustum` is skipped for that face.** In the sample's
+ruins — two casting point lights across thirty-two drawables — that is **35 objects recorded against
+384 unculled**, so all twelve passes together cost barely more than one unculled pass.
+
+`ShadowMap.Batch` grew an optional `bounds` for this. Nil means draw everything, which is the
+conservative direction: a false positive costs a draw and a false negative deletes a shadow.
+
+> **`Frustum` had no consumer inside this repository until now.** It arrived in 0.4 from two games
+> that wanted it, and the first thing here to need it was a shadow pass rather than a camera.
+
+### `right × up == forward`, which looks like the wrong handedness
+
+A cube map is sampled from the *inside*, so its faces are mirrored relative to a camera looking out.
+The relation already held for a spot's view matrix and for the cascades, so the winding and the
+front-face cull are the same in all three — but it is the kind of thing that gets "fixed" by somebody
+checking a determinant, so it is asserted in the tests.
+
+### Verified twice, because half of it is invisible
+
+**The half a screenshot cannot show** is whether the six matrices agree with the sampler's own rule.
+That is checked on the CPU: for a spread of directions, the face the rule picks and the *uv* it gives
+have to be exactly where that face's matrix lands the point. `ShadowCubes.lookup(direction:)` exists
+only for this — nothing calls it at runtime, because the hardware does that job.
+
+**The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
+on and off changed **1.77% of it**, all of it around the two braziers.
 
 ## Clustered shading (2026-09-10)
 

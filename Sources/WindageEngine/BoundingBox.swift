@@ -98,4 +98,17 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
     public func closestPoint(to point: SIMD3<Float>) -> SIMD3<Float> {
         simd_clamp(point, minimum, maximum)
     }
+
+    /// The same box with a margin on every side.
+    ///
+    /// **For the cases where a measured box is known to be an underestimate**, which is every skinned
+    /// mesh: a loader measures the bind pose, and an arm raised at runtime leaves it. A culling test
+    /// against the measured box then deletes the character's shadow at exactly the moment it moves.
+    ///
+    /// A negative margin shrinks, and is allowed to invert the box — a caller asking for that is
+    /// asking for an empty volume, and quietly clamping it would hide the mistake.
+    public func expanded(by margin: Float) -> BoundingBox {
+        BoundingBox(minimum: minimum - SIMD3(repeating: margin),
+                    maximum: maximum + SIMD3(repeating: margin))
+    }
 }

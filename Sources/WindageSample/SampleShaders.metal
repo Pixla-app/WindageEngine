@@ -24,6 +24,9 @@ struct PunctualLight {
     /// one at all**. A point light does not — six faces is a different feature — so it carries 0 and
     /// takes the same path with the test skipped.
     float4 shadowTile;
+    /// Where this light's cube sits: x the array slice, y the near plane its faces were projected
+    /// with, **w whether it has one at all**. A spot does not — it has a tile instead.
+    float4 shadowCube;
     /// World to this light's clip space. Unused when `shadowTile.w` is 0.
     float4x4 shadowViewProjection;
 };
@@ -50,6 +53,22 @@ constant float kShadowAtlasTexel = 1.0 / 2048.0;
 /// pushes a fragment towards the light and out of its own shadow — the opposite sign from the
 /// rasteriser's bias during the pass, which is a different quantity in a different space.
 constant float kSpotDepthBias = 0.0016;
+
+/// One texel of a cube face, as a fraction of the **face's own half-width**. A face is a 90° frustum,
+/// so its extent at distance *d* is 2*d* — one texel is `2d / size`, which is why this is 2 over the
+/// edge and not 1 over it.
+constant float kShadowCubeTexel = 2.0 / 512.0;
+
+/// How much to pull a fragment towards the lamp before comparing, **measured in texels of the face
+/// it lands on**, and therefore in metres once multiplied out.
+///
+/// **Not a constant added to the stored depth, which is what a spot uses and what would be wrong
+/// here.** A cube face stores `near / distance`; the same added constant is a third of a millimetre
+/// at one metre and most of a metre at ten, so a bias that removes acne close to the lamp deletes
+/// contact shadows across the room. In texels it is one number at every distance.
+constant float kShadowCubeBiasTexels = 2.0;
+/// A floor for it, in metres, so a fragment almost touching the lamp still gets some room.
+constant float kShadowCubeMinBias = 0.01;
 
 
 /// Frame-wide, written once per frame rather than once per object. The per-object `Uniforms` below
@@ -410,7 +429,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                const device PunctualLight *sceneLights [[buffer(4)]],
                                const device uint2 *clusterRanges [[buffer(5)]],
                                const device uint *clusterIndices [[buffer(6)]],
-                               depth2d<float> shadowAtlas [[texture(7)]])
+                               depth2d<float> shadowAtlas [[texture(7)]],
+                               depthcube_array<float> shadowCubes [[texture(8)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -594,6 +614,37 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                     lampVisibility = sum / 9.0;
                 }
             }
+        }
+        // **A lamp that points nowhere reads its own cube, and the hardware picks the face.** The
+        // direction is the whole coordinate — no tile, no uv, and no seam, because the sampler
+        // filters across a face edge onto the correct neighbour instead of clamping.
+        else if (sceneLights[i].shadowCube.w > 0.5) {
+            const float3 fromLight = -toLight;
+            const float3 a = abs(fromLight);
+            const float major = max(a.x, max(a.y, a.z));
+
+            // **The bias comes off the distance, not off the depth.** A face stores `near / distance`,
+            // so a constant added to that is a different distance at every range; in texels — which
+            // is what this is once multiplied out — it is one number everywhere.
+            const float bias = max(kShadowCubeMinBias,
+                                   major * kShadowCubeTexel * kShadowCubeBiasTexels);
+            const float reference = sceneLights[i].shadowCube.y / max(major - bias, 1e-4);
+            const uint slice = uint(sceneLights[i].shadowCube.x);
+
+            // **Four taps, and they are directions rather than uv steps.** A cube has no second
+            // texture coordinate to walk along, so the sample direction is nudged inside the plane
+            // perpendicular to it. The nudge is one texel's worth of angle at the face's own scale:
+            // a face is a 90° frustum, so its extent at this distance is `2 * major`.
+            const float3 hint = (a.y >= major) ? float3(1.0, 0.0, 0.0) : float3(0.0, 1.0, 0.0);
+            const float3 tangent = normalize(cross(fromLight, hint));
+            const float3 bitangent = normalize(cross(fromLight, tangent));
+            const float3 step_ = (tangent + bitangent) * (major * kShadowCubeTexel);
+            const float3 skew = (tangent - bitangent) * (major * kShadowCubeTexel);
+            lampVisibility = 0.25
+                * (shadowCubes.sample_compare(shadowSampler, fromLight + step_, slice, reference)
+                 + shadowCubes.sample_compare(shadowSampler, fromLight - step_, slice, reference)
+                 + shadowCubes.sample_compare(shadowSampler, fromLight + skew, slice, reference)
+                 + shadowCubes.sample_compare(shadowSampler, fromLight - skew, slice, reference));
         }
         if (lampVisibility <= 0.0) { continue; }
 

@@ -91,4 +91,22 @@ struct VolumeTests {
                                 direction: SIMD3(0, 0, -1),
                                 against: [behind]) == nil)
     }
+
+    /// **A measured box is an underestimate for anything that moves inside it** — a skinned mesh's
+    /// bounds are the bind pose's, and a raised arm leaves them.
+    @Test("A box can be widened, and a negative margin is allowed to invert it")
+    func boxExpands() {
+        let box = BoundingBox(minimum: SIMD3(-1, 0, -1), maximum: SIMD3(1, 2, 1))
+        let wide = box.expanded(by: 0.5)
+        #expect(wide.minimum == SIMD3(-1.5, -0.5, -1.5))
+        #expect(wide.maximum == SIMD3(1.5, 2.5, 1.5))
+        #expect(wide.contains(SIMD3(1.4, 2.4, 0)))
+        #expect(!box.contains(SIMD3(1.4, 2.4, 0)))
+
+        // Shrinking past the middle inverts it rather than clamping: a caller asking for that is
+        // asking for an empty volume, and quietly fixing it would hide the mistake.
+        let inverted = box.expanded(by: -5)
+        #expect(inverted.minimum.x > inverted.maximum.x)
+        #expect(!inverted.contains(.zero))
+    }
 }

@@ -28,13 +28,27 @@
         0.6,
         0.3
       ],
-      "intensity" : 30,
+      "intensity" : 90,
       "position" : [
         -4.0,
         2.2,
-        -9
+        -10
       ],
-      "range" : 9
+      "range" : 14
+    },
+    {
+      "colour" : [
+        1.0,
+        0.86,
+        0.52
+      ],
+      "intensity" : 80,
+      "position" : [
+        -6.5,
+        2.4,
+        -30
+      ],
+      "range" : 14
     },
     {
       "colour" : [
