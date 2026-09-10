@@ -12,6 +12,64 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.2] — 2026-09-10
+
+**Clustered shading.** A fragment asks which lights reach *it*, instead of inheriting a list chosen
+for the whole mesh it belongs to.
+
+> **A large addition on a patch number**, which is the versioning rule working as intended: the number
+> tracks compatibility, not significance. Nothing that compiled against 0.6.1 changes.
+
+### The problem it fixes, which 0.6.1 found and could not solve
+
+`LightSet` picks a few lights per object — correct, cheap, and **only as good as the draws are
+small**. The sample's ground is one eight-hundred-metre quad, so a single draw got four lights for an
+entire level and a spot five metres up lost to lamps standing closer to the plane. No budget and no
+ordering rule fixes that; the object is simply the wrong unit to choose lights for.
+
+A cluster is the right unit: a small box of the world, so the lights reaching it are few by
+construction, and a fragment belongs to exactly one.
+
+### Added
+
+- **`ClusterGrid`** — the frustum cut into tiles and depth slices, with the slicing a shader needs as
+  two constants and a logarithm.
+- **`ClusteredLights`** — bins lights into the clusters they reach, as the two arrays a shader reads.
+
+### Three decisions worth the words
+
+- **Slices are exponential.** Cut the depth evenly and the near slices are microscopic while the far
+  ones are hundreds of metres deep — a perspective frustum's cross-section grows with distance, so an
+  even cut puts almost every cluster where there is almost no screen. Slicing by the logarithm makes
+  each cluster roughly cubic.
+- **Clustering needs a finite far and this engine's projection has none.** The infinite far plane is
+  deliberate — no view distance to tune, nothing to clip at range — so `ClusterGrid` carries its own
+  `lightRange`. Honest rather than awkward: a punctual light has a finite range by definition, so
+  there is a distance past which none of them reaches.
+- **An offset and a count per cluster, not a fixed list.** A fixed list means every cluster pays for
+  the worst one — three thousand cells times a budget of eight is twenty-four thousand entries, nearly
+  all empty. A range into a shared list costs an empty cluster nothing and puts no ceiling on a full
+  one.
+
+### Measured
+
+Sixty-four lights in a test scene: **busiest cluster 9, average 2.2**. The sample's ruins: ten lights,
+**busiest 6**. That ratio is the whole point — the worst fragment loops nine times instead of
+sixty-four, and the typical one twice.
+
+### The bug that made it render as nothing at all
+
+The first working version drew **no local light whatsoever**, with the CPU side provably correct: six
+lights, 222 cluster entries, 173 cells occupied.
+
+**A `SIMD3<Float>` used as padding has 16-byte alignment in Swift; the shader's three trailing scalars
+have four.** The struct came out 48 bytes on one side and 32 on the other, so every field after it in
+the frame uniforms was read from the wrong address. It compiled, it ran, and it looked exactly like a
+feature that had not been wired up.
+
+There is a test pinning the layout now — size, stride *and* alignment — because a struct that agrees
+on its fields and disagrees on its padding is the worst kind of mismatch.
+
 ## [0.6.1] — 2026-09-10
 
 **Spot lights** — a cone, for the lamps that are aimed.

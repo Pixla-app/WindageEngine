@@ -56,6 +56,44 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
 
+## Done 2026-09-10 — clustered shading (0.6.2)
+
+**A fragment asks which lights reach *it*** rather than inheriting a list chosen for the whole mesh.
+`ClusterGrid` cuts the frustum into 16×8×24 cells; `ClusteredLights` bins the scene's lights into the
+cells they reach, once per frame, on the CPU.
+
+**This is the floor per-draw selection could not get under** — the sample's ground is one
+eight-hundred-metre quad, so one draw got four lights for a level. A cluster is a small box of the
+world, so the lights reaching it are few by construction.
+
+### Three decisions
+
+- **Exponential slices.** An even cut makes near slices microscopic and far ones hundreds of metres
+  deep, because a frustum's cross-section grows with distance. The logarithm keeps clusters cubic.
+- **Clustering needs a finite far and this projection has none**, so `ClusterGrid` carries its own
+  `lightRange`. Honest rather than awkward: a punctual light's range is finite by definition.
+- **An offset and a count per cluster**, not a fixed list each — an empty cell costs nothing and a
+  full one has no ceiling.
+
+### Measured
+
+64 lights in a test scene: busiest cluster **9**, average **2.2**. The ruins: 10 lights, busiest
+**6**. The worst fragment loops nine times instead of sixty-four.
+
+### The bug that made it render as nothing
+
+It drew **no local light at all**, with the CPU side provably right — 6 lights, 222 entries, 173 cells
+occupied. Printing those numbers is what turned an open-ended hunt into a two-line one: the fault had
+to be between the buffer and the shader.
+
+**A `SIMD3<Float>` used as padding is 16-byte aligned in Swift; the shader's three trailing scalars
+are 4.** The struct was 48 bytes on one side and 32 on the other, so every field after it was read
+from the wrong address. It compiled, ran, and looked exactly like a feature nobody had wired up.
+
+> **The third layout question in this repository** — after the skinned vertex layout's `float4`
+> alignment and the tone-map uniform's packing. The test pins size, stride **and** alignment, because
+> the first two only catch half of it.
+
 ## Done 2026-09-10 — spot lights (0.6.1)
 
 **A cone, for the lamps that are aimed.** A direction and two angles — full brightness within the
@@ -585,16 +623,14 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Per-draw light selection breaks down on a large mesh**, and the sample's ground plane proves it:
-   one draw, four lights, eight hundred metres. The industry answer is **clustered or tiled shading** —
-   bin the lights into a froxel grid once per frame and let each fragment read the bin it falls in,
-   which removes the per-draw budget entirely. It is the single change that would most improve what a
-   level can do with lights, and it is a real piece of work: a compute pass, a grid, and a different
-   shape of uniform.
+1. **Local lights cast no shadows**, so a lamp reaches through a wall. Now the largest gap in the
+   lighting: it wants a shadow map per light, a cube map for a point light, and an atlas to hold
+   them. Worth writing down as the cost before anyone assumes it is cheap.
 
-2. **Local lights cast no shadows**, so a lamp reaches through a wall. Real, and much larger than spot
-   lights: it wants a shadow map per light, a cube map for a point light, and an atlas to hold them.
-   Worth writing down as the cost before anyone assumes it is next.
+2. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
+   be at hundreds — it walks lights against tiles, so the cost grows with both. The GPU version is a
+   compute pass over the grid, and the maths here is what it would be written against. **Not needed
+   yet**: measured, the sample's ten lights bin in well under a millisecond.
 
 3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format

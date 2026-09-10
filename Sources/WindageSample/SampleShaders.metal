@@ -10,10 +10,6 @@
 #include <metal_stdlib>
 using namespace metal;
 
-/// **Must equal `LightSet.budget`.** The two are one number: the shader reads a fixed-size array and
-/// the engine decides what goes in it, so a mismatch reads past the end of the uniforms.
-constant int kLightBudget = 4;
-
 /// One lamp, as the shader sees it. Everything packed into `float4`s, with the scalars in the `w`
 /// components — so there is no padding for the two sides to disagree about.
 ///
@@ -36,11 +32,6 @@ struct Uniforms {
     float4   materialParams;  // x metallic, y roughness, z highest specular mip
     float4   sunColour;       // the level's sun, in radiance; w unused
     float4   emissive;        // what this surface emits, in radiance; w unused
-    /// How many of `lights` are real. **Selected per draw on the CPU** — a fragment shader cannot
-    /// loop over every lamp in a level, so the engine picks the few that matter to this mesh.
-    uint     lightCount;
-    uint3    lightPadding;
-    PunctualLight lights[kLightBudget];
 };
 
 constant int kCascadeCount = 4;
@@ -49,15 +40,35 @@ constant int kCascadeCount = 4;
 /// Frame-wide, written once per frame rather than once per object. The per-object `Uniforms` below
 /// is copied for every drawable; putting four matrices in it would multiply them by the object count
 /// for no reason.
+/// Where the cluster grid is, and how to find a fragment's cell in it. **Mirrors `ClusterGrid`** —
+/// the shader's slicing and the CPU's assignment must agree, or a light is binned into a cell no
+/// fragment ever reads.
+struct ClusterUniforms {
+    uint  tilesX;
+    uint  tilesY;
+    uint  slices;
+    float depthScale;    // slice = log(viewDepth) * depthScale + depthBias
+    float depthBias;
+    float padding0;
+    float padding1;
+    float padding2;
+};
+
 struct FrameUniforms {
     float4x4 cascadeViewProjection[kCascadeCount];
     /// Takes a clip-space point back to the world — how the sky pass turns a pixel into a ray.
     float4x4 inverseViewProjection;
+    /// World to view. **Needed for the planar depth a cluster slice is chosen by** — the shadow
+    /// cascades use radial distance, which is a different number and would pick a different cell.
+    float4x4 view;
     float4   cascadeSplits;
     float4   cascadeBlendStart;
     float4   cascadeDepthBias;
     float3   cameraPosition;
     float    texelSize;      // 1 / shadow map resolution
+    float2   viewportSize;   // pixels, for finding a fragment's tile
+    float2   framePadding;
+    ClusterUniforms clusters;
 };
 
 struct VertexIn {
@@ -378,7 +389,12 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                texturecube<float> environmentSpecular [[texture(3)]],
                                texturecube<float> environmentIrradiance [[texture(4)]],
                                texture2d<float> ormMap [[texture(5)]],
-                               texture2d<float> emissiveMap [[texture(6)]])
+                               texture2d<float> emissiveMap [[texture(6)]],
+                               // **The whole scene's lights, and which of them reach each cluster.**
+                               // Not a per-draw list: a fragment reads the cell it is actually in.
+                               const device PunctualLight *sceneLights [[buffer(4)]],
+                               const device uint2 *clusterRanges [[buffer(5)]],
+                               const device uint *clusterIndices [[buffer(6)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -485,14 +501,29 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     // **Every lamp that reaches this draw, shaded with the same lobe as the sun.** A second lighting
     // model for local lights is how a scene ends up with two looks in it — the sun's highlights
     // sharp and the lamps' soft, for no reason a player could name.
+    // **Which cell this fragment is in**, from its pixel and its view depth. The slicing here has to
+    // be the same expression `ClusterGrid` uses, or a light is binned into a cell nothing reads.
+    const float viewDepth = -(frame.view * float4(in.worldPosition, 1.0)).z;
+    const uint tileX = min(uint(in.position.x / frame.viewportSize.x * float(frame.clusters.tilesX)),
+                           frame.clusters.tilesX - 1);
+    const uint tileY = min(uint(in.position.y / frame.viewportSize.y * float(frame.clusters.tilesY)),
+                           frame.clusters.tilesY - 1);
+    const float rawSlice = log(max(viewDepth, 1e-4)) * frame.clusters.depthScale
+                         + frame.clusters.depthBias;
+    const uint slice = uint(clamp(rawSlice, 0.0, float(frame.clusters.slices - 1)));
+    const uint cluster = (slice * frame.clusters.tilesY + tileY) * frame.clusters.tilesX + tileX;
+
+    const uint2 range = clusterRanges[cluster];
+
     float3 local = float3(0.0);
-    for (uint i = 0; i < uniforms.lightCount; ++i) {
-        const float3 toLight = uniforms.lights[i].positionAndRange.xyz - in.worldPosition;
-        const float range = uniforms.lights[i].positionAndRange.w;
+    for (uint entry = 0; entry < range.y; ++entry) {
+        const uint i = clusterIndices[range.x + entry];
+        const float3 toLight = sceneLights[i].positionAndRange.xyz - in.worldPosition;
+        const float range_ = sceneLights[i].positionAndRange.w;
         const float distanceSquared = max(length_squared(toLight), 1e-4);
 
         // The same windowed inverse square as `PunctualLight.attenuation`, which is the definition.
-        const float ratio = distanceSquared / max(range * range, 1e-6);
+        const float ratio = distanceSquared / max(range_ * range_, 1e-6);
         const float window = saturate(1.0 - ratio * ratio);
         const float attenuation = window * window / distanceSquared;
         if (attenuation <= 0.0) { continue; }
@@ -505,9 +536,9 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
         // light travels; with a scale of 0 and an offset of 1 this is 1 everywhere, which is exactly
         // what a lamp with no cone should be. Squared so the edge eases in — a linear falloff still
         // shows the outer circle as a change of gradient.
-        const float cosAngle = dot(-lightDirection, uniforms.lights[i].directionAndAngleScale.xyz);
-        const float cone = saturate(cosAngle * uniforms.lights[i].directionAndAngleScale.w
-                                  + uniforms.lights[i].colourAndAngleOffset.w);
+        const float cosAngle = dot(-lightDirection, sceneLights[i].directionAndAngleScale.xyz);
+        const float cone = saturate(cosAngle * sceneLights[i].directionAndAngleScale.w
+                                  + sceneLights[i].colourAndAngleOffset.w);
         const float angular = cone * cone;
         if (angular <= 0.0) { continue; }
 
@@ -521,7 +552,7 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
         // **No shadow term.** These lamps cast none — there is one shadow map and the sun has it —
         // so a wall does not stop them. That is a real limitation and it is why their ranges are
         // short: a lamp that reaches through a wall is only obvious when it reaches far enough to.
-        local += (lampDiffuse + lampSpecular) * uniforms.lights[i].colourAndAngleOffset.rgb
+        local += (lampDiffuse + lampSpecular) * sceneLights[i].colourAndAngleOffset.rgb
                * attenuation * angular * lampNdotL;
     }
 

@@ -144,7 +144,7 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
-lighting** · **punctual lights with a budget and a selection rule** · a versioned level format
+lighting** · **punctual and spot lights, binned into a cluster grid** · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -795,6 +795,65 @@ darkens the lit end. So the cone is tested against the box's bounding **sphere**
 to say yes when the answer was no and never the reverse — and ranking uses distance alone. Same
 asymmetry as `Frustum`: a false positive costs one iteration of a loop, a false negative deletes light
 the player can see.
+
+## Clustered shading (2026-09-10)
+
+**A fragment asks which lights reach *it***, instead of inheriting a list chosen for the whole mesh it
+belongs to. `ClusterGrid` cuts the frustum into tiles and depth slices; `ClusteredLights` bins the
+scene's lights into the cells they reach, once per frame.
+
+### It exists because per-draw selection had a floor it could not get under
+
+`LightSet` picks a few lights per object — correct, cheap, and **only as good as the draws are
+small**. The section below is the day that stopped being true: the sample's ground is one
+eight-hundred-metre quad, so one draw got four lights for an entire level. No budget and no ordering
+rule fixes that, because the object is the wrong unit to choose lights for.
+
+A cluster is the right unit. It is a small box of the world, so the lights reaching it are few by
+construction, and a fragment belongs to exactly one.
+
+### Three decisions worth the words
+
+- **Slices are exponential.** Cut the depth evenly and the near slices are microscopic while the far
+  ones are hundreds of metres deep — a perspective frustum's cross-section grows with distance, so an
+  even cut puts almost every cluster where there is almost no screen. Slicing by the logarithm makes
+  each cluster roughly cubic, which is what keeps the count manageable.
+- **Clustering needs a finite far distance, and this engine's projection has none.** The infinite far
+  plane is deliberate — no view distance to tune, nothing to clip at range — so `ClusterGrid` carries
+  its own `lightRange`. That is honest rather than awkward: a punctual light has a finite range by
+  definition, so there is a distance past which none of them reaches, and that is the number.
+- **An offset and a count per cluster, not a fixed list each.** A fixed list means every cluster pays
+  for the worst one — three thousand cells times a budget of eight is twenty-four thousand entries,
+  nearly all empty. A range into a shared list costs an empty cluster nothing and puts no ceiling on
+  a full one.
+
+**Binned on the CPU**, for the same reason `EnvironmentMap` prefilters there: the slicing, the cluster
+geometry and the sphere test are exactly the arithmetic that produces a plausible picture when it is
+wrong, and this repository's rule is that such halves want tests. The assignment walks *lights* rather
+than clusters — a lamp touches the few slices its range spans and the tiles its sphere covers, so
+lighting one corner of a room costs a handful of tests rather than a sweep of the grid.
+
+### Measured
+
+Sixty-four lights in a test scene: **busiest cluster 9, average 2.2**. The sample's ruins: ten lights,
+**busiest 6**. That ratio is the point — the worst fragment loops nine times instead of sixty-four,
+and the typical one twice.
+
+### The bug that made it render as nothing at all
+
+The first working version drew **no local light whatsoever**, and the CPU side was provably right: six
+lights, 222 cluster entries, 173 cells occupied. Printing those numbers is what turned an open-ended
+hunt into a two-line one — the fault had to be between the buffer and the shader.
+
+**A `SIMD3<Float>` used as padding has 16-byte alignment in Swift; the shader's three trailing scalars
+have four.** The struct came out 48 bytes on one side and 32 on the other, so every field after it in
+the frame uniforms was read from the wrong address. It compiled, it ran, and it looked exactly like a
+feature nobody had wired up.
+
+> **A struct that agrees on its fields and disagrees on its padding is the worst kind of mismatch**,
+> and it is the third layout question in this file — after the skinned vertex layout's `float4`
+> alignment and the tone-map uniform's packing. There is a test pinning size, stride *and* alignment
+> now, because the first two only catch half of it.
 
 ### The finding that was not about spot lights at all
 

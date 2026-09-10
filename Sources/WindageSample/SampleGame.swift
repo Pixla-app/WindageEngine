@@ -136,14 +136,6 @@ final class SampleGame: GameLoop {
         /// wants of it right now. **`w` unused**, for the same padding reason.
         var emissive: SIMD4<Float>
 
-        /// How many of ``lights`` are real.
-        var lightCount: UInt32
-        var lightPadding: SIMD3<UInt32> = .zero
-
-        /// The lamps reaching this draw. **Fixed size, matching `kLightBudget` in the shader** —
-        /// which is `LightSet.budget`, because the two are one number.
-        var lights: (PackedLight, PackedLight, PackedLight, PackedLight)
-
         init(viewProjection: matrix_float4x4,
              model: matrix_float4x4,
              normalMatrix: matrix_float3x3,
@@ -152,8 +144,7 @@ final class SampleGame: GameLoop {
              material: Material,
              specularLOD: Float,
              sunColour: SIMD3<Float>,
-             emissive: SIMD3<Float>,
-             lights: [PunctualLight]) {
+             emissive: SIMD3<Float>) {
             self.viewProjection = viewProjection
             self.model = model
             self.normalMatrix = normalMatrix
@@ -169,13 +160,6 @@ final class SampleGame: GameLoop {
             // may use, override or ignore, and defaulting is the caller's job because only the caller
             // knows whether this surface is currently powered.
             self.emissive = SIMD4(emissive, 0)
-
-            let packed = lights.prefix(4).map(PackedLight.init)
-            self.lightCount = UInt32(packed.count)
-            self.lights = (packed.count > 0 ? packed[0] : PackedLight(),
-                           packed.count > 1 ? packed[1] : PackedLight(),
-                           packed.count > 2 ? packed[2] : PackedLight(),
-                           packed.count > 3 ? packed[3] : PackedLight())
         }
     }
 
@@ -186,11 +170,43 @@ final class SampleGame: GameLoop {
         var cascadeViewProjection: (matrix_float4x4, matrix_float4x4, matrix_float4x4, matrix_float4x4)
         /// Takes a clip-space point back to the world — how the sky pass turns a pixel into a ray.
         var inverseViewProjection: matrix_float4x4
+        /// World to view. **The planar depth a cluster slice is chosen by** — the shadow cascades use
+        /// radial distance, which is a different number and would pick a different cell.
+        var view: matrix_float4x4
         var cascadeSplits: SIMD4<Float>
         var cascadeBlendStart: SIMD4<Float>
         var cascadeDepthBias: SIMD4<Float>
         var cameraPosition: SIMD3<Float>
         var texelSize: Float
+        var viewportSize: SIMD2<Float>
+        var framePadding: SIMD2<Float> = .zero
+        var clusters: PackedClusterGrid
+    }
+
+    /// Mirrors `ClusterUniforms` in the shader, which mirrors `ClusterGrid`. **The slicing on both
+    /// sides must be the same expression**, or a light is binned into a cell no fragment reads.
+    private struct PackedClusterGrid {
+        var tilesX: UInt32 = 0
+        var tilesY: UInt32 = 0
+        var slices: UInt32 = 0
+        var depthScale: Float = 0
+        var depthBias: Float = 0
+        // **Three separate floats, not a `SIMD3`.** A `SIMD3<Float>` has 16-byte alignment in Swift
+        // and the shader's three trailing scalars have four — so the struct came out 48 bytes on one
+        // side and 32 on the other, and every field after it in `FrameUniforms` was read from the
+        // wrong place. It rendered as the local lights simply not existing.
+        var padding0: Float = 0
+        var padding1: Float = 0
+        var padding2: Float = 0
+
+        init() {}
+        init(_ grid: ClusterGrid) {
+            tilesX = UInt32(grid.tilesX)
+            tilesY = UInt32(grid.tilesY)
+            slices = UInt32(grid.slices)
+            depthScale = grid.depthScale
+            depthBias = grid.depthBias
+        }
     }
     private static let shadowFrameStride = (MemoryLayout<FrameUniforms>.stride + 255) & ~255
 
@@ -437,8 +453,9 @@ final class SampleGame: GameLoop {
         skyDepthState = device.makeDepthStencilState(descriptor: skyDepth)
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
-        tableDescriptor.maxBufferBindCount = 4
+        // 0: vertices · 1: per-object uniforms · 2: frame data · 3: joints
+        // 4: every light in the scene · 5: cluster ranges · 6: cluster light indices.
+        tableDescriptor.maxBufferBindCount = 7
         // 0: shadow · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM · 6: glow.
         tableDescriptor.maxTextureBindCount = 7
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
@@ -466,6 +483,26 @@ final class SampleGame: GameLoop {
         }
         joints.label = "Joint Palettes"
         jointBuffer = joints
+
+        // Per frame in flight, like everything else the GPU reads while the CPU writes the next one.
+        guard let sceneLights = device.makeBuffer(
+                length: SampleGame.sceneLightStride * SampleGame.maxSceneLights
+                      * FrameRenderer.maxFramesInFlight, options: .storageModeShared),
+              let clusterRanges = device.makeBuffer(
+                length: SampleGame.clusterRangeStride * SampleGame.clusterGrid.clusterCount
+                      * FrameRenderer.maxFramesInFlight, options: .storageModeShared),
+              let clusterIndices = device.makeBuffer(
+                length: MemoryLayout<UInt32>.stride * SampleGame.maxClusterIndices
+                      * FrameRenderer.maxFramesInFlight, options: .storageModeShared) else {
+            print("WindageSample: cluster buffers failed")
+            return nil
+        }
+        sceneLights.label = "Scene Lights"
+        clusterRanges.label = "Cluster Ranges"
+        clusterIndices.label = "Cluster Light Indices"
+        sceneLightBuffer = sceneLights
+        clusterRangeBuffer = clusterRanges
+        clusterIndexBuffer = clusterIndices
 
         guard let shadowFrames = device.makeBuffer(
             length: SampleGame.shadowFrameStride * FrameRenderer.maxFramesInFlight,
@@ -536,7 +573,8 @@ final class SampleGame: GameLoop {
         // **Everything the GPU reads has to be in the residency set.** A buffer or texture that is
         // not is read as whatever memory happens to be there — which is not a black screen, it is
         // garbage that looks like a shader bug.
-        engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer, jointBuffer])
+        engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer, jointBuffer,
+                                            sceneLightBuffer, clusterRangeBuffer, clusterIndexBuffer])
         if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
@@ -812,6 +850,7 @@ final class SampleGame: GameLoop {
         }
         rebuildFigures()
         rebuildLights()
+        reportClustersNextFrame = true
         if drawables.count > SampleGame.maxDrawables {
             print("WindageSample: WARNING \(drawables.count) drawables against a cap of "
                   + "\(SampleGame.maxDrawables) — the rest of the level will not be drawn")
@@ -842,6 +881,13 @@ final class SampleGame: GameLoop {
     /// that changes only when a crate is collected.
     private var lightSet = LightSet()
 
+    /// This frame's binning, rebuilt as the camera moves.
+    private let sceneLightBuffer: MTLBuffer
+    private let clusterRangeBuffer: MTLBuffer
+    private let clusterIndexBuffer: MTLBuffer
+    private static let sceneLightStride = MemoryLayout<PackedLight>.stride
+    private static let clusterRangeStride = MemoryLayout<SIMD2<UInt32>>.stride
+
     /// Assembles the level's lamps and the ones the game owns.
     ///
     /// **An uncollected objective is a light as well as a glow.** Emission alone makes a crate look
@@ -856,8 +902,13 @@ final class SampleGame: GameLoop {
             lights.append(PunctualLight(position: position + SIMD3(0, 0.6, 0),
                                         colour: SIMD3(0.6, 6.0, 2.6), range: 4.5))
         }
-        lightSet = LightSet(lights: lights, budget: SampleGame.lightBudget)
-        reportOverSubscription()
+        // **The budget is only used for the report now.** Clustering removed the per-draw limit; what
+        // is left is the warning that a level has crowded a point, which is still worth knowing.
+        lightSet = LightSet(lights: lights, budget: 4)
+        if lights.count > SampleGame.maxSceneLights {
+            print("WindageSample: WARNING \(lights.count) lights against a buffer of "
+                  + "\(SampleGame.maxSceneLights) — the rest will not be lit")
+        }
     }
 
     /// Says out loud where this level has more lights than the budget can carry.
@@ -872,12 +923,20 @@ final class SampleGame: GameLoop {
         let crowded = lightSet.overSubscribedPoints(among: points)
         guard !crowded.isEmpty else { return }
         print("WindageSample: \(crowded.count) of \(points.count) points are over-subscribed — "
-              + "more than \(SampleGame.lightBudget) lights are meaningfully lit there, so one the "
-              + "player can see will be dropped")
+              + "more than four lights are meaningfully lit there")
     }
 
-    /// **Must equal `kLightBudget` in the shader.** The two are one number.
-    private static let lightBudget = 4
+    /// **A courtyard's numbers, not an engine's.** Sixteen by eight tiles is roughly square cells on
+    /// a wide screen; twenty-four slices over a hundred and twenty metres is where the sample's lamps
+    /// stop mattering.
+    private static let clusterGrid = ClusterGrid(tilesX: 16, tilesY: 8, slices: 24,
+                                                 nearPlane: 0.1, lightRange: 120)
+
+    /// The most lights a level may hold at once, and the most cluster entries a frame may produce.
+    /// **Ceilings on buffers rather than on what any one fragment sees** — that number is whatever
+    /// the busiest cluster came out at, and clustering is what keeps it small.
+    private static let maxSceneLights = 64
+    private static let maxClusterIndices = 1 << 15
 
     /// The light the sun actually delivers — its radiance times the solid angle its disc subtends,
     /// which is a very small number and is why the two are not interchangeable.
@@ -1231,6 +1290,7 @@ final class SampleGame: GameLoop {
     /// frame's positions, which reads as shadows lagging behind their casters.
     private func writeUniforms(frameSlot: Int, interpolation: Float) {
         let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
+        writeClusters(frameSlot: frameSlot, camera: view)
         let projection = matrix_perspective_right_hand_reverse_z(
             fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
         let viewProjection = simd_mul(projection, view.viewMatrix)
@@ -1270,14 +1330,7 @@ final class SampleGame: GameLoop {
                                     material: drawable.mesh.material(forSubmesh: 0),
                                     specularLOD: environmentLOD,
                                     sunColour: sunIrradiance,
-                                    emissive: emissive,
-                                    // **Chosen against the drawable's bounds, not its centre.** A
-                                    // wall whose middle is out of a lamp's reach still has an end
-                                    // inside it, and lighting the whole draw by its centre is how
-                                    // one end of a corridor goes dark.
-                                    lights: lightSet.affecting(
-                                        Volume(local: drawable.mesh.bounds,
-                                               transform: drawable.transform).worldBounds))
+                                    emissive: emissive)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -1298,8 +1351,7 @@ final class SampleGame: GameLoop {
                                     // than white — and a seam that is exactly white does not read as
                                     // lit. How much brighter is a look decision, so it lives here.
                                     emissive: (figureMesh?.material(forSubmesh: 0).emissive ?? .zero)
-                                        * SampleGame.figureGlow,
-                                    lights: lightSet.affecting(figure.position + SIMD3(0, 1, 0)))
+                                        * SampleGame.figureGlow)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 
@@ -1311,6 +1363,59 @@ final class SampleGame: GameLoop {
             }
         }
     }
+
+    /// Bins this frame's lights into the clusters they reach, and uploads the result.
+    ///
+    /// **Every frame, because the grid is in view space.** The lights have not moved but the camera
+    /// has, and a cell is a piece of the frustum rather than a piece of the world.
+    private func writeClusters(frameSlot: Int, camera: Camera) {
+        let projectionFovY = radians_from_degrees(70)
+        let clustered = ClusteredLights(lights: Array(lightSet.lights.prefix(SampleGame.maxSceneLights)),
+                                        grid: SampleGame.clusterGrid,
+                                        viewMatrix: camera.viewMatrix,
+                                        fovY: projectionFovY,
+                                        aspectRatio: aspectRatio,
+                                        maximumIndices: SampleGame.maxClusterIndices)
+
+        let lights = lightSet.lights.prefix(SampleGame.maxSceneLights).map(PackedLight.init)
+        lights.withUnsafeBytes { source in
+            guard let base = source.baseAddress, source.count > 0 else { return }
+            sceneLightBuffer.contents()
+                .advanced(by: frameSlot * SampleGame.sceneLightStride * SampleGame.maxSceneLights)
+                .copyMemory(from: base, byteCount: source.count)
+        }
+        clustered.ranges.withUnsafeBytes { source in
+            guard let base = source.baseAddress, source.count > 0 else { return }
+            clusterRangeBuffer.contents()
+                .advanced(by: frameSlot * SampleGame.clusterRangeStride
+                                        * SampleGame.clusterGrid.clusterCount)
+                .copyMemory(from: base, byteCount: source.count)
+        }
+        clustered.indices.withUnsafeBytes { source in
+            guard let base = source.baseAddress, source.count > 0 else { return }
+            clusterIndexBuffer.contents()
+                .advanced(by: frameSlot * MemoryLayout<UInt32>.stride * SampleGame.maxClusterIndices)
+                .copyMemory(from: base, byteCount: source.count)
+        }
+        busiestCluster = clustered.busiestCluster
+
+        // **Said once per level, because it is the number that decides the worst fragment's cost.**
+        // Per-draw selection made that number a constant the game chose; clustering makes it a fact
+        // about the scene, and one worth watching rather than assuming.
+        if reportClustersNextFrame {
+            reportClustersNextFrame = false
+            let grid = SampleGame.clusterGrid
+            print("WindageSample: \(lightSet.lights.count) lights binned into "
+                  + "\(grid.tilesX)×\(grid.tilesY)×\(grid.slices) clusters — "
+                  + "\(clustered.indices.count) entries, busiest cluster holds "
+                  + "\(clustered.busiestCluster)")
+        }
+    }
+
+    /// The most lights any one cluster held last frame — **the number that decides the worst
+    /// fragment's cost**, and the one clustering exists to keep small.
+    private(set) var busiestCluster = 0
+    private var reportClustersNextFrame = true
 
     /// The shadow pass, before anything is drawn to the screen.
     func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float) {
@@ -1327,11 +1432,14 @@ final class SampleGame: GameLoop {
         var frame = FrameUniforms(
             cascadeViewProjection: (matrices[0], matrices[1], matrices[2], matrices[3]),
             inverseViewProjection: simd_inverse(simd_mul(projection, view.viewMatrix)),
+            view: view.viewMatrix,
             cascadeSplits: cascades.splitVector,
             cascadeBlendStart: cascades.blendStartVector,
             cascadeDepthBias: cascades.depthBiasVector,
             cameraPosition: view.position,
-            texelSize: 1 / Float(cascades.resolution))
+            texelSize: 1 / Float(cascades.resolution),
+            viewportSize: viewportSize,
+            clusters: PackedClusterGrid(SampleGame.clusterGrid))
         shadowFrameBuffer.contents().advanced(by: frameSlot * SampleGame.shadowFrameStride)
             .copyMemory(from: &frame, byteCount: MemoryLayout<FrameUniforms>.size)
 
@@ -1369,6 +1477,20 @@ final class SampleGame: GameLoop {
             argumentTable.setTexture(environment.specular.gpuResourceID, index: 3)
             argumentTable.setTexture(environment.irradiance.gpuResourceID, index: 4)
         }
+
+        argumentTable.setAddress(
+            sceneLightBuffer.gpuAddress
+                + UInt64(frameSlot * SampleGame.sceneLightStride * SampleGame.maxSceneLights),
+            index: 4)
+        argumentTable.setAddress(
+            clusterRangeBuffer.gpuAddress
+                + UInt64(frameSlot * SampleGame.clusterRangeStride
+                                   * SampleGame.clusterGrid.clusterCount),
+            index: 5)
+        argumentTable.setAddress(
+            clusterIndexBuffer.gpuAddress
+                + UInt64(frameSlot * MemoryLayout<UInt32>.stride * SampleGame.maxClusterIndices),
+            index: 6)
 
         encodeSky(into: encoder)
 
