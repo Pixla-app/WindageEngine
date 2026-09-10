@@ -778,6 +778,40 @@ luminance now: a dot product, and the ordering means what it claims.
 > This is what a probe is supposed to produce — not code to paste in, but a shape and a finding, both
 > of which survived, and one mistake that was cheaper to find there than here.
 
+### Spot lights, and a cone that cannot be tested at one point (2026-09-10)
+
+A cone is a direction and **two** angles — full brightness within the inner, nothing beyond the outer,
+smooth between. One cutoff gives a hard-edged circle that reads as a stencil rather than as a lamp.
+
+**A point light is a spot with no cone, and the shader does not branch on it.** Its `angleScale` is 0
+and its `angleOffset` is 1, so the angular term evaluates to exactly 1 everywhere from the same two
+multiplies — one code path, and nothing that behaves differently depending on which kind of lamp a
+level happens to hold.
+
+**Selection is where a cone bites.** The nearest point of a box gives the best *distance*, which
+settles a point light. For a spot it does not: the nearest corner of a wall can be outside the cone
+while the far end of the same wall is brightly lit, and testing that one point drops the light and
+darkens the lit end. So the cone is tested against the box's bounding **sphere** — conservative, able
+to say yes when the answer was no and never the reverse — and ranking uses distance alone. Same
+asymmetry as `Frustum`: a false positive costs one iteration of a loop, a false negative deletes light
+the player can see.
+
+### The finding that was not about spot lights at all
+
+The sample's first spot lit nothing, and **over-subscription was not why**: `isOverSubscribed`
+reported the level clean at every point a player stands. The cause is that **the ground is one
+800-metre quad**. Per-draw selection gives that single draw four lights for the whole level, so the
+objective lamps standing 0.6 m above it beat a spot 5 m up, and the spot never reached the shader at
+all.
+
+**Per-draw light selection is only as good as the draws are small.** No budget and no ordering rule
+fixes an oversized one; that is what clustered and tiled shading exist for. The sample aims its spot
+at a pillar instead — a normal-sized draw — and the limitation is written down rather than tuned
+around.
+
+> **The check earned its place by being *negative*.** Having a tool that said "not that" is what
+> stopped an afternoon of adjusting light intensities in search of a problem that was never there.
+
 ### Four smaller ones
 
 - **Selection is per draw, against the box's nearest point rather than its centre.** A long wall whose

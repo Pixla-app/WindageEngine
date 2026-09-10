@@ -25,10 +25,68 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// rule can ever discard one.
     public var range: Float
 
-    public init(position: SIMD3<Float>, colour: SIMD3<Float>, range: Float) {
+    /// The cone this light is confined to, or `nil` for one that radiates in every direction.
+    ///
+    /// **A point light is a spot with no cone, and the shader does not branch on it.** See
+    /// ``Cone/angleScale`` — a light with no cone produces an angular attenuation of exactly 1
+    /// everywhere, from the same two multiplies, so one code path serves both.
+    public var cone: Cone?
+
+    /// A cone of light: where it points, and how sharply it ends.
+    ///
+    /// **Two angles rather than one**, because a single cutoff gives a hard-edged circle that reads
+    /// as a stencil rather than as a lamp. Full brightness within the inner angle, nothing beyond the
+    /// outer, and a smooth fall between.
+    public nonisolated struct Cone: Sendable, Equatable {
+        /// Where the light points, normalised.
+        public var direction: SIMD3<Float>
+        /// Half-angle of the fully-lit core, in radians.
+        public var innerAngle: Float
+        /// Half-angle at which the light has fallen to nothing, in radians.
+        public var outerAngle: Float
+
+        public init(direction: SIMD3<Float>, innerAngle: Float, outerAngle: Float) {
+            self.direction = simd_length(direction) > 1e-6 ? simd_normalize(direction) : SIMD3(0, -1, 0)
+            // Clamped so the inner never exceeds the outer: reversed, the scale below goes negative
+            // and the cone lights everything *except* where it points.
+            self.outerAngle = simd_clamp(outerAngle, 1e-4, .pi)
+            self.innerAngle = simd_clamp(innerAngle, 0, self.outerAngle)
+        }
+
+        var cosOuter: Float { cos(outerAngle) }
+        var cosInner: Float { cos(innerAngle) }
+
+        /// Precomputed so the shader does two multiplies instead of two cosines and a divide.
+        ///
+        /// The angular attenuation is `saturate(cosAngle * angleScale + angleOffset)`, squared. **A
+        /// light with no cone uses a scale of 0 and an offset of 1**, which is that expression
+        /// evaluating to 1 everywhere — which is why a point light needs no branch of its own.
+        public var angleScale: Float { 1 / max(cosInner - cosOuter, 1e-4) }
+        public var angleOffset: Float { -cosOuter * angleScale }
+    }
+
+    public init(position: SIMD3<Float>,
+                colour: SIMD3<Float>,
+                range: Float,
+                cone: Cone? = nil) {
         self.position = position
         self.colour = colour
         self.range = range
+        self.cone = cone
+    }
+
+    /// How much of the cone reaches a point: 1 inside the inner angle, 0 beyond the outer, smooth
+    /// between. Always 1 for a light with no cone.
+    public func angularAttenuation(at point: SIMD3<Float>) -> Float {
+        guard let cone else { return 1 }
+        let offset = point - position
+        let length = simd_length(offset)
+        guard length > 1e-6 else { return 1 }
+        let cosAngle = simd_dot(offset / length, cone.direction)
+        let falloff = simd_clamp(cosAngle * cone.angleScale + cone.angleOffset, 0, 1)
+        // Squared, so the edge eases in rather than arriving at a constant rate — a linear falloff
+        // still shows the outer circle as a change of gradient.
+        return falloff * falloff
     }
 
     // MARK: - Codable
@@ -37,7 +95,9 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     // about a lamp: what colour is it, and how bright. Writing `[28, 26, 22]` in a level file means
     // holding a colour and an intensity in your head at once, and adjusting one changes the other.
 
-    private enum CodingKeys: String, CodingKey { case position, colour, intensity, range }
+    private enum CodingKeys: String, CodingKey {
+        case position, colour, intensity, range, direction, innerAngle, outerAngle
+    }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -51,9 +111,27 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
             return SIMD3(values[0], values[1], values[2])
         }
         let intensity = try container.decodeIfPresent(Float.self, forKey: .intensity) ?? 1
+
+        // **A cone only if a direction is given.** Angles in degrees, like the sky's, because these
+        // are numbers a person types — "a 25° cone" is something you can picture and 0.436 is not.
+        var cone: Cone?
+        if let direction = try container.decodeIfPresent([Float].self, forKey: .direction) {
+            guard direction.count == 3 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .direction, in: container,
+                    debugDescription: "a direction needs three components, found \(direction.count)")
+            }
+            let outer = try container.decodeIfPresent(Float.self, forKey: .outerAngle) ?? 35
+            let inner = try container.decodeIfPresent(Float.self, forKey: .innerAngle) ?? outer * 0.6
+            cone = Cone(direction: SIMD3(direction[0], direction[1], direction[2]),
+                        innerAngle: radians_from_degrees(inner),
+                        outerAngle: radians_from_degrees(outer))
+        }
+
         self.init(position: try triple(.position, .zero),
                   colour: try triple(.colour, SIMD3(repeating: 1)) * intensity,
-                  range: try container.decodeIfPresent(Float.self, forKey: .range) ?? 8)
+                  range: try container.decodeIfPresent(Float.self, forKey: .range) ?? 8,
+                  cone: cone)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -67,6 +145,13 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
         try container.encode([normalised.x, normalised.y, normalised.z], forKey: .colour)
         try container.encode(intensity, forKey: .intensity)
         try container.encode(range, forKey: .range)
+
+        if let cone {
+            try container.encode([cone.direction.x, cone.direction.y, cone.direction.z],
+                                 forKey: .direction)
+            try container.encode(radians_to_degrees(cone.innerAngle), forKey: .innerAngle)
+            try container.encode(radians_to_degrees(cone.outerAngle), forKey: .outerAngle)
+        }
     }
 
     /// How much of this light survives to a point: physical inverse-square, windowed to zero at the
@@ -80,6 +165,19 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// floor: a fragment exactly at a lamp's position is a division by zero, and the pixel it
     /// produces is not "very bright", it is `NaN` and therefore black.
     public func attenuation(at point: SIMD3<Float>) -> Float {
+        let offset = point - position
+        let distanceSquared = max(simd_length_squared(offset), 1e-4)
+        guard range > 0 else { return 0 }
+        let ratio = distanceSquared / (range * range)
+        let window = simd_clamp(1 - ratio * ratio, 0, 1)
+        return window * window / distanceSquared * angularAttenuation(at: point)
+    }
+
+    /// Distance falloff alone, with the cone ignored.
+    ///
+    /// **What a per-draw test should rank by**, because a cone's contribution to a whole mesh is not
+    /// a single number — see ``reaches(_:)``.
+    public func radialAttenuation(at point: SIMD3<Float>) -> Float {
         let offset = point - position
         let distanceSquared = max(simd_length_squared(offset), 1e-4)
         guard range > 0 else { return 0 }
@@ -118,8 +216,36 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// **Tested against the nearest point of the box, not its centre.** A long wall whose centre is
     /// out of range still has an end inside it, and lighting a whole draw by its centre is how one
     /// end of a corridor goes dark.
+    ///
+    /// ### A cone cannot be tested at one point, and the error has a direction
+    ///
+    /// The nearest point of a box gives the *best distance*, and for a point light that settles it.
+    /// For a spot it does not: the nearest corner of a wall can be outside the cone while the far end
+    /// of the same wall is lit. Testing that one point would drop the light and the lit end would go
+    /// dark.
+    ///
+    /// **A false positive costs one iteration of a shader loop. A false negative deletes light the
+    /// player can see.** Those are not comparable, which is the same asymmetry ``Frustum`` is built
+    /// around — so the cone is tested against the box's bounding **sphere**, which is conservative:
+    /// it can say yes when the answer was no, and never the other way.
     public func reaches(_ bounds: BoundingBox) -> Bool {
-        influence(at: bounds.closestPoint(to: position)) > 0
+        guard radialAttenuation(at: bounds.closestPoint(to: position)) > 0 else { return false }
+        guard let cone else { return true }
+
+        // The standard cone-sphere test: how far the sphere's centre lies outside the cone's surface,
+        // measured perpendicular to it, against the radius.
+        let centre = (bounds.minimum + bounds.maximum) / 2
+        let radius = simd_length(bounds.maximum - bounds.minimum) / 2
+        let toCentre = centre - position
+        let alongAxis = simd_dot(toCentre, cone.direction)
+
+        // Behind the lamp, or past the end of its reach.
+        if alongAxis < -radius || alongAxis > range + radius { return false }
+
+        let perpendicular = max(simd_length_squared(toCentre) - alongAxis * alongAxis, 0)
+        let sinOuter = sin(cone.outerAngle)
+        let distanceOutsideCone = cone.cosOuter * sqrt(perpendicular) - alongAxis * sinOuter
+        return distanceOutsideCone <= radius
     }
 }
 
@@ -164,7 +290,17 @@ public nonisolated struct LightSet: Sendable {
     /// fragment, so the question is which lights matter to *this mesh* — and a light matters if it
     /// reaches the nearest part of it.
     public func affecting(_ bounds: BoundingBox) -> [PunctualLight] {
-        strongest { $0.influence(at: bounds.closestPoint(to: $0.position)) }
+        lights
+            .filter { $0.reaches(bounds) }
+            // **Ranked by distance alone**, deliberately: a spot's angular term at the box's nearest
+            // point can be zero while the far end of the box is brightly lit, and ranking by it would
+            // sort a light that matters to the bottom of the list and out of the budget.
+            .map { (light: $0,
+                    influence: $0.radialAttenuation(at: bounds.closestPoint(to: $0.position))
+                             * PunctualLight.luminance($0.colour)) }
+            .sorted { $0.influence > $1.influence }
+            .prefix(budget)
+            .map(\.light)
     }
 
     private func strongest(by influence: (PunctualLight) -> Float) -> [PunctualLight] {

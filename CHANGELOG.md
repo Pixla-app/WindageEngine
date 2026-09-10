@@ -12,6 +12,55 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.1] — 2026-09-10
+
+**Spot lights** — a cone, for the lamps that are aimed.
+
+### Added
+
+- **`PunctualLight.Cone`** — a direction and two angles: full brightness within the inner, nothing
+  beyond the outer, smooth between. **Two angles rather than one**, because a single cutoff gives a
+  hard-edged circle that reads as a stencil rather than as a lamp.
+- **`PunctualLight.angularAttenuation(at:)`** and **`.radialAttenuation(at:)`**, the second being
+  distance alone.
+- Levels write a cone by naming a `direction` and angles **in degrees**, like the sky's. No direction
+  means no cone, so every lamp already written stays a point light.
+
+### A point light is a spot with no cone, and the shader does not branch
+
+Its `angleScale` is 0 and its `angleOffset` is 1, which makes the angular term evaluate to exactly 1
+everywhere — from the same two multiplies. One code path, no branch, and nothing that behaves
+differently depending on which kind of lamp a level happens to hold.
+
+### A cone cannot be tested at one point, and the error has a direction
+
+The nearest point of a box gives the best *distance*, and for a point light that settles which lights
+reach it. For a spot it does not: **the nearest corner of a wall can be outside the cone while the far
+end of the same wall is brightly lit.** Testing that one point drops the light and the lit end goes
+dark.
+
+**A false positive costs one iteration of a shader loop; a false negative deletes light the player can
+see.** Those are not comparable — the same asymmetry `Frustum` is built around — so the cone is tested
+against the box's bounding **sphere**, which can say yes when the answer was no and never the reverse.
+Ranking is by distance alone for the same reason.
+
+### And a finding that was not about spot lights at all
+
+The sample's new spot lit nothing, and over-subscription was not why — `isOverSubscribed` reported the
+level clean at every point a player stands. **The cause is that the ground is one 800-metre quad.**
+Per-draw selection gives it four lights for the entire level, so the objective lamps standing 0.6 m
+above it beat a spot 5 m up, and the spot never reaches the shader.
+
+**Per-draw light selection is only as good as the draws are small**, and no budget or ordering rule
+fixes an oversized one — that is what clustered and tiled shading exist for. The sample aims its spot
+at a pillar instead, which is a normal-sized draw, and the limitation is written down rather than
+tuned around.
+
+### Also
+
+The sample **reports over-subscription at load**, sweeping the points a player actually goes. A
+condition nobody checks is a condition nobody meets.
+
 ## [0.6.0] — 2026-09-10
 
 **Lights that are not the sun.** A directional sun and an environment map light an outdoor scene

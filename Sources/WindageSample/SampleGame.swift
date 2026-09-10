@@ -102,12 +102,18 @@ final class SampleGame: GameLoop {
     /// into one `float4` and there is no padding for the two sides to disagree about.
     private struct PackedLight {
         var positionAndRange: SIMD4<Float> = .zero
-        var colour: SIMD4<Float> = .zero
+        var colourAndAngleOffset: SIMD4<Float> = .zero
+        var directionAndAngleScale: SIMD4<Float> = .zero
 
         init() {}
         init(_ light: PunctualLight) {
             positionAndRange = SIMD4(light.position, light.range)
-            colour = SIMD4(light.colour, 0)
+            // **A point light is a spot with scale 0 and offset 1**, which makes the shader's angular
+            // term exactly 1 everywhere. One code path, no branch, and nothing that behaves
+            // differently depending on which kind of lamp a level happens to hold.
+            let cone = light.cone
+            colourAndAngleOffset = SIMD4(light.colour, cone?.angleOffset ?? 1)
+            directionAndAngleScale = SIMD4(cone?.direction ?? SIMD3(0, -1, 0), cone?.angleScale ?? 0)
         }
     }
 
@@ -851,6 +857,23 @@ final class SampleGame: GameLoop {
                                         colour: SIMD3(0.6, 6.0, 2.6), range: 4.5))
         }
         lightSet = LightSet(lights: lights, budget: SampleGame.lightBudget)
+        reportOverSubscription()
+    }
+
+    /// Says out loud where this level has more lights than the budget can carry.
+    ///
+    /// **This is the probe's finding made operational.** A hard budget cannot promise a smooth
+    /// hand-over in an arbitrary level; where no more than the budget are meaningfully lit, nothing
+    /// visible is ever dropped. That is a condition on the level, and a condition nobody checks is a
+    /// condition nobody meets — so the sample checks it at load, on the places a player actually goes.
+    private func reportOverSubscription() {
+        var points = run.objectives.map { $0 + SIMD3<Float>(0, 1.7, 0) }
+        points += level.markers(ofKind: "spawn").map { $0.position + SIMD3(0, 1.7, 0) }
+        let crowded = lightSet.overSubscribedPoints(among: points)
+        guard !crowded.isEmpty else { return }
+        print("WindageSample: \(crowded.count) of \(points.count) points are over-subscribed — "
+              + "more than \(SampleGame.lightBudget) lights are meaningfully lit there, so one the "
+              + "player can see will be dropped")
     }
 
     /// **Must equal `kLightBudget` in the shader.** The two are one number.

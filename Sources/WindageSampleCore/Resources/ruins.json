@@ -4,16 +4,23 @@
     {
       "colour" : [
         1.0,
-        0.66,
-        0.34
+        0.72,
+        0.4
       ],
-      "intensity" : 34,
+      "direction" : [
+        -0.3,
+        -1.0,
+        -0.15
+      ],
+      "innerAngle" : 12,
+      "intensity" : 500,
+      "outerAngle" : 26,
       "position" : [
-        0,
-        2.2,
-        -4
+        7.0,
+        6.4,
+        -7.0
       ],
-      "range" : 10
+      "range" : 14
     },
     {
       "colour" : [
@@ -23,9 +30,9 @@
       ],
       "intensity" : 30,
       "position" : [
-        -4.5,
+        -4.0,
         2.2,
-        -16
+        -9
       ],
       "range" : 9
     },
@@ -35,13 +42,20 @@
         0.78,
         1.0
       ],
-      "intensity" : 26,
-      "position" : [
-        4.5,
-        2.2,
-        -24
+      "direction" : [
+        -0.25,
+        -1.0,
+        -0.1
       ],
-      "range" : 9
+      "innerAngle" : 14,
+      "intensity" : 300,
+      "outerAngle" : 30,
+      "position" : [
+        4.6,
+        5.0,
+        -23
+      ],
+      "range" : 16
     },
     {
       "colour" : [
@@ -49,13 +63,20 @@
         0.55,
         0.28
       ],
-      "intensity" : 34,
+      "direction" : [
+        0.2,
+        -1.0,
+        -0.35
+      ],
+      "innerAngle" : 10,
+      "intensity" : 320,
+      "outerAngle" : 26,
       "position" : [
         -3.0,
-        2.2,
+        5.2,
         -33
       ],
-      "range" : 10
+      "range" : 18
     }
   ],
   "markers" : [

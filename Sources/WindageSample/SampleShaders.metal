@@ -14,11 +14,16 @@ using namespace metal;
 /// the engine decides what goes in it, so a mismatch reads past the end of the uniforms.
 constant int kLightBudget = 4;
 
-/// One lamp, as the shader sees it. **`w` carries the range**, which packs a `float3` and a scalar
-/// into one `float4` and leaves nothing for the two sides to disagree about.
+/// One lamp, as the shader sees it. Everything packed into `float4`s, with the scalars in the `w`
+/// components — so there is no padding for the two sides to disagree about.
+///
+/// **A point light travels the same path as a spot.** Its `angleScale` is 0 and its `angleOffset` is
+/// 1, which makes the angular term below evaluate to exactly 1 everywhere: no branch, no second loop,
+/// and nothing that behaves differently depending on which kind of lamp a level happens to hold.
 struct PunctualLight {
-    float4 positionAndRange;
-    float4 colour;
+    float4 positionAndRange;      // xyz position, w range
+    float4 colourAndAngleOffset;  // rgb radiant intensity, w cone offset
+    float4 directionAndAngleScale;// xyz cone direction, w cone scale
 };
 
 struct Uniforms {
@@ -496,6 +501,16 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
         const float lampNdotL = saturate(dot(n, lightDirection));
         if (lampNdotL <= 0.0) { continue; }
 
+        // **The cone, and the point light that is not one.** `-lightDirection` is the direction the
+        // light travels; with a scale of 0 and an offset of 1 this is 1 everywhere, which is exactly
+        // what a lamp with no cone should be. Squared so the edge eases in — a linear falloff still
+        // shows the outer circle as a change of gradient.
+        const float cosAngle = dot(-lightDirection, uniforms.lights[i].directionAndAngleScale.xyz);
+        const float cone = saturate(cosAngle * uniforms.lights[i].directionAndAngleScale.w
+                                  + uniforms.lights[i].colourAndAngleOffset.w);
+        const float angular = cone * cone;
+        if (angular <= 0.0) { continue; }
+
         const float3 lampHalf = normalize(v + lightDirection);
         const float3 lampFresnel = fresnelSchlick(f0, saturate(dot(v, lampHalf)));
         const float3 lampSpecular = lampFresnel
@@ -506,8 +521,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
         // **No shadow term.** These lamps cast none — there is one shadow map and the sun has it —
         // so a wall does not stop them. That is a real limitation and it is why their ranges are
         // short: a lamp that reaches through a wall is only obvious when it reaches far enough to.
-        local += (lampDiffuse + lampSpecular) * uniforms.lights[i].colour.rgb
-               * attenuation * lampNdotL;
+        local += (lampDiffuse + lampSpecular) * uniforms.lights[i].colourAndAngleOffset.rgb
+               * attenuation * angular * lampNdotL;
     }
 
     // **Added, not lit.** Emission is light the surface makes, so nothing multiplies it: not the

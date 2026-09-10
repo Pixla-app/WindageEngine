@@ -56,6 +56,38 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
 
+## Done 2026-09-10 — spot lights (0.6.1)
+
+**A cone, for the lamps that are aimed.** A direction and two angles — full brightness within the
+inner, nothing beyond the outer, smooth between; one cutoff gives a hard edge that reads as a stencil.
+Levels write the angles in degrees and no direction means no cone, so every lamp already written stays
+a point light.
+
+**A point light is a spot with no cone and the shader does not branch**: scale 0, offset 1, and the
+angular term is exactly 1 everywhere from the same two multiplies.
+
+### Selection is where a cone bites
+
+The nearest point of a box gives the best *distance*, which settles a point light and does not settle
+a spot — the nearest corner of a wall can be outside the cone while the far end is brightly lit.
+Testing that one point drops the light and darkens the lit end. So the cone is tested against the
+box's bounding **sphere**, conservative in the safe direction, and ranking uses distance alone. Same
+asymmetry as `Frustum`.
+
+### The finding that was not about spot lights
+
+The sample's first spot lit nothing, and **over-subscription was not why** — the check reported the
+level clean everywhere a player stands. **The cause is that the ground is one 800-metre quad**, so
+per-draw selection gives that single draw four lights for the entire level and the objective lamps
+0.6 m above it beat a spot 5 m up.
+
+**Per-draw selection is only as good as the draws are small.** No budget or ordering rule fixes an
+oversized one; that is what clustered and tiled shading are for. Written down rather than tuned
+around, and the sample aims its spot at a pillar instead.
+
+> **The check earned its place by being negative.** A tool that said "not that" is what stopped an
+> afternoon of adjusting intensities looking for a problem that was never there.
+
 ## Done 2026-09-10 — lights that are not the sun (0.6.0)
 
 **A sun and an environment map have no answer for an interior.** `PunctualLight` and `LightSet` are
@@ -553,10 +585,12 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Spot lights.** `PunctualLight` radiates in every direction, which covers lamps and fires and not
-   torches, headlights or anything aimed. A cone angle and a falloff between inner and outer is the
-   settled shape and slots into the same selection rule — the influence test just gains an angular
-   term. The cheapest genuinely useful addition from here.
+1. **Per-draw light selection breaks down on a large mesh**, and the sample's ground plane proves it:
+   one draw, four lights, eight hundred metres. The industry answer is **clustered or tiled shading** —
+   bin the lights into a froxel grid once per frame and let each fragment read the bin it falls in,
+   which removes the per-draw budget entirely. It is the single change that would most improve what a
+   level can do with lights, and it is a real piece of work: a compute pass, a grid, and a different
+   shape of uniform.
 
 2. **Local lights cast no shadows**, so a lamp reaches through a wall. Real, and much larger than spot
    lights: it wants a shadow map per light, a cube map for a point light, and an atlas to hold them.

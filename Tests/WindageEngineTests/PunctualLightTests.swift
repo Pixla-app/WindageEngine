@@ -4,6 +4,7 @@
 //
 
 import Testing
+import Foundation
 import simd
 @testable import WindageEngine
 
@@ -166,5 +167,144 @@ struct LightSetTests {
         let bad = set.overSubscribedPoints(among: [.zero, SIMD3(1, 0, 0), SIMD3(900, 0, 0)])
         #expect(bad.count == 2)
         #expect(!bad.contains(SIMD3(900, 0, 0)))
+    }
+}
+
+@MainActor
+struct SpotLightTests {
+
+    private func spot(pointing direction: SIMD3<Float>,
+                      inner: Float = 15, outer: Float = 30,
+                      at position: SIMD3<Float> = .zero,
+                      range: Float = 20) -> PunctualLight {
+        PunctualLight(position: position, colour: SIMD3(repeating: 10), range: range,
+                      cone: PunctualLight.Cone(direction: direction,
+                                               innerAngle: radians_from_degrees(inner),
+                                               outerAngle: radians_from_degrees(outer)))
+    }
+
+    /// **A point light is a spot with no cone, and the shader must not have to branch on it.** The
+    /// angular expression evaluates to exactly 1 with a scale of 0 and an offset of 1.
+    @Test("A light with no cone is lit in every direction")
+    func noConeLightsEverything() {
+        let point = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 20)
+        for direction in [SIMD3<Float>(1, 0, 0), SIMD3(0, -1, 0), SIMD3(-0.4, 0.8, 0.3)] {
+            #expect(point.angularAttenuation(at: direction * 5) == 1)
+        }
+    }
+
+    @Test("Full brightness on the axis, nothing outside the outer angle")
+    func coneEdges() {
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 15, outer: 30)
+        #expect(light.angularAttenuation(at: SIMD3(0, -5, 0)) == 1, "the axis is not fully lit")
+
+        // 10° off axis: inside the inner cone, so still full.
+        let inner = SIMD3<Float>(sin(radians_from_degrees(10)), -cos(radians_from_degrees(10)), 0) * 5
+        #expect(light.angularAttenuation(at: inner) == 1)
+
+        // 40° off axis: beyond the outer cone.
+        let outside = SIMD3<Float>(sin(radians_from_degrees(40)), -cos(radians_from_degrees(40)), 0) * 5
+        #expect(light.angularAttenuation(at: outside) == 0)
+        // And behind it entirely.
+        #expect(light.angularAttenuation(at: SIMD3(0, 5, 0)) == 0)
+    }
+
+    /// A single cutoff gives a hard-edged circle that reads as a stencil rather than as a lamp.
+    @Test("The edge falls off rather than cutting")
+    func edgeIsSoft() {
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 10, outer: 40)
+        func atAngle(_ degrees: Float) -> Float {
+            let a = radians_from_degrees(degrees)
+            return light.angularAttenuation(at: SIMD3(sin(a), -cos(a), 0) * 5)
+        }
+        let values = [atAngle(15), atAngle(25), atAngle(35)]
+        #expect(values[0] > values[1] && values[1] > values[2])
+        #expect(values.allSatisfy { $0 > 0 && $0 < 1 })
+    }
+
+    /// Reversed angles make the scale negative, which lights everything *except* where the lamp
+    /// points — a spot that is a shadow.
+    @Test("An inner angle wider than the outer is clamped, not inverted")
+    func reversedAnglesAreClamped() {
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 60, outer: 20)
+        #expect(light.angularAttenuation(at: SIMD3(0, -5, 0)) == 1)
+        let outside = SIMD3<Float>(sin(radians_from_degrees(50)), -cos(radians_from_degrees(50)), 0) * 5
+        #expect(light.angularAttenuation(at: outside) == 0, "the cone lit its own outside")
+    }
+
+    @Test("A degenerate direction does not produce NaN")
+    func degenerateDirection() {
+        let light = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 10,
+                                  cone: PunctualLight.Cone(direction: .zero, innerAngle: 0.2,
+                                                           outerAngle: 0.5))
+        let value = light.attenuation(at: SIMD3(0, -3, 0))
+        #expect(value.isFinite && !value.isNaN)
+    }
+
+    // MARK: - Selection, where the error has a direction
+
+    /// **The trap a spot introduces.** The nearest corner of a wall can be outside the cone while the
+    /// far end of the same wall is lit. Testing that one point drops the light and the lit end goes
+    /// dark — so the test is against the box's bounding sphere, which can say yes wrongly and never
+    /// no wrongly.
+    @Test("A wall lit at its far end is not dropped because its near corner is dark")
+    func farEndOfAWallIsNotDropped() {
+        let wall = BoundingBox(minimum: SIMD3(-1, 0, -20), maximum: SIMD3(1, 4, 20))
+        // A lamp above the far end, pointing straight down with a narrow cone.
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 8, outer: 16,
+                         at: SIMD3(0, 6, 18), range: 12)
+
+        let nearest = wall.closestPoint(to: light.position)
+        #expect(light.angularAttenuation(at: nearest) > 0 || light.reaches(wall))
+        #expect(light.reaches(wall), "the lit end of the wall was dropped")
+    }
+
+    @Test("A spot pointing away from a box does not reach it")
+    func pointingAwayDoesNotReach() {
+        let box = BoundingBox(minimum: SIMD3(-1, -1, 9), maximum: SIMD3(1, 1, 11))
+        let away = spot(pointing: SIMD3(0, 0, -1), inner: 10, outer: 20, range: 30)
+        let toward = spot(pointing: SIMD3(0, 0, 1), inner: 10, outer: 20, range: 30)
+        #expect(!away.reaches(box))
+        #expect(toward.reaches(box))
+    }
+
+    @Test("A spot out of range does not reach, whichever way it points")
+    func rangeStillApplies() {
+        let box = BoundingBox(minimum: SIMD3(-1, -1, 99), maximum: SIMD3(1, 1, 101))
+        #expect(!spot(pointing: SIMD3(0, 0, 1), range: 20).reaches(box))
+    }
+
+    /// Ranking a spot by its angular term at the box's nearest point would sort a light that matters
+    /// to the bottom of the list and out of the budget.
+    @Test("A spot that reaches is kept even when the nearest point of the box is unlit")
+    func spotSurvivesSelection() {
+        let wall = BoundingBox(minimum: SIMD3(-1, 0, -20), maximum: SIMD3(1, 4, 20))
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 8, outer: 16,
+                         at: SIMD3(0, 6, 18), range: 12)
+        let set = LightSet(lights: [light], budget: 4)
+        #expect(set.affecting(wall).count == 1)
+    }
+
+    // MARK: - The level format
+
+    @Test("A cone survives a round trip, in degrees")
+    func coneRoundTrips() throws {
+        let light = spot(pointing: SIMD3(0, -1, 0), inner: 12, outer: 28, at: SIMD3(1, 3, -2))
+        let data = try JSONEncoder().encode(light)
+        let decoded = try JSONDecoder().decode(PunctualLight.self, from: data)
+        let cone = try #require(decoded.cone)
+        #expect(abs(radians_to_degrees(cone.innerAngle) - 12) < 1e-3)
+        #expect(abs(radians_to_degrees(cone.outerAngle) - 28) < 1e-3)
+        #expect(simd_distance(cone.direction, SIMD3(0, -1, 0)) < 1e-5)
+        #expect(simd_distance(decoded.position, light.position) < 1e-5)
+    }
+
+    /// **No direction means no cone**, so an existing level's lamps keep radiating everywhere.
+    @Test("A light with no direction stays a point light")
+    func noDirectionMeansPoint() throws {
+        let json = #"{"position": [0, 2, 0], "colour": [1, 1, 1], "intensity": 10, "range": 6}"#
+        let light = try JSONDecoder().decode(PunctualLight.self, from: Data(json.utf8))
+        #expect(light.cone == nil)
+        #expect(light.angularAttenuation(at: SIMD3(0, 5, 0)) == 1)
     }
 }
