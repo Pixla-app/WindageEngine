@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-212 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+218 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,25 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — versioning and a changelog
+
+**`0.1.0` is the first version with a number**, and the repository can now be depended on by URL.
+
+- **`Engine.semanticVersion`** is the single source of truth; `Engine.version` formats it, and
+  `SemanticVersion` is `Comparable` and refuses to parse anything that is not `major.minor.patch` —
+  `v0.1.0` included, because that is not what SwiftPM resolves.
+- **`CHANGELOG.md`**, Keep a Changelog format, with 0.1.0 covering everything so far and a list of
+  the gaps a consumer will look for and not find.
+- **A test is what keeps it honest.** `ChangelogTests` fails if the newest entry is not the version
+  the engine reports, if entries are out of order, or if there is no `Unreleased` section. Nothing
+  in a build cares whether a changelog was updated, so discipline was never going to be enough — and
+  a changelog that has fallen behind is worse than none, because a reader believes it.
+- **The pre-1.0 rule is written down**: minor carries breakage, patch is additions and fixes, so a
+  consumer pins `.upToNextMinor(from: "0.1.0")`. **The conventions count as API** — reversed-Z, the
+  depth clear value, the vertex-descriptor contract — because changing one makes a consumer's game
+  compile and then draw nothing.
+- **Tagged `0.1.0`**, no `v` prefix.
 
 ## Done 2026-09-09 — materials and textures
 
@@ -175,21 +194,47 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **A bought rigged character, once one is worth buying.** The generated figure proved the API; what
-   it cannot test is a hundred joints, four influences per vertex genuinely in use, a non-identity
-   geometry bind transform, and whatever a real exporter does. **Buy USD, or FBX with a Blender step
-   — OBJ carries no skeleton.** Not a blocker for anything; a confidence check on both loaders now,
-   since a real character brings materials and normal maps as well as a hundred joints.
+1. **A real character exists, and it exposes three gaps.** An 87-joint rigged character is available
+   as `.usdc` with five clips in separate files, and it was probed on 2026-09-09: the skeleton, the
+   weights, the UVs and a non-identity geometry bind transform all come through. What does not work
+   yet, and is genuinely engine work rather than a game's:
 
-2. **The shadow pass seam.** It is implemented twice now — here and in a game — and the sample's copy
-   has since grown a *second* pipeline for skinned geometry, which is new evidence about the seam:
-   what varies is the vertex layout and the per-object bindings, and the batch shape in
-   `SampleShadowMap.Batch` is one answer to it. **A third implementation would still answer it better
-   than a second one guessing**, so this waits unless something else needs a shadow pass first.
+   - **Clips live in one file each**, and each of those files carries a whole copy of the mesh and
+     the skeleton. `RigLoader.load` reads one file and returns skeleton *and* clips, so loading six
+     clips means parsing six copies of a 34,650-vertex mesh. **Needs a way to read clips alone and
+     bind them to a skeleton already loaded** — `AnimationBinding` matches by path, so the mechanism
+     is there; the entry point is not.
+   - **The rest pose differs between those files.** The same joint reports a different rest
+     transform in the base file and in a walk file, because a clip file's rest pose is whatever the
+     exporter left the rig at. **The skeleton must come from the base file**, which is a rule
+     nothing currently states or enforces.
+   - **It is Z-up and in centimetres** — 176 units tall, `upAxis` (0, 0, 1). Model I/O does not
+     convert either. Every real export from that toolchain will be like this, so an import transform
+     (scale plus up-axis) is a settled, cheap thing the engine should own rather than every game
+     rediscovering it.
 
-3. **Semantic versioning and a changelog.** Stated in the README as worth doing from the first
-   outside consumer — cheap now, impossible to reconstruct later. Not started. The window title
-   already says `0.1.0`; nothing else does.
+   Its material also names no texture: the colour map ships beside it as a PNG the game binds by
+   name. That is normal and fine, but it means the file-carries-its-own-texture path stays proved
+   only by the sample.
+
+2. **Extract the shadow pass. It is one thing implemented twice, and that is a defect.** The
+   *arithmetic* has been in the engine since `ShadowCascades`; the **pass** — the texture, the
+   pipelines, the per-cascade encoder loop — exists in the sample and again in a game, and a fix to
+   one does not reach the other.
+
+   **This was previously parked as "waiting for a third consumer", and that framing was wrong.** It
+   is not speculative: the code is written, working and tested in two places, and the only open
+   question was what varies between them. **That question is now answered**, by this session rather
+   than by a third copy — teaching the sample's pass to draw skinned meshes forced exactly the
+   abstraction the seam needs. What varies is the **vertex layout** and the **per-object bindings**,
+   and `SampleShadowMap.Batch` — a pipeline, a count, and closures giving a mesh, a uniform address
+   and an optional joint-palette address — serves two completely different vertex layouts through one
+   encoder.
+
+   So: lift `SampleShadowMap` into the engine with `Batch` as its interface, leave the *pipelines*
+   with the game (they are compiled against the game's shaders and its vertex descriptor), and the
+   sample keeps only the half that is genuinely its own. A game replacing its copy afterwards is that
+   game's work on that game's schedule — this repository does not wait on it.
 
 ## Standing reminders
 

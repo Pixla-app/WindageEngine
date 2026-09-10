@@ -1,0 +1,88 @@
+//
+//  VersionTests.swift
+//  WindageEngineTests
+//
+
+import Testing
+import Foundation
+@testable import WindageEngine
+
+@MainActor
+struct SemanticVersionTests {
+
+    @Test("A version formats and parses back")
+    func roundTrip() {
+        let version = SemanticVersion(major: 1, minor: 12, patch: 3)
+        #expect(version.description == "1.12.3")
+        #expect(SemanticVersion("1.12.3") == version)
+    }
+
+    /// `v0.1.0` is a common habit and it is not what SwiftPM resolves, so it is rejected here rather
+    /// than parsed leniently and disagreeing with the tag it came from.
+    @Test("Anything that is not major.minor.patch is refused")
+    func badVersionsAreRefused() {
+        for text in ["v1.0.0", "1.0", "1.0.0.0", "1.0.x", "", "-1.0.0", "1.0.0-beta"] {
+            #expect(SemanticVersion(text) == nil, "'\(text)' should not have parsed")
+        }
+    }
+
+    @Test("Ordering is by major, then minor, then patch")
+    func ordering() {
+        #expect(SemanticVersion("0.1.0")! < SemanticVersion("0.2.0")!)
+        #expect(SemanticVersion("0.9.9")! < SemanticVersion("1.0.0")!)
+        #expect(SemanticVersion("1.0.1")! > SemanticVersion("1.0.0")!)
+    }
+}
+
+/// Ties the version in code to the changelog that explains it.
+///
+/// **A changelog that is allowed to fall behind is worse than none**, because a consumer reads it
+/// and believes it. Nothing else in a release process forces the entry to be written — the build
+/// does not care — so this test is the thing that does.
+@MainActor
+struct ChangelogTests {
+
+    /// Found relative to this source file rather than through a bundle: the changelog is a document
+    /// at the root of the repository, not a resource anything ships.
+    private var changelog: String {
+        get throws {
+            let root = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()      // WindageEngineTests
+                .deletingLastPathComponent()      // Tests
+                .deletingLastPathComponent()      // the repository root
+            return try String(contentsOf: root.appendingPathComponent("CHANGELOG.md"),
+                              encoding: .utf8)
+        }
+    }
+
+    /// Every released version in the file, newest first.
+    private func releases(in text: String) -> [SemanticVersion] {
+        text.split(separator: "\n").compactMap { line in
+            guard line.hasPrefix("## ["), let close = line.firstIndex(of: "]") else { return nil }
+            let name = line[line.index(line.startIndex, offsetBy: 4)..<close]
+            return SemanticVersion(String(name))
+        }
+    }
+
+    @Test("The newest release in the changelog is the version the engine reports")
+    func changelogMatchesTheVersion() throws {
+        let listed = releases(in: try changelog)
+        let newest = listed.first?.description ?? "none"
+        #expect(listed.first == Engine.semanticVersion,
+                "CHANGELOG.md's newest entry is \(newest) but Engine.version is \(Engine.version)")
+    }
+
+    @Test("Releases are listed newest first")
+    func releasesAreOrdered() throws {
+        let listed = releases(in: try changelog)
+        #expect(listed == listed.sorted(by: >), "the changelog is out of order")
+    }
+
+    /// An Unreleased section is where a change lands before anybody decides what number it deserves.
+    /// Without one, every commit either edits a released entry — rewriting history somebody may have
+    /// already read — or writes nothing.
+    @Test("There is somewhere to write the next change")
+    func unreleasedSectionExists() throws {
+        #expect(try changelog.contains("## [Unreleased]"))
+    }
+}

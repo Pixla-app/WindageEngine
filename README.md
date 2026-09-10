@@ -532,6 +532,55 @@ A Swift package dependency — by URL, or by relative path for a checkout sittin
 > alone** — this repository has to be checked out beside it at the expected path. Depending on it by
 > URL avoids that entirely and is the better default for anybody who is not developing both at once.
 
+## Versioning (2026-09-09)
+
+**`0.1.0` is the first version with a number**, and everything before it had nothing for a version to
+mean: the engine was a folder inside a studio repository, consumed by one game developed alongside
+it, where "the current commit" was always the answer. It stopped being that the day it got its own
+repository, and a dependency by URL is unusable without tags.
+
+### The number lives in one place
+
+`Engine.semanticVersion`. The window title formats it; `CHANGELOG.md` records it; a **test fails if
+they disagree**. A version that also lives in a build setting and a document is a version that will
+eventually contradict itself, and it will do so on somebody else's machine.
+
+### What a bump promises before 1.0
+
+Semantic Versioning gives `0.x` no compatibility guarantee at all, which is honest and useless to
+depend on. This repository narrows it to what everybody actually does before 1.0:
+
+| | means |
+|---|---|
+| **minor** — 0.1 → 0.2 | Something changed that can break a build: a signature, a type, a removed declaration, or a default that alters behaviour. |
+| **patch** — 0.1.0 → 0.1.1 | Additions and fixes only. What compiled still compiles and still does the same thing. |
+
+So a consumer pins `.upToNextMinor(from: "0.1.0")` and gets fixes without surprises. After 1.0 this
+becomes ordinary Semantic Versioning, with the major carrying the breakage.
+
+> **The conventions count as API, even though they are not signatures.** Reversed-Z, the depth clear
+> value, and the vertex-descriptor contract with `MeshLoader` are all things a consumer builds
+> against; change one and their game compiles and then draws nothing, which is worse than a compile
+> error. Those move the **minor**.
+
+### The changelog is not optional, and a test is what makes that true
+
+Nothing in a build cares whether `CHANGELOG.md` was updated, so a changelog left to discipline falls
+behind — and one that has fallen behind is worse than none, because a reader believes it.
+`ChangelogTests` checks that its newest entry is the version the engine reports, that entries are in
+order, and that an `Unreleased` section exists to write into. Releasing without writing the entry
+fails the suite.
+
+**Entries are written for somebody upgrading**, which is why *Changed* and *Removed* carry the weight.
+A new type costs a reader nothing; a changed one costs them a build.
+
+### Releasing
+
+1. Move `Unreleased` into a dated version heading in `CHANGELOG.md`.
+2. Bump `Engine.semanticVersion` to match — the test will tell you if you forget.
+3. `swift test`, then tag: **`git tag 0.2.0`**, no `v` prefix, which is what SwiftPM resolves and
+   what `SemanticVersion.init(_:)` deliberately refuses to parse leniently.
+
 ## The sample game (2026-09-07)
 
 `Sources/WindageSample/` — a complete, deliberately dull first-person walkthrough, built against
