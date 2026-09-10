@@ -129,6 +129,22 @@ public nonisolated struct ShadowCascades {
               value(min(2, count - 1)), value(min(3, count - 1)))
     }
 
+    /// The constant part of the rasteriser's depth bias, before the per-cascade scale.
+    ///
+    /// **Negative because depth is reversed.** Under reversed-Z, pushing a recorded occluder *away*
+    /// from the light means a smaller value, so the sign is the opposite of every textbook. Getting
+    /// it wrong doubles the acne instead of removing it, which reads as the bias having no effect.
+    ///
+    /// Kept here beside ``biasScales`` rather than passed at the call site: the three numbers are one
+    /// tuning, and a pass that scaled one of them independently would be tuned against nothing.
+    public var constantDepthBias: Float { -0.0006 }
+
+    /// The slope-scaled part. Also negative, for the same reason.
+    ///
+    /// This is the one that matters: a surface nearly edge-on to the light spans many depth values
+    /// within a single texel, and needs room proportional to that slope rather than a flat amount.
+    public var slopeScaledDepthBias: Float { -1.8 }
+
     /// Depth bias multiplier per cascade, relative to the near one.
     ///
     /// A cascade covering 8× the world per texel needs roughly 8× the bias: the depth error within

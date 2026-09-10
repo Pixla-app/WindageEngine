@@ -148,7 +148,23 @@ final class SampleGame: GameLoop {
 
     /// **Optional like the audio.** A machine that cannot build the shadow pipeline should still
     /// show the sample, unlit rather than not at all.
-    private let shadowMap: SampleShadowMap?
+    ///
+    /// **The pass itself is the engine's now** — `ShadowMap` owns the texture, the reversed-Z depth
+    /// state, the per-cascade descriptors and the encoder loop. What is left here is the part the
+    /// engine genuinely cannot own: two pipelines, compiled against *this game's* shaders and *this
+    /// game's* vertex layouts.
+    private let shadowMap: ShadowMap?
+    private let shadowPipeline: MTLRenderPipelineState?
+    private let skinnedShadowPipeline: MTLRenderPipelineState?
+
+    /// A courtyard seventy metres across, not a sniper range. **These are the sample's numbers, and
+    /// that they are nothing like a long-range game's is exactly why `ShadowCascades` takes them as
+    /// arguments.** `lightDepthRange` is 200 rather than the 1500 default for the same reason: it is
+    /// how far along the light axis the recorded box reaches, and a courtyard needs a fraction of
+    /// what a world kilometres deep does.
+    private static let cascades = ShadowCascades(splits: [8, 22, 55, 120],
+                                                 resolution: 1024,
+                                                 lightDepthRange: 200)
     /// Frame-wide shadow data — written once a frame, not once per object.
     private let shadowFrameBuffer: MTLBuffer
 
@@ -347,10 +363,43 @@ final class SampleGame: GameLoop {
         textures = TextureStore(device: device)
         if textures == nil { print("WindageSample: no texture store — surfaces will be flat colours") }
 
-        shadowMap = SampleShadowMap(device: device, library: shaderLibrary,
-                                    vertexDescriptor: vertexDescriptor,
-                                    skinnedVertexDescriptor: SampleGame.skinnedVertexDescriptor())
-        if shadowMap == nil { print("WindageSample: no shadows — the scene will be flat-lit") }
+        shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
+
+        // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
+        // about a shadow pass — depth only, no colour attachment, one raster sample, the matching
+        // depth format — comes from `ShadowMap.pipelineDescriptor`, which is the set of things that
+        // have to be right and none of which is obvious.
+        var shadow: MTLRenderPipelineState?
+        var skinnedShadow: MTLRenderPipelineState?
+        if shadowMap != nil {
+            do {
+                let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
+
+                let staticFunction = MTL4LibraryFunctionDescriptor()
+                staticFunction.library = shaderLibrary
+                staticFunction.name = "sampleShadowVertex"
+                shadow = try compiler.makeRenderPipelineState(
+                    descriptor: ShadowMap.pipelineDescriptor(vertexFunction: staticFunction,
+                                                             vertexDescriptor: vertexDescriptor,
+                                                             label: "SampleShadow"))
+
+                let skinnedFunction = MTL4LibraryFunctionDescriptor()
+                skinnedFunction.library = shaderLibrary
+                skinnedFunction.name = "sampleSkinnedShadowVertex"
+                skinnedShadow = try compiler.makeRenderPipelineState(
+                    descriptor: ShadowMap.pipelineDescriptor(
+                        vertexFunction: skinnedFunction,
+                        vertexDescriptor: SampleGame.skinnedVertexDescriptor(),
+                        label: "SampleSkinnedShadow"))
+            } catch {
+                print("WindageSample: shadow pipelines failed — \(error)")
+            }
+        }
+        shadowPipeline = shadow
+        skinnedShadowPipeline = skinnedShadow
+        if shadowMap == nil || shadowPipeline == nil {
+            print("WindageSample: no shadows — the scene will be flat-lit")
+        }
 
         // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
         // default, and a character it does not carry draws nothing at all — which is how these
@@ -915,7 +964,7 @@ final class SampleGame: GameLoop {
         let matrices = shadowMap.updateMatrices(frameSlot: frameSlot, camera: view,
                                                 sunDirection: sunDirection)
 
-        let cascades = SampleShadowMap.cascades
+        let cascades = SampleGame.cascades
         var frame = ShadowFrame(
             cascadeViewProjection: (matrices[0], matrices[1], matrices[2], matrices[3]),
             cascadeSplits: cascades.splitVector,
@@ -926,17 +975,17 @@ final class SampleGame: GameLoop {
         shadowFrameBuffer.contents().advanced(by: frameSlot * SampleGame.shadowFrameStride)
             .copyMemory(from: &frame, byteCount: MemoryLayout<ShadowFrame>.size)
 
-        var batches = [SampleShadowMap.Batch(
-            pipeline: shadowMap.staticPipeline,
+        guard let shadowPipeline else { return }
+        var batches = [ShadowMap.Batch(
+            pipeline: shadowPipeline,
             count: visibleDrawableCount,
             mesh: { self.drawables[$0].mesh.mesh },
             uniformAddress: { self.uniformBuffer.gpuAddress
-                + UInt64(self.uniformOffset(frameSlot: frameSlot, drawable: $0)) },
-            jointPaletteAddress: nil)]
+                + UInt64(self.uniformOffset(frameSlot: frameSlot, drawable: $0)) })]
 
-        if let skinned = shadowMap.skinnedPipeline, let mesh = figureMesh, visibleFigureCount > 0 {
-            batches.append(SampleShadowMap.Batch(
-                pipeline: skinned,
+        if let skinnedShadowPipeline, let mesh = figureMesh, visibleFigureCount > 0 {
+            batches.append(ShadowMap.Batch(
+                pipeline: skinnedShadowPipeline,
                 count: visibleFigureCount,
                 mesh: { _ in mesh.mesh },
                 uniformAddress: { self.uniformBuffer.gpuAddress

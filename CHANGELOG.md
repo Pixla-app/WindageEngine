@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.1.2] — 2026-09-09
+
+**The shadow pass stops being written twice.** The arithmetic has been here since `ShadowCascades`;
+the pass — the texture, the depth state, the descriptors, the encoder loop — existed in two
+repositories, where a fix to one did not reach the other. Additive: nothing that compiled against
+0.1.1 changes.
+
+### Added
+
+- **`ShadowMap`** — the depth texture array and its per-cascade slices, the reversed-Z depth state,
+  the front-face cull, the slope-scaled bias, the per-cascade pass descriptors, the light matrices
+  per frame in flight, and the encoder loop.
+- **`ShadowMap.Batch`** — a pipeline plus closures reaching each drawable's mesh, uniforms and
+  optional joint palette. Batches rather than one loop because a skinned mesh has a different vertex
+  layout, so pipeline state changes once per kind rather than once per object.
+- **`ShadowMap.pipelineDescriptor(vertexFunction:vertexDescriptor:label:)`** — the three things a
+  shadow pipeline must get right and none of which is obvious: no fragment function or colour
+  attachment, one raster sample, and a depth format matching the texture.
+- **`ShadowMap.BufferIndex`** — where the argument table puts the uniforms, the light matrix and the
+  joint palette. A mismatch does not fail; it reads a matrix out of the wrong buffer and records the
+  scene from nowhere.
+- **`ShadowCascades.constantDepthBias`** and **`.slopeScaledDepthBias`**, beside `biasScales`,
+  because the three numbers are one tuning. Both negative: under reversed-Z, pushing an occluder away
+  from the light is a *smaller* value, so the sign is the opposite of every textbook.
+
+### What a game keeps
+
+The **pipelines** — compiled against its own shaders and vertex descriptor, so they cannot come from
+here — the **uniform layout**, the joint palette, and the cascade **numbers**. A courtyard seventy
+metres across and a range where the target is at 800 m want different splits.
+
+A game with its own copy of the pass is not obliged to change. Replacing it is that game's work on
+that game's schedule.
+
 ## [0.1.1] — 2026-09-09
 
 **Everything a real character needs that a generated one did not show.** An 87-joint rigged character

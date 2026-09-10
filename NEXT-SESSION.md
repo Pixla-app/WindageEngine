@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-231 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+238 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,32 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — the shadow pass is extracted (0.1.2)
+
+**One thing implemented twice is now implemented once.** `ShadowMap` owns the depth texture array,
+the reversed-Z depth state, the front-face cull, the slope-scaled bias, the per-cascade descriptors,
+the light matrices and the encoder loop. `SampleShadowMap.swift` is deleted; what the sample keeps is
+two pipelines and four cascade numbers.
+
+- **`ShadowMap.Batch`** is the seam: a pipeline plus closures for the mesh, the uniform address and an
+  optional joint-palette address. Closures rather than arrays, because a game's drawables are its own.
+- **`pipelineDescriptor(vertexFunction:vertexDescriptor:label:)`** and **`BufferIndex`** were comments
+  and are now API — the things that must be right and whose failure is silent.
+- **`constantDepthBias` / `slopeScaledDepthBias` moved onto `ShadowCascades`.** Both negative: under
+  reversed-Z, pushing an occluder away from the light is a *smaller* value.
+
+### The bad reason it waited, written down because it will recur
+
+It was parked as *"waiting for a third consumer to say what the seam is"*. **That was wrong twice.**
+The code was already written, working and tested in two repositories where a fix to one does not
+reach the other — a defect, not a shape waiting to be discovered. And a third copy would have been
+more of the same evidence; what actually answered it was **teaching the sample's own pass to draw
+skinned meshes**, because a second vertex layout inside one consumer forced the abstraction two
+consumers had only hinted at.
+
+> **The rule protects against *designing* with no evidence. It says nothing about code that already
+> exists in two places** — and reaching for it there is how duplication acquires a justification.
 
 ## Done 2026-09-09 — what a real character needs (0.1.1)
 
@@ -221,31 +247,21 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Extract the shadow pass. It is one thing implemented twice, and that is a defect.** The
-   *arithmetic* has been in the engine since `ShadowCascades`; the **pass** — the texture, the
-   pipelines, the per-cascade encoder loop — exists in the sample and again in a game, and a fix to
-   one does not reach the other.
-
-   **This was previously parked as "waiting for a third consumer", and that framing was wrong.** It
-   is not speculative: the code is written, working and tested in two places, and the only open
-   question was what varies between them. **That question is now answered**, by this session rather
-   than by a third copy — teaching the sample's pass to draw skinned meshes forced exactly the
-   abstraction the seam needs. What varies is the **vertex layout** and the **per-object bindings**,
-   and `SampleShadowMap.Batch` — a pipeline, a count, and closures giving a mesh, a uniform address
-   and an optional joint-palette address — serves two completely different vertex layouts through one
-   encoder.
-
-   So: lift `SampleShadowMap` into the engine with `Batch` as its interface, leave the *pipelines*
-   with the game (they are compiled against the game's shaders and its vertex descriptor), and the
-   sample keeps only the half that is genuinely its own. A game replacing its copy afterwards is that
-   game's work on that game's schedule — this repository does not wait on it.
-
-2. **Load the real character into the sample, or decide not to.** Everything it needs now exists and
+1. **Load the real character into the sample, or decide not to.** Everything it needs now exists and
    is tested against fixtures that reproduce its shape — but the character itself lives outside this
    repository and cannot be committed to it, so it has been *probed* rather than *run*. Worth one
    session: point the sample at it behind an environment variable, look at it, and write down
    whatever the fixtures did not predict. Expect the material to name no texture, and expect facing
    to need a yaw.
+
+2. **Materials still stop at base colour in a consumer.** `Material` carries normal, metallic,
+   roughness, occlusion and emissive slots and the sample binds only the first. Normal mapping is the
+   next visible step and it needs **tangents in the vertex layout** — which Model I/O can generate —
+   plus a mesh worth mapping.
+
+3. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
+   renders past 1.0 and writes it straight makes every lit surface clip identically, and each game
+   currently supplies its own answer or none.
 
 ## Standing reminders
 

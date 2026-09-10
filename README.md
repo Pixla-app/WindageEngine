@@ -142,7 +142,7 @@ clips, cross-fading and a joint palette, loaded from USD, with clips in files of
 asset-orientation correction for Z-up centimetre exports** · **materials and textures — the
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
-and one segment hit test · frustum culling · shadow cascade arithmetic · a versioned level format
+and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -155,7 +155,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | ~~**Skinned animation**~~ | **Done 2026-09-09.** `Skeleton`, `AnimationClip`, `SkeletonPose` and `RigLoader`; the sample's figures are posed, cross-faded and shadowed. See below. |
 | **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. **Half arrived with animation**: a rig *is* a hierarchy, and `SkeletonPose.modelTransform(ofJoint:)` is where a weapon hangs off a hand. What is still missing is parenting between *objects*. |
 | **Animation state** | What plays next, and what interrupts what. The engine cross-fades two clips; deciding *which two* is a game's job today, and there is no evidence yet about where the line sits. Wait for a game to have more than two clips. |
-| **The shadow pass** | The maths is here; the pass is written twice outside. Extract when a third consumer says what the seam is. |
+| ~~**The shadow pass**~~ | **Done 2026-09-09.** `ShadowMap` owns the texture, the depth state, the descriptors and the encoder loop; the game keeps its pipelines. See below. |
 | ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
 | **Normal maps in a consumer** | The slot, the sRGB rule and the flat-normal fallback are all here; nothing has bound one yet, because that needs tangents in the vertex layout and a mesh worth mapping. The next real asset forces it. |
 | **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
@@ -867,17 +867,76 @@ there was only one scene scale, which is exactly the class of fault a second con
 instead, because that is what the error inside a texel is proportional to; `biasTexels` is therefore
 in texels and is scale-free. Three tests pin it.
 
-**The pass itself is still in the sample, not in this package.** A shadow pass has to bind a
-particular vertex layout and a particular per-object uniform buffer, and what the general seam looks
-like is a question a *third* implementation answers better than a second one guessing. What the two
-already agree on — the texture array, the front-face cull, the reversed-Z depth state, the
-slope-scaled bias — is the shape to extract when something else needs it.
+**The pass is `ShadowMap` now** — see the section below on why it stopped waiting.
 
 > **The sun moved, and it is level data, not code.** Both sample levels had the sun behind the
 > camera, which is invisible without shadows and useless with them: every shadow falls away from the
 > viewer and hides behind its own caster. A side sun lights the faces the player is looking at *and*
 > throws its shadows across them. That is a `sunYaw` in `courtyard.json`, which is the point of
 > levels being files.
+
+## Extracting the shadow pass, and the bad reason it waited (2026-09-09)
+
+`ShadowMap` owns the pass: the depth texture array, the reversed-Z depth state, the front-face cull,
+the slope-scaled bias, the per-cascade pass descriptors and the encoder loop. The game keeps its
+**pipelines**, because those are compiled against its own shaders and its own vertex descriptor and
+cannot come from anywhere else.
+
+### It was parked for a bad reason, and it is worth writing down which
+
+The note here used to say the seam was *"a question a third implementation answers better than a
+second one guessing"*. **That was wrong twice over.**
+
+It was wrong about the problem: this was never speculative work. The code was already written,
+working and tested — **twice**, in two repositories, where a fix to one does not reach the other.
+That is a defect, not a shape waiting to be discovered, and "wait for a third" is a rule that lets a
+defect age.
+
+And it was wrong about the evidence. A third copy would have been *more of the same* evidence about a
+question that had a cheaper answer available. What actually settled it was **teaching the sample's
+own pass to draw skinned meshes**: a second vertex layout inside one consumer forced exactly the
+abstraction that two consumers had only been hinting at. Two things vary and no more — the **vertex
+layout** and the **per-object bindings** — and both fit in a `Batch`.
+
+> **The general lesson, since this is the second time the "wait for a consumer" rule has been too
+> blunt.** It protects against *designing* something with no evidence. It says nothing about code
+> that already exists in two places, and reaching for it there is how duplication gets a
+> justification.
+
+### What the split actually is
+
+| the engine's | the game's |
+|---|---|
+| the depth texture array and its per-cascade slices | the **pipelines**: a vertex function and a vertex descriptor only the game has |
+| the reversed-Z depth state, front-face cull, slope-scaled bias | the **uniform layout** — what a `model` matrix sits inside is the game's struct |
+| the per-cascade pass descriptors and the encoder loop | the joint palette, where there is one |
+| the light matrices, per frame in flight | the cascade **numbers** — a courtyard and a sniper range disagree |
+
+**A `Batch` is a pipeline plus closures**, not arrays: a game's drawables are its own, and an array
+here would mean building a copy of the scene every frame to hand over. Batches rather than one loop
+because a skinned mesh has a different vertex layout, so state changes once per kind rather than once
+per object.
+
+### Two things that were comments and are now API
+
+- **`ShadowMap.pipelineDescriptor(vertexFunction:vertexDescriptor:label:)`.** Three things have to be
+  right for a shadow pipeline and none is obvious: no fragment function and no colour attachment,
+  one raster sample, and a depth format matching the texture. The game supplies the two things the
+  engine cannot know and gets the rest correct by construction — the same argument as reversed-Z.
+- **`ShadowMap.BufferIndex`.** Where the argument table puts the uniforms, the light matrix and the
+  joint palette. A mismatch here does not fail; it reads a matrix out of the wrong buffer and records
+  the scene from nowhere.
+
+**`constantDepthBias` and `slopeScaledDepthBias` moved onto `ShadowCascades`**, beside `biasScales`,
+because the three numbers are one tuning. Both are **negative**: under reversed-Z, pushing a recorded
+occluder away from the light is a *smaller* value, so the sign is the opposite of every textbook, and
+getting it wrong doubles the acne rather than removing it — which reads as the bias doing nothing.
+
+### What did not move
+
+`SampleShadowMap.swift` is gone; what is left in the sample is two pipelines and four cascade numbers.
+**A game with its own copy is not obliged to change**, and replacing it is that game's work on that
+game's schedule — this repository does not wait on it.
 
 ## Culling (2026-09-08)
 
