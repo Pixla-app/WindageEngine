@@ -68,26 +68,55 @@ public nonisolated enum MeshLoader {
         let (modelMeshes, metalMeshes) = try MTKMesh.newMeshes(asset: asset, device: device)
         guard !metalMeshes.isEmpty else { throw MeshLoaderError.noMeshes(name) }
 
-        // Bounds come from the Model I/O mesh, which still knows them — `MTKMesh` does not carry
-        // them, and recomputing from the vertex buffers afterwards means reading GPU memory back.
+        // Bounds and materials come from the Model I/O mesh, which still knows them — `MTKMesh`
+        // carries neither, and recomputing bounds from the vertex buffers afterwards means reading
+        // GPU memory back.
         return zip(metalMeshes, modelMeshes).map { metal, model in
             let box = model.boundingBox
             return LoadedMesh(
                 mesh: metal,
                 bounds: BoundingBox(minimum: SIMD3(box.minBounds.x, box.minBounds.y, box.minBounds.z),
-                                    maximum: SIMD3(box.maxBounds.x, box.maxBounds.y, box.maxBounds.z)))
+                                    maximum: SIMD3(box.maxBounds.x, box.maxBounds.y, box.maxBounds.z)),
+                materials: materials(of: model, count: metal.submeshes.count))
         }
+    }
+
+    /// One material per submesh, in the submeshes' own order.
+    ///
+    /// **Padded to the submesh count rather than trusted to match.** `MTKMesh` and `MDLMesh` agree
+    /// on submesh order, but a file can leave a submesh unbound, and a materials array shorter than
+    /// the submeshes it indexes is an out-of-bounds crash at draw time — in a loop that has nothing
+    /// to do with loading. A default material draws.
+    static func materials(of mesh: MDLMesh, count: Int) -> [Material] {
+        let declared = (mesh.submeshes as? [MDLSubmesh] ?? []).map { submesh in
+            submesh.material.map { Material($0) } ?? Material(name: submesh.name)
+        }
+        guard declared.count < count else { return Array(declared.prefix(count)) }
+        return declared + Array(repeating: Material(), count: count - declared.count)
     }
 }
 
-/// A mesh and the box that contains it, in the mesh's own space.
+/// A mesh, the box that contains it in its own space, and what its surfaces are made of.
 public nonisolated struct LoadedMesh {
     public let mesh: MTKMesh
     public let bounds: BoundingBox
 
-    public init(mesh: MTKMesh, bounds: BoundingBox) {
+    /// One per submesh, in the same order — so `materials[i]` describes `mesh.submeshes[i]`.
+    ///
+    /// **A file's materials, not a game's.** What they mean to a shader is the game's business;
+    /// carrying them at all is the difference between a bought asset arriving intact and arriving
+    /// as untextured geometry with its surfaces thrown away on import.
+    public let materials: [Material]
+
+    public init(mesh: MTKMesh, bounds: BoundingBox, materials: [Material] = []) {
         self.mesh = mesh
         self.bounds = bounds
+        self.materials = materials
+    }
+
+    /// The material for a submesh, or a default if the file named none.
+    public func material(forSubmesh index: Int) -> Material {
+        materials.indices.contains(index) ? materials[index] : Material()
     }
 }
 

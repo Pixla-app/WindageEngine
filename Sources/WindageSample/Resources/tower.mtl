@@ -1,0 +1,8 @@
+# The surface for tower.obj. Model I/O reads this through the obj's `mtllib` line, which is
+# how a bought asset carries its materials — the sample uses the same path rather than
+# assigning textures in code, so that path is the one that gets tested.
+newmtl stone
+Kd 1 1 1
+Ks 0 0 0
+Ns 12
+map_Kd stone.png

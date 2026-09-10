@@ -14,8 +14,10 @@ struct Uniforms {
     float4x4 viewProjection;
     float4x4 model;
     float3x3 normalMatrix;
-    float3   albedo;
+    float3   albedo;          // the game's own tint: objective state, editor selection
     float3   sunDirection;
+    float4   materialBaseColor;
+    float4   materialParams;  // x metallic, y roughness
 };
 
 constant int kCascadeCount = 4;
@@ -35,12 +37,14 @@ struct ShadowFrame {
 struct VertexIn {
     float3 position [[attribute(0)]];
     float3 normal   [[attribute(1)]];
+    float2 uv       [[attribute(2)]];
 };
 
 struct VertexOut {
     float4 position [[position]];
     float3 normal;
     float3 worldPosition;
+    float2 uv;
 };
 
 /// A skinned vertex carries two more attributes: which joints move it, and how much each one does.
@@ -51,8 +55,9 @@ struct VertexOut {
 struct SkinnedVertexIn {
     float3  position [[attribute(0)]];
     float3  normal   [[attribute(1)]];
-    ushort4 joints   [[attribute(2)]];
-    float4  weights  [[attribute(3)]];
+    float2  uv       [[attribute(2)]];
+    ushort4 joints   [[attribute(3)]];
+    float4  weights  [[attribute(4)]];
 };
 
 /// Linear blend skinning: the weighted sum of the joint matrices moving this vertex.
@@ -77,6 +82,7 @@ vertex VertexOut sampleVertex(VertexIn in [[stage_in]],
     out.position = uniforms.viewProjection * world;
     out.normal = normalize(uniforms.normalMatrix * in.normal);
     out.worldPosition = world.xyz;
+    out.uv = in.uv;
     return out;
 }
 
@@ -101,6 +107,7 @@ vertex VertexOut sampleSkinnedVertex(SkinnedVertexIn in [[stage_in]],
     // one.
     out.normal = normalize(uniforms.normalMatrix * (skinBasis * in.normal));
     out.worldPosition = world.xyz;
+    out.uv = in.uv;
     return out;
 }
 
@@ -207,13 +214,30 @@ static float sunVisibility(constant ShadowFrame &frame,
 fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                constant Uniforms &uniforms [[buffer(1)]],
                                constant ShadowFrame &frame [[buffer(2)]],
-                               depth2d_array<float> shadowMap [[texture(0)]])
+                               depth2d_array<float> shadowMap [[texture(0)]],
+                               texture2d<float> baseColorMap [[texture(1)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
     constexpr sampler shadowSampler(mag_filter::linear, min_filter::linear,
                                     address::clamp_to_edge,
                                     compare_func::greater_equal);   // reversed-Z
+
+    // **Mip filtering and anisotropy are what make a texture look textured.** Without mips the
+    // ground shimmers as the camera moves; without anisotropy it turns to mush at a grazing angle,
+    // which is most of the screen in a game played standing up.
+    constexpr sampler surfaceSampler(mag_filter::linear, min_filter::linear,
+                                     mip_filter::linear, address::repeat,
+                                     max_anisotropy(8));
+
+    // The texture is sRGB, so this is already linear — the GPU decoded it on the way in. The engine
+    // decides that per slot; see `TextureSlot.isColor`.
+    float4 base = baseColorMap.sample(surfaceSampler, in.uv)
+                * uniforms.materialBaseColor
+                * float4(uniforms.albedo, 1.0);
+
+    const float metallic = uniforms.materialParams.x;
+    const float roughness = clamp(uniforms.materialParams.y, 0.045, 1.0);
 
     float3 n = normalize(in.normal);
     float lambert = max(dot(n, normalize(uniforms.sunDirection)), 0.0);
@@ -228,6 +252,23 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     // Sky bounce from above, so a face turned away from the sun is dim rather than black. Without
     // it a low-poly scene reads as silhouettes, which looks like broken lighting.
     float sky = 0.35 + 0.30 * n.y;
-    float3 colour = uniforms.albedo * (lambert * visibility * 1.05 + sky * 0.55);
-    return float4(colour, 1.0);
+
+    // Metal has no diffuse — its colour lives in the reflection instead. Half a line, and it is the
+    // difference between a metallic material meaning something and being a number nothing reads.
+    float3 diffuse = base.rgb * (1.0 - metallic) * (lambert * visibility * 1.05 + sky * 0.55);
+
+    // **Blinn-Phong, and deliberately not a PBR lobe.** A real specular BRDF needs a distribution
+    // term, a geometry term and Fresnel; this is a sample whose job is to show that the material's
+    // roughness arrives and does something. An impressive shader here would teach the reader about
+    // the shader.
+    const float3 view = normalize(frame.cameraPosition - in.worldPosition);
+    // Not `half` — that is a type in Metal Shading Language, and the error it produces is about a
+    // declaration specifier rather than about the name.
+    const float3 halfway = normalize(view + normalize(uniforms.sunDirection));
+    const float shininess = 2.0 / (roughness * roughness * roughness * roughness) - 2.0;
+    const float3 tint = mix(float3(0.04), base.rgb, metallic);
+    float3 specular = tint * pow(max(dot(n, halfway), 0.0), shininess)
+                    * ((shininess + 8.0) / 25.0) * lambert * visibility;
+
+    return float4(diffuse + specular, base.a);
 }

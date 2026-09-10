@@ -21,7 +21,11 @@ final class SampleGame: GameLoop {
     /// One description of the vertex layout, shared by the pipeline and the mesh loader. **They must
     /// agree**: Model I/O will convert a file to whatever layout it is handed, so a mismatch draws
     /// garbage rather than failing.
-    static let semantics: [Int: String] = [0: MDLVertexAttributePosition, 1: MDLVertexAttributeNormal]
+    static let semantics: [Int: String] = [
+        0: MDLVertexAttributePosition,
+        1: MDLVertexAttributeNormal,
+        2: MDLVertexAttributeTextureCoordinate,
+    ]
 
     static func vertexDescriptor() -> MTLVertexDescriptor {
         let descriptor = MTLVertexDescriptor()
@@ -31,7 +35,10 @@ final class SampleGame: GameLoop {
         descriptor.attributes[1].format = .float3
         descriptor.attributes[1].offset = 12
         descriptor.attributes[1].bufferIndex = 0
-        descriptor.layouts[0].stride = 24
+        descriptor.attributes[2].format = .float2
+        descriptor.attributes[2].offset = 24
+        descriptor.attributes[2].bufferIndex = 0
+        descriptor.layouts[0].stride = 32
         descriptor.layouts[0].stepFunction = .perVertex
         return descriptor
     }
@@ -44,8 +51,9 @@ final class SampleGame: GameLoop {
     static let skinnedSemantics: [Int: String] = [
         0: MDLVertexAttributePosition,
         1: MDLVertexAttributeNormal,
-        2: MDLVertexAttributeJointIndices,
-        3: MDLVertexAttributeJointWeights,
+        2: MDLVertexAttributeTextureCoordinate,
+        3: MDLVertexAttributeJointIndices,
+        4: MDLVertexAttributeJointWeights,
     ]
 
     /// **Four influences per vertex, whatever the file holds.** The sample's figure is authored with
@@ -53,13 +61,17 @@ final class SampleGame: GameLoop {
     /// nothing — measured, not assumed. Four is what a bought character will bring.
     static func skinnedVertexDescriptor() -> MTLVertexDescriptor {
         let descriptor = vertexDescriptor()
-        descriptor.attributes[2].format = .ushort4
-        descriptor.attributes[2].offset = 24
-        descriptor.attributes[2].bufferIndex = 0
-        descriptor.attributes[3].format = .float4
-        descriptor.attributes[3].offset = 32
+        // **Weights before joints, which is not the order the shader declares them in.** A `float4`
+        // wants a 16-byte-aligned offset; putting the 8-byte joint indices first would land the
+        // weights at 40. Attribute *index* and byte *offset* are independent, so the layout can be
+        // packed correctly and still read in the order the shader finds natural.
+        descriptor.attributes[4].format = .float4
+        descriptor.attributes[4].offset = 32
+        descriptor.attributes[4].bufferIndex = 0
+        descriptor.attributes[3].format = .ushort4
+        descriptor.attributes[3].offset = 48
         descriptor.attributes[3].bufferIndex = 0
-        descriptor.layouts[0].stride = 48
+        descriptor.layouts[0].stride = 56
         return descriptor
     }
 
@@ -82,8 +94,29 @@ final class SampleGame: GameLoop {
         var viewProjection: matrix_float4x4
         var model: matrix_float4x4
         var normalMatrix: matrix_float3x3
+        /// The *game's* tint — objective state, editor selection. Multiplied with the material's.
         var albedo: SIMD3<Float>
         var sunDirection: SIMD3<Float>
+        /// From the file's material.
+        var materialBaseColor: SIMD4<Float>
+        /// **Packed into a `float4` rather than left as two loose floats.** Both sides have to agree
+        /// on the padding between a `float3` and whatever follows, and a `float4` has no argument.
+        var materialParams: SIMD4<Float>
+
+        init(viewProjection: matrix_float4x4,
+             model: matrix_float4x4,
+             normalMatrix: matrix_float3x3,
+             albedo: SIMD3<Float>,
+             sunDirection: SIMD3<Float>,
+             material: Material) {
+            self.viewProjection = viewProjection
+            self.model = model
+            self.normalMatrix = normalMatrix
+            self.albedo = albedo
+            self.sunDirection = sunDirection
+            self.materialBaseColor = material.baseColor
+            self.materialParams = SIMD4(material.metallic, material.roughness, 0, 0)
+        }
     }
 
     /// Mirrors `ShadowFrame` in `SampleShaders.metal`. **Frame-wide, so it is written once** — four
@@ -133,7 +166,14 @@ final class SampleGame: GameLoop {
     private var meshes: [String: LoadedMesh] = [:]
     /// Resolved from the level — anchors against this game's ground, which is simply y = 0.
     /// **Rebuilt whenever the level changes**, because in edit mode it changes constantly.
-    private var drawables: [(mesh: LoadedMesh, transform: matrix_float4x4, albedo: SIMD3<Float>)] = []
+    /// **The base-colour maps travel with the drawable, not looked up by index.** `drawables` skips
+    /// any placement whose mesh failed to load, so its indices are not the level's — reaching back
+    /// into `level.placements` by the same index draws one object with another's texture, and only
+    /// once something fails to load.
+    private var drawables: [(mesh: LoadedMesh,
+                             transform: matrix_float4x4,
+                             albedo: SIMD3<Float>,
+                             maps: [MTLTexture])] = []
 
     /// What the player cannot walk through, and what a click can pick.
     ///
@@ -148,6 +188,13 @@ final class SampleGame: GameLoop {
     ///
     /// **A `Skeleton` is structure, not pose**, so one of these serves any number of characters; what
     /// is per-character is the ``SkeletonPose`` inside each ``Figure``.
+    /// **One store for the whole game, not one per mesh.** Every crate names the same file; loading
+    /// it per mesh would decode, upload and mipmap it again and hold N copies on the GPU.
+    private let textures: TextureStore?
+    /// The base-colour map for each of a mesh's submeshes, resolved once at load.
+    private var baseColorMaps: [String: [MTLTexture]] = [:]
+    private var figureMaps: [MTLTexture] = []
+
     private var figureMesh: LoadedMesh?
     private var figureRig: Rig?
     private var figures: [Figure] = []
@@ -257,7 +304,8 @@ final class SampleGame: GameLoop {
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
         tableDescriptor.maxBufferBindCount = 4
-        tableDescriptor.maxTextureBindCount = 1
+        // 0: the shadow cascades · 1: this submesh's base colour.
+        tableDescriptor.maxTextureBindCount = 2
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -291,6 +339,9 @@ final class SampleGame: GameLoop {
             return nil
         }
         shadowFrameBuffer = shadowFrames
+
+        textures = TextureStore(device: device)
+        if textures == nil { print("WindageSample: no texture store — surfaces will be flat colours") }
 
         shadowMap = SampleShadowMap(device: device, library: shaderLibrary,
                                     vertexDescriptor: vertexDescriptor,
@@ -328,6 +379,7 @@ final class SampleGame: GameLoop {
                                                semantics: SampleGame.semantics,
                                                bundle: .module).first {
                 meshes[name] = mesh
+                baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
                 engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
                 engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
             } else {
@@ -364,8 +416,10 @@ final class SampleGame: GameLoop {
             return
         }
         figureMesh = mesh
+        figureMaps = resolveBaseColorMaps(of: mesh, named: "figure")
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
+        if let textures { engine.residencySet.addAllocations(textures.allocations) }
 
         if let rig = figureRig {
             print("WindageSample: figure rig — \(rig.skeleton.jointCount) joints, clips: "
@@ -423,7 +477,8 @@ final class SampleGame: GameLoop {
                                                       SIMD4(0, k, 0, 0),
                                                       SIMD4(s * k, 0, c * k, 0),
                                                       SIMD4(position, 1)))
-            drawables.append((mesh, transform, SampleGame.albedo(for: placement)))
+            drawables.append((mesh, transform, SampleGame.albedo(for: placement),
+                              baseColorMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
@@ -439,11 +494,16 @@ final class SampleGame: GameLoop {
         }
     }
 
-    /// Colour by tag, so the level's own labels are visibly doing something.
+    /// The game's own tint, multiplied on top of the material.
+    ///
+    /// **It used to say what a thing *was* — earth for ground, ochre for a landmark — and now it says
+    /// what a thing's *state* is.** That was not a preference: the moment surfaces carry textures,
+    /// an identity tint multiplies the texture it was meant to replace, and a ground tint of 0.32
+    /// takes an already-dark map down to a sixth of its brightness. Identity is the material's job
+    /// now; the tint is left to the things a file cannot know — an objective that has been reached,
+    /// and whatever is selected in the editor.
     private static func albedo(for placement: Level.Placement) -> SIMD3<Float> {
-        if placement.tags.contains("ground") { return SIMD3(0.32, 0.34, 0.30) }
-        if placement.tags.contains("landmark") { return SIMD3(0.75, 0.45, 0.20) }
-        return SIMD3(0.55, 0.57, 0.60)
+        SIMD3(repeating: 1)
     }
 
     private var sunDirection: SIMD3<Float> {
@@ -505,7 +565,30 @@ final class SampleGame: GameLoop {
         }
         if !added.isEmpty {
             engine.residencySet.addAllocations(added)
+            // **Textures too, and this is easy to forget** — a texture the GPU cannot reach is not a
+            // black surface, it is whatever memory happens to be there, and it reads as a shader bug.
+            if let textures { engine.residencySet.addAllocations(textures.allocations) }
             engine.commitResidency()
+        }
+    }
+
+    /// The base-colour map for every submesh of a mesh, in submesh order.
+    ///
+    /// **From the file's own material**, not assigned here — `box.obj` names `crate.png` through its
+    /// `.mtl`, and the figure names `figure.png` through its `UsdPreviewSurface`. A game that wired
+    /// textures up in code would leave the loader's whole reason for existing untested.
+    private func resolveBaseColorMaps(of mesh: LoadedMesh, named name: String) -> [MTLTexture] {
+        guard let textures else { return [] }
+        return (0..<mesh.mesh.submeshes.count).map { index in
+            let material = mesh.material(forSubmesh: index)
+            guard let source = material[.baseColor] else { return textures.white }
+            do {
+                return try textures.texture(source, isColor: TextureSlot.baseColor.isColor,
+                                            bundle: .module)
+            } catch {
+                print("WindageSample: \(name) base colour — \(error)")
+                return textures.white
+            }
         }
     }
 
@@ -762,11 +845,16 @@ final class SampleGame: GameLoop {
                     ? SIMD3(0.30, 0.34, 0.30) : SIMD3(0.30, 0.80, 0.45)
             }
             if isEditing && index == editor.selection { albedo = SIMD3(1.0, 0.85, 0.25) }
+            // **The first submesh's material, and the sample is honest that this is a shortcut.**
+            // Uniforms here are per drawable, so a mesh whose submeshes differ in roughness would
+            // get the first one's for all of them. Every mesh in this sample has one submesh; a game
+            // with multi-material meshes writes a set of uniforms per submesh instead.
             var uniforms = Uniforms(viewProjection: viewProjection,
                                     model: drawable.transform,
                                     normalMatrix: normalMatrix(from: drawable.transform),
                                     albedo: albedo,
-                                    sunDirection: sunDirection)
+                                    sunDirection: sunDirection,
+                                    material: drawable.mesh.material(forSubmesh: 0))
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -775,10 +863,11 @@ final class SampleGame: GameLoop {
             var uniforms = Uniforms(viewProjection: viewProjection,
                                     model: figure.transform,
                                     normalMatrix: normalMatrix(from: figure.transform),
-                                    // Warm, so a figure reads as a person rather than as another
-                                    // crate the level forgot to tag.
-                                    albedo: SIMD3(0.78, 0.62, 0.44),
-                                    sunDirection: sunDirection)
+                                    // No tint: the figure's colour is its texture's, which is the
+                                    // point of it having one.
+                                    albedo: SIMD3(repeating: 1),
+                                    sunDirection: sunDirection,
+                                    material: figureMesh?.material(forSubmesh: 0) ?? Material())
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 
@@ -852,7 +941,11 @@ final class SampleGame: GameLoop {
                 argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
                                          index: bufferIndex)
             }
-            for submesh in mesh.submeshes {
+            let maps = drawable.maps
+            for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
+                // **Per submesh, because a material is per submesh** — that is the unit a file binds
+                // one to, and a mesh with a painted body and a metal fitting is two submeshes.
+                bindBaseColor(maps.indices.contains(submeshIndex) ? maps[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,
@@ -863,6 +956,16 @@ final class SampleGame: GameLoop {
         }
 
         encodeFigures(into: encoder, frameSlot: frameSlot)
+    }
+
+    /// Binds a base-colour map, falling back to the store's white pixel.
+    ///
+    /// **Something is always bound.** The alternative is a shader that branches on whether a texture
+    /// exists, or a second pipeline compiled without one — a branch per fragment, or twice the
+    /// pipelines. White multiplies to nothing.
+    private func bindBaseColor(_ texture: MTLTexture?) {
+        guard let resolved = texture ?? textures?.white else { return }
+        argumentTable.setTexture(resolved.gpuResourceID, index: 1)
     }
 
     /// The characters, in one pipeline change rather than one per object.
@@ -885,7 +988,8 @@ final class SampleGame: GameLoop {
                 argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
                                          index: bufferIndex)
             }
-            for submesh in mesh.submeshes {
+            for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
+                bindBaseColor(figureMaps.indices.contains(submeshIndex) ? figureMaps[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,

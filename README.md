@@ -138,7 +138,9 @@ needs to ship* — the picture is a real product with real gaps.
 
 Frame pacing and frames in flight · fixed timestep · reversed-Z depth · camera · keyboard, mouse and
 gamepad input with stick shaping · mesh loading through Model I/O · **skinned animation — skeletons,
-clips, cross-fading and a joint palette, loaded from USD** · maths · bounding boxes, volumes
+clips, cross-fading and a joint palette, loaded from USD** · **materials and textures — the
+metallic-roughness set read from a file, and a caching texture store that knows colour from
+numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · shadow cascade arithmetic · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
@@ -153,7 +155,8 @@ library that survives having no Xcode · and a complete sample game exercising a
 | **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. **Half arrived with animation**: a rig *is* a hierarchy, and `SkeletonPose.modelTransform(ofJoint:)` is where a weapon hangs off a hand. What is still missing is parenting between *objects*. |
 | **Animation state** | What plays next, and what interrupts what. The engine cross-fades two clips; deciding *which two* is a game's job today, and there is no evidence yet about where the line sits. Wait for a game to have more than two clips. |
 | **The shadow pass** | The maths is here; the pass is written twice outside. Extract when a third consumer says what the seam is. |
-| **Materials and a texture path** | Every consumer currently hand-rolls albedo/roughness uniforms and its own texture loading. This is the largest *routine* gap after animation. |
+| ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
+| **Normal maps in a consumer** | The slot, the sRGB rule and the flat-normal fallback are all here; nothing has bound one yet, because that needs tangents in the vertex layout and a mesh worth mapping. The next real asset forces it. |
 | **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
 | **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
 | **A character controller** | Walking, ground-following, step height, crouch, slide. Written outside already, and every first-person game rewrites it. |
@@ -289,6 +292,70 @@ is exactly what was left out.
 > **The rule this seemed to break, and did not.** "Nothing enters this package speculatively" is
 > about architecture with no single right answer. Applied to skinning it would have kept the engine
 > unusable by any game with a person in it, waiting for a game that could not be built.
+
+## Materials and textures (2026-09-09)
+
+**The largest routine gap after animation, and it is closed.** Three pieces, split along the same
+line as the rig loader — what a material *says* needs no GPU, and turning that into memory on one
+does.
+
+| | what it is |
+|---|---|
+| `Material` | The metallic-roughness parameter set: base colour, metallic, roughness, emissive, and where each map lives. A value type, `Sendable`, no device. |
+| `TextureSlot` | Which map a texture is — and therefore whether it holds **colour or numbers**. |
+| `TextureStore` | Loads a file once, hands the same texture back after that, and carries the 1×1 fallbacks. |
+
+`MeshLoader` returns a `Material` per submesh instead of throwing the file's materials away, which is
+the difference between a bought asset arriving intact and arriving as untextured geometry.
+
+### This is a material, not a material *system*
+
+The parameter set is settled — glTF, `UsdPreviewSurface`, Unreal, Unity and every exporter agree on
+it, and inventing another vocabulary would make every bought asset a conversion problem. **A material
+system is a different thing and is not here**: no shader graph, no permutations, no pass model, no
+authoring. That is the contested part, where engines genuinely disagree, and where one game's needs
+would decide it wrongly for everybody.
+
+### sRGB is a property of the slot, not a decision per call site
+
+A colour map is authored in sRGB, because that is what a monitor expects and what spends more range
+on darks where eyes are more sensitive. Shading arithmetic is only correct in linear space, so a
+colour texture has to be decoded on the way in — free, if the texture is created with an `_srgb`
+format, and not at all if it is not.
+
+**A roughness or normal map is not a colour.** Its bytes are already numbers, and decoding one as
+sRGB bends every value: mid-grey roughness 0.5 arrives as 0.21, so the whole scene looks wetter than
+it was authored. Both mistakes look like a lighting problem rather than a loading one, so
+`TextureSlot.isColor` decides and nothing else gets asked.
+
+### Three things measured about Model I/O's materials
+
+1. **Two properties can carry the same semantic, and `property(with:)` hides it.** A USD
+   `UsdPreviewSurface` with a textured diffuse arrives as a float3 `baseColor` *and* a texture
+   `diffuseColor`, both `.baseColor`. `property(with:)` returns whichever it reaches first, so a
+   loader using it gets a colour on one asset and a texture on the next. Read the whole list —
+   `properties(with:)` — and take the first, which is the one the file authored rather than the one
+   the importer invented.
+2. **The importer's invented base colour is 0.18 grey.** That float3 above is 0.18 in a file that
+   never mentioned a base colour: a principled-shader default. Multiply a texture by it and the asset
+   arrives at 18% brightness, which reads as a lighting bug in a renderer that is working. **A slot
+   with a map takes a white tint**, and the number is used only where there is no map to tint.
+3. **A texture property's *type* depends on a call somewhere else.** The same property is `.string`
+   before `MDLAsset.loadTextures()` and `.texture` after it. Matching on `.texture` works or fails
+   depending on whether an unrelated line ran. Having a URL is what actually means "this is a map".
+
+### What the sample turned up
+
+- **`half` is a type in Metal Shading Language.** A Blinn-Phong half-vector named `half` fails to
+  compile with an error about a declaration specifier, which does not obviously mean "rename this".
+- **A `float4` vertex attribute wants a 16-byte-aligned offset.** In the skinned layout that puts the
+  weights *before* the joint indices in memory, though the shader declares them the other way round —
+  attribute index and byte offset are independent, which is the thing that makes it fixable.
+- **Identity tints stop being a good idea the moment surfaces are textured.** The sample coloured
+  objects by their level tag — earth for ground, ochre for a landmark. Multiplied against a map, a
+  ground tint of 0.32 took an already-dark texture to a sixth of its brightness, and the courtyard
+  went black. Identity is the material's job now; the game's tint says only what a file cannot
+  know — an objective already reached, and whatever is selected in the editor.
 
 ## The probe that said this was possible — 2026-09-06
 
@@ -484,8 +551,13 @@ It deliberately has:
   a function says the file is an export. The files were generated once from those functions, so the
   courtyard is byte-for-byte the courtyard it always was, and the functions are gone.
 - **No art dependency.** Its static meshes are hand-written OBJ files of a box, a taller box and a
-  ground quad, and its one rigged character is written by `Tools/make_sample_figure.py`. A sample
-  that needs an asset pack cannot be run by whoever just cloned this.
+  ground quad; its one rigged character is written by `Tools/make_sample_figure.py`; and its four
+  textures are drawn by `Tools/make_sample_textures.py`, which writes PNGs with nothing but the
+  standard library. A sample that needs an asset pack cannot be run by whoever just cloned this.
+- **Surfaces that come from the files, not from code.** `box.obj` names `crate.png` through its
+  `.mtl` and the figure names `figure.png` through a `UsdPreviewSurface` — two different formats
+  through one code path, which is the only way that path gets tested. UVs are in metres throughout,
+  so a crate and a tower are textured at the same scale.
 - **Animated characters, from the level file.** Figures stand where a `figure` marker puts them,
   idling, and cross-fade into a wave as the player comes near — which is what proves `SkeletonPose`
   blends rather than switches. They cast skinned shadows through the same cascades as everything
@@ -494,7 +566,9 @@ It deliberately has:
   must own before they can start.
 - **No cleverness.** One directional light, no textures. A sample with impressive rendering teaches
   the reader about the rendering. It does draw **cascaded shadows**, because a sample with no
-  shadows cannot show that the shadow maths in this package works — see below.
+  shadows cannot show that the shadow maths in this package works — see below. Its specular is
+  Blinn-Phong rather than a PBR lobe, for the same reason: it is there to show that a material's
+  roughness arrives and does something.
 
 **It found an engine bug on its first run, which is the entire argument for it.** `swift build`
 compiles no Metal at all — Xcode does, SwiftPM's CLI does not — so anything calling

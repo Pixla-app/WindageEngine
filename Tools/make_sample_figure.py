@@ -77,16 +77,18 @@ def build_mesh():
     every interpolation in the file "vertex" — no face-varying primvars to expand, so what the
     loader receives is exactly what is written here.
     """
-    points, normals, joints, weights, counts, indices = [], [], [], [], [], []
+    points, normals, uvs, joints, weights, counts, indices = [], [], [], [], [], [], []
 
-    def emit_quad(ring_a, ring_b, i, j):
-        quad = [ring_a[i], ring_a[j], ring_b[j], ring_b[i]]
-        n = norm(cross(sub(quad[1][0], quad[0][0]), sub(quad[3][0], quad[0][0])))
-        counts.append(4)
-        for position, influence in quad:
+    def emit(polygon):
+        """`polygon` is a list of (position, influence, uv); its normal comes from its first corner."""
+        a, b, c = polygon[0][0], polygon[1][0], polygon[-1][0]
+        n = norm(cross(sub(b, a), sub(c, a)))
+        counts.append(len(polygon))
+        for position, influence, uv in polygon:
             indices.append(len(points))
             points.append(position)
             normals.append(n)
+            uvs.append(uv)
             joints.extend(influence[0])
             weights.extend(influence[1])
 
@@ -110,32 +112,34 @@ def build_mesh():
             for side in range(SIDES):
                 angle = 2 * math.pi * side / SIDES
                 offset = add(mul(u, math.cos(angle) * scale), mul(v, math.sin(angle) * scale))
-                ring.append((add(centre, offset), influence))
+                # **UVs in metres, like the sample's other meshes**, so the grain is the same size on
+                # a forearm as on a thigh: across the limb, the arc travelled; along it, the distance
+                # from the joint.
+                ring.append((add(centre, offset),
+                             influence,
+                             (2 * math.pi * radius * side / SIDES, length * t)))
             rings.append(ring)
 
         for lower, upper in zip(rings, rings[1:]):
             for side in range(SIDES):
-                emit_quad(lower, upper, side, (side + 1) % SIDES)
+                nxt = (side + 1) % SIDES
+                # At the seam the next corner wraps back to angle zero. Give it the full
+                # circumference instead, or the closing quad runs the whole texture backwards.
+                def closing(vertex):
+                    return (vertex[0], vertex[1], (2 * math.pi * radius, vertex[2][1])) \
+                           if nxt == 0 else vertex
+                emit([lower[side], closing(lower[nxt]), closing(upper[nxt]), upper[side]])
 
         # Caps, as fans of quads off the ring centre — cheap, and they close the silhouette so the
         # figure casts a solid shadow.
         for ring, outward in ((rings[0], -1), (rings[-1], 1)):
-            centre = add(position, mul(axis, length * (0.0 if outward < 0 else 1.0)))
-            influence = ring[0][1]
-            n = mul(axis, outward)
+            end = length * (0.0 if outward < 0 else 1.0)
+            hub = (add(position, mul(axis, end)), ring[0][1], (math.pi * radius, end))
             for side in range(SIDES):
                 nxt = (side + 1) % SIDES
-                fan = [(centre, influence), ring[side], ring[nxt]] if outward > 0 \
-                      else [(centre, influence), ring[nxt], ring[side]]
-                counts.append(3)
-                for point, inf in fan:
-                    indices.append(len(points))
-                    points.append(point)
-                    normals.append(n)
-                    joints.extend(inf[0])
-                    weights.extend(inf[1])
+                emit([hub, ring[side], ring[nxt]] if outward > 0 else [hub, ring[nxt], ring[side]])
 
-    return points, normals, joints, weights, counts, indices
+    return points, normals, uvs, joints, weights, counts, indices
 
 
 # --- The clips ---------------------------------------------------------------------------------
@@ -225,6 +229,7 @@ def wave(path, phase):
 
 # --- Writing it out ------------------------------------------------------------------------------
 
+def fmt2(v): return "(%.5f, %.5f)" % v
 def fmt3(v): return "(%.5f, %.5f, %.5f)" % v
 def fmt4(v): return "(%.6f, %.6f, %.6f, %.6f)" % v
 
@@ -234,7 +239,7 @@ def matrix(translation):
 
 
 def write(path):
-    points, normals, joints, weights, counts, indices = build_mesh()
+    points, normals, uvs, joints, weights, counts, indices = build_mesh()
     clips = [clip("Idle", 72, idle), clip("Wave", 48, wave)]
     frames = max(max(c[1]) for c in clips)
 
@@ -265,8 +270,10 @@ def write(path):
             out.append('            %d: [%s],\n' % (frame, ", ".join(fmt4(q) for q in rotations[frame])))
         out.append('        }\n    }\n')
 
-    out.append('\n    def Mesh "Body" (\n        prepend apiSchemas = ["SkelBindingAPI"]\n    )\n    {\n')
+    out.append('\n    def Mesh "Body" (\n'
+               '        prepend apiSchemas = ["SkelBindingAPI", "MaterialBindingAPI"]\n    )\n    {\n')
     out.append('        rel skel:skeleton = </Figure/Rig>\n')
+    out.append('        rel material:binding = </Figure/Skin>\n')
     out.append('        matrix4d primvars:skel:geomBindTransform = '
                '( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )\n')
     out.append('        int[] primvars:skel:jointIndices = [%s] (\n'
@@ -278,14 +285,55 @@ def write(path):
     out.append('        point3f[] points = [%s]\n' % ", ".join(fmt3(p) for p in points))
     out.append('        normal3f[] normals = [%s] (\n            interpolation = "vertex"\n        )\n'
                % ", ".join(fmt3(n) for n in normals))
+    out.append('        texCoord2f[] primvars:st = [%s] (\n            interpolation = "vertex"\n        )\n'
+               % ", ".join(fmt2(t) for t in uvs))
     out.append('        int[] faceVertexCounts = [%s]\n' % ", ".join(str(c) for c in counts))
     out.append('        int[] faceVertexIndices = [%s]\n' % ", ".join(str(i) for i in indices))
-    out.append('        uniform token subdivisionScheme = "none"\n    }\n}\n')
+    out.append('        uniform token subdivisionScheme = "none"\n    }\n')
+
+    # **A UsdPreviewSurface, because that is what a bought asset carries.** The sample could assign
+    # this texture in code; reading it out of the file is what exercises the loader.
+    out.append(MATERIAL)
 
     with open(path, "w") as handle:
         handle.write("".join(out))
     print("wrote %s — %d joints, %d vertices, %d faces, clips: %s"
           % (path, len(JOINTS), len(points), len(counts), ", ".join(c[0] for c in clips)))
+
+
+MATERIAL = """
+    def Material "Skin"
+    {
+        token outputs:surface.connect = </Figure/Skin/Surface.outputs:surface>
+
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
+            float inputs:metallic = 0
+            float inputs:roughness = 0.75
+            token outputs:surface
+        }
+
+        def Shader "Albedo"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @figure.png@
+            float2 inputs:st.connect = </Figure/Skin/Reader.outputs:result>
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float3 outputs:rgb
+        }
+
+        def Shader "Reader"
+        {
+            uniform token info:id = "UsdPrimvarReader_float2"
+            string inputs:varname = "st"
+            float2 outputs:result
+        }
+    }
+}
+"""
 
 
 if __name__ == "__main__":

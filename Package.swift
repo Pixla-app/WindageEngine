@@ -59,9 +59,10 @@ let package = Package(
         .testTarget(
             name: "WindageEngineTests",
             dependencies: ["WindageEngine"],
-            // A rig fixture, so `RigLoader` is tested against a real file rather than against a
-            // mock of one. Reading a skeleton needs no GPU, which is the whole reason that loader
-            // is split from `MeshLoader` — see its doc comment.
+            // A rig and a textured-material fixture, so the loaders are tested against real files
+            // rather than mocks of them. Neither a skeleton nor a material's numbers need a GPU,
+            // which is the whole reason `RigLoader` and `Material` are split from the halves that
+            // do — see their doc comments.
             resources: [.process("Resources")]
         )
     ]

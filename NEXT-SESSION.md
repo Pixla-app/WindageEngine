@@ -45,15 +45,61 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-199 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+212 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
 **In the package:** frame pacing and frames in flight (`FrameRenderer`, `FixedTimestep`), the
 reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshLoader`, `Math`,
 `BoundingBox`, `Volume` and the one hit test, `Frustum`, `ShadowCascades`, `Level` and `LevelEditor`,
-`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, and **`Skeleton`,
-`AnimationClip`, `SkeletonPose` and `RigLoader`**.
+`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
+`AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
+`TextureStore`**.
+
+## Done 2026-09-09 — materials and textures
+
+**The largest routine gap after animation, closed the same day.** Surfaces come from the files that
+name them, and the sample is textured throughout.
+
+- **`Material`** — the metallic-roughness set (base colour, metallic, roughness, emissive) plus where
+  each map lives. A value type with no device, read from `MDLMaterial`.
+- **`TextureSlot`** — which map a texture is, and therefore whether it holds **colour or numbers**.
+  `isColor` decides sRGB decoding once, for everybody. Decode a roughness map as sRGB and 0.5 arrives
+  as 0.21; the whole scene looks wet and it reads as a lighting bug.
+- **`TextureStore`** — loads once, caches by file *and* by that decision, generates mipmaps, and
+  carries the 1×1 white and flat-normal fallbacks so a shader can always sample without a branch.
+- **`MeshLoader` returns a material per submesh** instead of discarding what the file said.
+- **The sample** textures every surface: `box.obj` names `crate.png` through its `.mtl`, the figure
+  names `figure.png` through a `UsdPreviewSurface` — two formats, one code path. `Tools/make_sample_textures.py`
+  draws all four PNGs with nothing but the standard library, so the no-asset-dependency rule holds.
+
+### Three things measured about Model I/O's materials
+
+1. **Two properties can share one semantic.** A textured diffuse arrives as a float3 `baseColor` *and*
+   a texture `diffuseColor`, both `.baseColor`; `property(with:)` returns whichever it reaches first.
+   Read `properties(with:)` and take the **first**, which is the authored one rather than the
+   invented one.
+2. **The invented default is 0.18 grey.** Multiply a texture by it and the asset arrives at 18%
+   brightness. A slot with a map takes a white tint.
+3. **A texture property's type is `.string` before `loadTextures()` and `.texture` after** — so
+   recognise a map by it having a URL, not by its type.
+
+### And three from the sample
+
+- **`half` is a type in MSL**, and naming a half-vector that fails with an error about declaration
+  specifiers.
+- **A `float4` vertex attribute wants a 16-byte-aligned offset**, which puts the skin weights before
+  the joint indices in memory although the shader declares them the other way round.
+- **Identity tints stop working once surfaces are textured.** The sample tinted by level tag; against
+  a map, a ground tint of 0.32 took the courtyard to a sixth of its brightness. The tint now says only
+  what a file cannot know — objective state and editor selection.
+
+### What is deliberately not here
+
+**No material *system*** — no shader graph, no permutations, no pass model, no authoring. The
+parameter set is settled and shared by every format; the system around it is the contested part.
+**And nothing binds a normal map yet**: the slot, the sRGB rule and the flat-normal fallback exist,
+but it needs tangents in the vertex layout and a mesh worth mapping.
 
 ## Done 2026-09-09 — skinned animation
 
@@ -116,7 +162,7 @@ before planning anything — it enumerates the gap honestly (this is ~3,800 line
 and sorts what is missing into three buckets:
 
 - **Settled shape** — everybody's version looks alike, so build it on a roadmap. No game has to ask.
-  Materials and textures, post-processing, particles, a character controller, LOD, object parenting.
+  Post-processing, particles, a character controller, LOD, object parenting, normal mapping.
 - **Contested architecture** — ECS, a scene node model, scripting, *animation state*. Defer, and say
   so; shipping without them is the norm, not a shortcut.
 - **Enormous cost** — an editor application, a second platform, physics, networking. Business
@@ -129,23 +175,19 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Materials and a texture path.** The largest remaining *routine* gap, and now the one holding the
-   sample back visually: every consumer hand-rolls albedo/roughness uniforms and its own texture
-   loading, and the sample's characters are one flat colour because there is nowhere to put a skin.
-   Settled shape — no game has to ask.
-
-2. **A bought rigged character, once one is worth buying.** The generated figure proved the API; what
+1. **A bought rigged character, once one is worth buying.** The generated figure proved the API; what
    it cannot test is a hundred joints, four influences per vertex genuinely in use, a non-identity
    geometry bind transform, and whatever a real exporter does. **Buy USD, or FBX with a Blender step
-   — OBJ carries no skeleton.** Not a blocker for anything; a confidence check on the loader.
+   — OBJ carries no skeleton.** Not a blocker for anything; a confidence check on both loaders now,
+   since a real character brings materials and normal maps as well as a hundred joints.
 
-3. **The shadow pass seam.** It is implemented twice now — here and in a game — and the sample's copy
+2. **The shadow pass seam.** It is implemented twice now — here and in a game — and the sample's copy
    has since grown a *second* pipeline for skinned geometry, which is new evidence about the seam:
    what varies is the vertex layout and the per-object bindings, and the batch shape in
    `SampleShadowMap.Batch` is one answer to it. **A third implementation would still answer it better
    than a second one guessing**, so this waits unless something else needs a shadow pass first.
 
-4. **Semantic versioning and a changelog.** Stated in the README as worth doing from the first
+3. **Semantic versioning and a changelog.** Stated in the README as worth doing from the first
    outside consumer — cheap now, impossible to reconstruct later. Not started. The window title
    already says `0.1.0`; nothing else does.
 
