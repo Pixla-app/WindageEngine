@@ -157,7 +157,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | **Animation state** | What plays next, and what interrupts what. The engine cross-fades two clips; deciding *which two* is a game's job today, and there is no evidence yet about where the line sits. Wait for a game to have more than two clips. |
 | ~~**The shadow pass**~~ | **Done 2026-09-09.** `ShadowMap` owns the texture, the depth state, the descriptors and the encoder loop; the game keeps its pipelines. See below. |
 | ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
-| **Normal maps in a consumer** | The slot, the sRGB rule and the flat-normal fallback are all here; nothing has bound one yet, because that needs tangents in the vertex layout and a mesh worth mapping. The next real asset forces it. |
+| ~~**Normal maps**~~ | **Done 2026-09-10.** `MeshLoader` generates a tangent basis on request; the sample is normal mapped throughout. See below. |
 | **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
 | **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
 | **A character controller** | Walking, ground-following, step height, crouch, slide. Written outside already, and every first-person game rewrites it. |
@@ -488,6 +488,56 @@ the real asset is for.
 It loads `<path>.usdc` for the rig and mesh, every `<path>_*.usdc` beside it as a clip, and
 `<path>_ColorMap.png` as the base colour. Not shipped, because a real character is tens of megabytes
 and belongs to whoever made it, and this repository builds with nothing checked out beside it.
+
+## Normal mapping (2026-09-10)
+
+A normal map stores directions in **tangent space** — relative to the surface, so one map serves a
+wall and a barrel. Getting back to world space needs the surface's own axes: its normal, and a
+**tangent** aligned with the texture's u direction. The tangent depends on how the texture was laid
+across the triangle, which only the mesh knows; a shader can approximate it from screen-space
+derivatives, and the approximation fails exactly where mapping is tightest.
+
+`MeshLoader` generates one when the pipeline's semantics ask for `MDLVertexAttributeTangent` and the
+file did not bring it, which is most files — Model I/O's importers rarely carry tangents even where
+the source format had them.
+
+### Four things measured, each of which fails quietly
+
+- **Model I/O's OBJ reader recognises only `bump`.** All five spellings were tried: `map_Bump` —
+  which is what Blender and Maya write — `norm`, `map_Kn` and `map_normal` are read and **silently
+  dropped**, leaving no property on the material and nothing in the log. Only `bump` produces a
+  `tangentSpaceNormal`.
+- **The basis must be built before the vertex descriptor is applied.** Handing a descriptor to
+  `MDLAsset(url:vertexDescriptor:bufferAllocator:)` converts the file to that layout at load, and a
+  tangent the file lacks is filled with **zeroes** — degenerate rather than absent, which normalises
+  to NaN and deletes the triangle rather than shading it wrongly. So: load with no descriptor,
+  generate, then apply.
+- **`w` is handedness, ±1, and it is not padding.** A UV island mirrored across the model — most of
+  any character, whose two halves share one texture — has its bitangent reversed. Drop the sign and
+  every mirrored surface is lit as though the light were on the other side.
+- **A tangent transforms by the model matrix, not the normal matrix.** It lies *along* the surface.
+  The inverse transpose exists for things perpendicular to a surface, and using it here shears the
+  tangent off the surface the moment anything is scaled unevenly.
+
+### Two decisions in the shader
+
+**The bitangent is reconstructed, not carried** — it is the cross product of the other two times the
+handedness, so storing it would cost twelve bytes a vertex to save one cross product, and the two
+could then disagree. The tangent is re-orthogonalised against the normal first, because interpolating
+across a triangle leaves them no longer perpendicular and a skewed basis skews every direction it
+maps.
+
+**The shadow lookup keeps the geometric normal.** Biasing a shadow sample along a mapped normal moves
+it off the surface it belongs to, and the contact shadow detaches from its caster — a bug that looks
+like a shadow problem and is a normal-mapping one.
+
+### The sample's normal maps come from its colours
+
+`Tools/make_sample_textures.py` defines a height field per surface — a plank gap is lower, mortar is
+recessed — and derives both the colour and the normal map from it. Drawn independently the two would
+drift, and a normal map that disagrees with the colour under it reads as bad lighting rather than as
+a mistake. Central differences wrap at the edges, because these textures tile: clamping puts a seam
+of flat normals around every tile, which catches the light as a grid.
 
 ## The probe that said this was possible — 2026-09-06
 

@@ -12,6 +12,41 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.2.1] — 2026-09-10
+
+**Normal mapping**, which was the last of the material slots with nothing behind it.
+
+### Added
+
+- **`MeshLoader` generates a tangent basis** when the pipeline's semantics ask for
+  `MDLVertexAttributeTangent` and the file did not supply one. A file that brings its own is left
+  alone.
+- **`MeshLoader.load(…, reportingTo:)`** — says when tangents could not be generated, which happens
+  when a mesh has no normals or no texture coordinates. Neither can be invented.
+- **The sample is normal mapped throughout**: crate, stone, ground and the figure, with maps derived
+  from the same height fields that draw their colours so the two cannot drift.
+
+### Four things worth knowing before writing a tangent basis
+
+- **Model I/O's OBJ reader recognises only `bump`.** `map_Bump` — which is what Blender and Maya
+  write — and `norm`, the modern PBR spelling, are both read and silently dropped: no property on the
+  material, nothing logged. Measured against all five spellings.
+- **Tangents must be generated *before* the vertex descriptor is applied.** Handing a descriptor to
+  `MDLAsset(url:vertexDescriptor:bufferAllocator:)` converts the file to that layout immediately, and
+  a tangent attribute the file lacks is filled with zeroes — a *degenerate* basis rather than a
+  missing one, which normalises to NaN and deletes the triangle.
+- **The tangent is a `float4` and `w` is handedness, ±1.** A UV island mirrored across the model —
+  which is most of any character, whose halves share one texture — has its bitangent the other way
+  round. Drop the sign and every mirrored surface is lit from the wrong side.
+- **A tangent transforms by the model matrix, not the normal matrix.** It lies *along* the surface;
+  the inverse transpose is for things perpendicular to one, and using it shears the tangent off the
+  surface under non-uniform scale.
+
+### And one about shadows
+
+**The shadow lookup keeps the geometric normal.** Biasing a shadow sample along a *mapped* normal
+moves it off the surface it belongs to, and the contact shadow detaches from its caster.
+
 ## [0.2.0] — 2026-09-09
 
 **Every texture was upside down, and nothing could tell.** Metal puts texture coordinate (0, 0) at an

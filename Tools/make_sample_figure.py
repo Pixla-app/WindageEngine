@@ -399,9 +399,20 @@ MATERIAL = """
         {
             uniform token info:id = "UsdPreviewSurface"
             color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
+            normal3f inputs:normal.connect = </Figure/Skin/Bump.outputs:rgb>
             float inputs:metallic = 0
             float inputs:roughness = 0.75
             token outputs:surface
+        }
+
+        def Shader "Bump"
+        {
+            uniform token info:id = "UsdUVTexture"
+            asset inputs:file = @figure_normal.png@
+            float2 inputs:st.connect = </Figure/Skin/Reader.outputs:result>
+            token inputs:wrapS = "repeat"
+            token inputs:wrapT = "repeat"
+            float3 outputs:rgb
         }
 
         def Shader "Albedo"

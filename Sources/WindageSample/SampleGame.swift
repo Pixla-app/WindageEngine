@@ -25,6 +25,7 @@ final class SampleGame: GameLoop {
         0: MDLVertexAttributePosition,
         1: MDLVertexAttributeNormal,
         2: MDLVertexAttributeTextureCoordinate,
+        3: MDLVertexAttributeTangent,
     ]
 
     static func vertexDescriptor() -> MTLVertexDescriptor {
@@ -38,7 +39,13 @@ final class SampleGame: GameLoop {
         descriptor.attributes[2].format = .float2
         descriptor.attributes[2].offset = 24
         descriptor.attributes[2].bufferIndex = 0
-        descriptor.layouts[0].stride = 32
+        // **A `float4`, and the fourth component is not padding.** It is the handedness of the
+        // bitangent, ±1, and a mirrored UV island — which is most of any character, whose two halves
+        // share one texture — is lit from the wrong side without it.
+        descriptor.attributes[3].format = .float4
+        descriptor.attributes[3].offset = 32
+        descriptor.attributes[3].bufferIndex = 0
+        descriptor.layouts[0].stride = 48
         descriptor.layouts[0].stepFunction = .perVertex
         return descriptor
     }
@@ -52,8 +59,9 @@ final class SampleGame: GameLoop {
         0: MDLVertexAttributePosition,
         1: MDLVertexAttributeNormal,
         2: MDLVertexAttributeTextureCoordinate,
-        3: MDLVertexAttributeJointIndices,
-        4: MDLVertexAttributeJointWeights,
+        3: MDLVertexAttributeTangent,
+        4: MDLVertexAttributeJointIndices,
+        5: MDLVertexAttributeJointWeights,
     ]
 
     /// **Four influences per vertex, whatever the file holds.** The sample's figure is authored with
@@ -63,15 +71,15 @@ final class SampleGame: GameLoop {
         let descriptor = vertexDescriptor()
         // **Weights before joints, which is not the order the shader declares them in.** A `float4`
         // wants a 16-byte-aligned offset; putting the 8-byte joint indices first would land the
-        // weights at 40. Attribute *index* and byte *offset* are independent, so the layout can be
+        // weights at 56. Attribute *index* and byte *offset* are independent, so the layout can be
         // packed correctly and still read in the order the shader finds natural.
-        descriptor.attributes[4].format = .float4
-        descriptor.attributes[4].offset = 32
+        descriptor.attributes[5].format = .float4
+        descriptor.attributes[5].offset = 48
+        descriptor.attributes[5].bufferIndex = 0
+        descriptor.attributes[4].format = .ushort4
+        descriptor.attributes[4].offset = 64
         descriptor.attributes[4].bufferIndex = 0
-        descriptor.attributes[3].format = .ushort4
-        descriptor.attributes[3].offset = 48
-        descriptor.attributes[3].bufferIndex = 0
-        descriptor.layouts[0].stride = 56
+        descriptor.layouts[0].stride = 72
         return descriptor
     }
 
@@ -189,7 +197,8 @@ final class SampleGame: GameLoop {
     private var drawables: [(mesh: LoadedMesh,
                              transform: matrix_float4x4,
                              albedo: SIMD3<Float>,
-                             maps: [MTLTexture])] = []
+                             maps: [MTLTexture],
+                             normals: [MTLTexture])] = []
 
     /// What the player cannot walk through, and what a click can pick.
     ///
@@ -207,9 +216,11 @@ final class SampleGame: GameLoop {
     /// **One store for the whole game, not one per mesh.** Every crate names the same file; loading
     /// it per mesh would decode, upload and mipmap it again and hold N copies on the GPU.
     private let textures: TextureStore?
-    /// The base-colour map for each of a mesh's submeshes, resolved once at load.
+    /// The base-colour and normal map for each of a mesh's submeshes, resolved once at load.
     private var baseColorMaps: [String: [MTLTexture]] = [:]
+    private var normalMaps: [String: [MTLTexture]] = [:]
     private var figureMaps: [MTLTexture] = []
+    private var figureNormalMaps: [MTLTexture] = []
 
     /// The up axis the figure's file declares. Identity for the built-in one, and not necessarily
     /// for a bought Z-up asset.
@@ -327,8 +338,8 @@ final class SampleGame: GameLoop {
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
         tableDescriptor.maxBufferBindCount = 4
-        // 0: the shadow cascades · 1: this submesh's base colour.
-        tableDescriptor.maxTextureBindCount = 2
+        // 0: the shadow cascades · 1: this submesh's base colour · 2: its normal map.
+        tableDescriptor.maxTextureBindCount = 3
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -436,6 +447,7 @@ final class SampleGame: GameLoop {
                                                bundle: .module).first {
                 meshes[name] = mesh
                 baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
+                normalMaps[name] = resolveMaps(of: mesh, slot: .normal, named: name)
                 engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
                 engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
             } else {
@@ -519,6 +531,7 @@ final class SampleGame: GameLoop {
         } else {
             figureMaps = resolveBaseColorMaps(of: mesh, named: stem)
         }
+        figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: stem)
 
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
@@ -564,6 +577,7 @@ final class SampleGame: GameLoop {
         }
         figureMesh = mesh
         figureMaps = resolveBaseColorMaps(of: mesh, named: "figure")
+        figureNormalMaps = resolveMaps(of: mesh, slot: .normal, named: "figure")
         engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
         if let textures { engine.residencySet.addAllocations(textures.allocations) }
@@ -656,7 +670,8 @@ final class SampleGame: GameLoop {
                                                       SIMD4(s * k, 0, c * k, 0),
                                                       SIMD4(position, 1))) * mesh.nodeTransform
             drawables.append((mesh, transform, SampleGame.albedo(for: placement),
-                              baseColorMaps[placement.mesh] ?? []))
+                              baseColorMaps[placement.mesh] ?? [],
+                              normalMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
@@ -755,19 +770,25 @@ final class SampleGame: GameLoop {
     /// **From the file's own material**, not assigned here — `box.obj` names `crate.png` through its
     /// `.mtl`, and the figure names `figure.png` through its `UsdPreviewSurface`. A game that wired
     /// textures up in code would leave the loader's whole reason for existing untested.
-    private func resolveBaseColorMaps(of mesh: LoadedMesh, named name: String) -> [MTLTexture] {
+    private func resolveMaps(of mesh: LoadedMesh, slot: TextureSlot, named name: String) -> [MTLTexture] {
         guard let textures else { return [] }
         return (0..<mesh.mesh.submeshes.count).map { index in
             let material = mesh.material(forSubmesh: index)
-            guard let source = material[.baseColor] else { return textures.white }
+            guard let source = material[slot] else { return textures.fallback(for: slot) }
             do {
-                return try textures.texture(source, isColor: TextureSlot.baseColor.isColor,
-                                            bundle: .module)
+                // **`isColor` from the slot, never from the call site.** A normal map decoded as sRGB
+                // has every value bent, and the result looks like bad lighting rather than like a
+                // texture loaded wrongly.
+                return try textures.texture(source, isColor: slot.isColor, bundle: .module)
             } catch {
-                print("WindageSample: \(name) base colour — \(error)")
-                return textures.white
+                print("WindageSample: \(name) \(slot.rawValue) — \(error)")
+                return textures.fallback(for: slot)
             }
         }
+    }
+
+    private func resolveBaseColorMaps(of mesh: LoadedMesh, named name: String) -> [MTLTexture] {
+        resolveMaps(of: mesh, slot: .baseColor, named: name)
     }
 
     // MARK: - Editing
@@ -1123,7 +1144,9 @@ final class SampleGame: GameLoop {
             for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
                 // **Per submesh, because a material is per submesh** — that is the unit a file binds
                 // one to, and a mesh with a painted body and a metal fitting is two submeshes.
-                bindBaseColor(maps.indices.contains(submeshIndex) ? maps[submeshIndex] : nil)
+                bindSurface(maps.indices.contains(submeshIndex) ? maps[submeshIndex] : nil,
+                            drawable.normals.indices.contains(submeshIndex)
+                                ? drawable.normals[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,
@@ -1141,9 +1164,15 @@ final class SampleGame: GameLoop {
     /// **Something is always bound.** The alternative is a shader that branches on whether a texture
     /// exists, or a second pipeline compiled without one — a branch per fragment, or twice the
     /// pipelines. White multiplies to nothing.
-    private func bindBaseColor(_ texture: MTLTexture?) {
-        guard let resolved = texture ?? textures?.white else { return }
-        argumentTable.setTexture(resolved.gpuResourceID, index: 1)
+    private func bindSurface(_ base: MTLTexture?, _ normal: MTLTexture?) {
+        if let resolved = base ?? textures?.white {
+            argumentTable.setTexture(resolved.gpuResourceID, index: 1)
+        }
+        // **The normal fallback is not the white one.** A white pixel decodes to the normal (1, 1, 1),
+        // which tilts every surface diagonally and lights the whole scene wrongly.
+        if let resolved = normal ?? textures?.flatNormal {
+            argumentTable.setTexture(resolved.gpuResourceID, index: 2)
+        }
     }
 
     /// The characters, in one pipeline change rather than one per object.
@@ -1167,7 +1196,9 @@ final class SampleGame: GameLoop {
                                          index: bufferIndex)
             }
             for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
-                bindBaseColor(figureMaps.indices.contains(submeshIndex) ? figureMaps[submeshIndex] : nil)
+                bindSurface(figureMaps.indices.contains(submeshIndex) ? figureMaps[submeshIndex] : nil,
+                            figureNormalMaps.indices.contains(submeshIndex)
+                                ? figureNormalMaps[submeshIndex] : nil)
                 encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                               indexCount: submesh.indexCount,
                                               indexType: submesh.indexType,

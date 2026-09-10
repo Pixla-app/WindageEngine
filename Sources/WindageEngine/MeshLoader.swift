@@ -42,13 +42,14 @@ public nonisolated enum MeshLoader {
         device: MTLDevice,
         vertexDescriptor: MTLVertexDescriptor,
         semantics: [Int: String],
-        bundle: Bundle = .main
+        bundle: Bundle = .main,
+        reportingTo report: ((String) -> Void)? = nil
     ) throws -> [LoadedMesh] {
         guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
             throw MeshLoaderError.assetNotFound("\(name).\(fileExtension)")
         }
         return try load(url: url, device: device, vertexDescriptor: vertexDescriptor,
-                        semantics: semantics)
+                        semantics: semantics, reportingTo: report)
     }
 
     /// The same, from a file anywhere on disk.
@@ -61,7 +62,8 @@ public nonisolated enum MeshLoader {
         url: URL,
         device: MTLDevice,
         vertexDescriptor: MTLVertexDescriptor,
-        semantics: [Int: String]
+        semantics: [Int: String],
+        reportingTo report: ((String) -> Void)? = nil
     ) throws -> [LoadedMesh] {
         let name = url.lastPathComponent
 
@@ -79,8 +81,20 @@ public nonisolated enum MeshLoader {
         }
 
         let allocator = MTKMeshBufferAllocator(device: device)
-        let asset = MDLAsset(url: url, vertexDescriptor: modelDescriptor, bufferAllocator: allocator)
+
+        // **Loaded without the descriptor, then given it.** Handing the descriptor to `MDLAsset` at
+        // load converts the file to that layout immediately — and a tangent attribute the file does
+        // not have is filled with zeroes, which is a degenerate basis rather than a missing one.
+        // Tangents have to be generated while the mesh still has its own layout, so the descriptor is
+        // applied afterwards.
+        let asset = MDLAsset(url: url, vertexDescriptor: nil, bufferAllocator: allocator)
         asset.loadTextures()
+
+        let wantsTangents = semantics.values.contains(MDLVertexAttributeTangent)
+        for mesh in allMeshes(in: asset) {
+            if wantsTangents { addTangentsIfNeeded(to: mesh, named: name, reportingTo: report) }
+            mesh.vertexDescriptor = modelDescriptor
+        }
 
         let (modelMeshes, metalMeshes) = try MTKMesh.newMeshes(asset: asset, device: device)
         guard !metalMeshes.isEmpty else { throw MeshLoaderError.noMeshes(name) }
@@ -99,6 +113,56 @@ public nonisolated enum MeshLoader {
                 materials: materials(of: model, count: metal.submeshes.count),
                 nodeTransform: transforms[ObjectIdentifier(model)] ?? matrix_identity_float4x4)
         }
+    }
+
+    /// A tangent basis, generated when the pipeline wants one and the file did not bring it.
+    ///
+    /// ### What a tangent is for, and why it cannot be guessed in the shader
+    ///
+    /// A normal map stores directions in **tangent space** — relative to the surface, so the same map
+    /// can be used on a wall and on a barrel. Getting back to world space needs the surface's own
+    /// axes: the normal, and a **tangent** aligned with the texture's u direction. The tangent
+    /// depends on how the texture was laid out across the triangle, which is information only the
+    /// mesh has; a shader can only approximate it from screen-space derivatives, and the
+    /// approximation breaks down exactly where mapping is tightest.
+    ///
+    /// **The `w` component is handedness, ±1**, and it is not optional: a UV island mirrored across
+    /// the model — which is most characters, whose two halves share one texture — has its bitangent
+    /// the other way round. Drop `w` and every mirrored surface is lit as though the light were on
+    /// the wrong side.
+    ///
+    /// **Generated rather than required**, because Model I/O's importers rarely bring tangents even
+    /// when the source format had them. A file that *does* supply one is left alone.
+    private static func addTangentsIfNeeded(to mesh: MDLMesh,
+                                            named name: String,
+                                            reportingTo report: ((String) -> Void)?) {
+        let attributes = (mesh.vertexDescriptor.attributes as? [MDLVertexAttribute] ?? [])
+            .filter { $0.format != .invalid }
+        let names = Set(attributes.map(\.name))
+        guard !names.contains(MDLVertexAttributeTangent) else { return }
+
+        // **Both are needed, and neither can be invented.** `addOrthTanBasis` derives the tangent
+        // from the texture layout against the normals; without normals there is no surface to be
+        // tangent to, and without texture coordinates there is no u direction to align with.
+        guard names.contains(MDLVertexAttributeNormal),
+              names.contains(MDLVertexAttributeTextureCoordinate) else {
+            report?("\(name): no tangents — the mesh has "
+                    + (names.contains(MDLVertexAttributeNormal) ? "no texture coordinates" : "no normals"))
+            return
+        }
+        mesh.addOrthTanBasis(forTextureCoordinateAttributeNamed: MDLVertexAttributeTextureCoordinate,
+                             normalAttributeNamed: MDLVertexAttributeNormal,
+                             tangentAttributeNamed: MDLVertexAttributeTangent)
+    }
+
+    private static func allMeshes(in asset: MDLAsset) -> [MDLMesh] {
+        var result: [MDLMesh] = []
+        func descend(_ object: MDLObject) {
+            if let mesh = object as? MDLMesh { result.append(mesh) }
+            for child in object.children.objects { descend(child) }
+        }
+        for index in 0..<asset.count { descend(asset.object(at: index)) }
+        return result
     }
 
     /// Every mesh's place in the file's node hierarchy, composed from the root.

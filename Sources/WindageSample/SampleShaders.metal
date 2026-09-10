@@ -38,14 +38,40 @@ struct VertexIn {
     float3 position [[attribute(0)]];
     float3 normal   [[attribute(1)]];
     float2 uv       [[attribute(2)]];
+    float4 tangent  [[attribute(3)]];   // w is the bitangent's handedness, ±1
 };
 
 struct VertexOut {
     float4 position [[position]];
     float3 normal;
+    float3 tangent;
+    float  handedness;
     float3 worldPosition;
     float2 uv;
 };
+
+/// Takes a tangent-space normal into world space.
+///
+/// **The bitangent is reconstructed rather than carried.** It is the cross product of the other two
+/// times the handedness, so storing it would be twelve bytes a vertex to save one cross product —
+/// and the two could then disagree.
+///
+/// **The handedness is why `tangent` is a `float4`.** A UV island mirrored across the model — which
+/// is most of any character, whose halves share one texture — has its bitangent the other way round.
+/// Drop the sign and every mirrored surface is lit as though the light were on the other side.
+static float3 applyNormalMap(float3 sampled, float3 normal, float3 tangent, float handedness)
+{
+    // A tangent that could not be generated arrives as zero, and normalising it gives NaN — which
+    // does not draw a wrong surface, it deletes the triangle. Fall back to the vertex normal.
+    if (length_squared(tangent) < 1e-8) { return normal; }
+
+    // Gram-Schmidt: interpolation across a triangle leaves the tangent no longer perpendicular to
+    // the normal, and a basis that is not orthogonal skews every direction it maps.
+    const float3 t = normalize(tangent - normal * dot(normal, tangent));
+    const float3 b = cross(normal, t) * handedness;
+    const float3 tangentSpace = sampled * 2.0 - 1.0;      // 0..1 back to -1..1
+    return normalize(t * tangentSpace.x + b * tangentSpace.y + normal * tangentSpace.z);
+}
 
 /// A skinned vertex carries two more attributes: which joints move it, and how much each one does.
 ///
@@ -56,8 +82,9 @@ struct SkinnedVertexIn {
     float3  position [[attribute(0)]];
     float3  normal   [[attribute(1)]];
     float2  uv       [[attribute(2)]];
-    ushort4 joints   [[attribute(3)]];
-    float4  weights  [[attribute(4)]];
+    float4  tangent  [[attribute(3)]];
+    ushort4 joints   [[attribute(4)]];
+    float4  weights  [[attribute(5)]];
 };
 
 /// Linear blend skinning: the weighted sum of the joint matrices moving this vertex.
@@ -81,6 +108,11 @@ vertex VertexOut sampleVertex(VertexIn in [[stage_in]],
     float4 world = uniforms.model * float4(in.position, 1.0);
     out.position = uniforms.viewProjection * world;
     out.normal = normalize(uniforms.normalMatrix * in.normal);
+    // **The model matrix, not the normal matrix.** A tangent lies *along* the surface, so it
+    // transforms like a position does; the inverse transpose is for things perpendicular to a
+    // surface, and using it here shears the tangent off the surface under non-uniform scale.
+    out.tangent = (uniforms.model * float4(in.tangent.xyz, 0.0)).xyz;
+    out.handedness = in.tangent.w;
     out.worldPosition = world.xyz;
     out.uv = in.uv;
     return out;
@@ -106,6 +138,10 @@ vertex VertexOut sampleSkinnedVertex(SkinnedVertexIn in [[stage_in]],
     // modelled as — lit from the wrong side, and it reads as a lighting bug rather than a skinning
     // one.
     out.normal = normalize(uniforms.normalMatrix * (skinBasis * in.normal));
+    out.tangent = (uniforms.model * float4(skinBasis * in.tangent.xyz, 0.0)).xyz;
+    // **Handedness survives skinning unchanged.** It is a property of how the texture was laid out,
+    // not of where the joint has moved the vertex to.
+    out.handedness = in.tangent.w;
     out.worldPosition = world.xyz;
     out.uv = in.uv;
     return out;
@@ -215,7 +251,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                constant Uniforms &uniforms [[buffer(1)]],
                                constant ShadowFrame &frame [[buffer(2)]],
                                depth2d_array<float> shadowMap [[texture(0)]],
-                               texture2d<float> baseColorMap [[texture(1)]])
+                               texture2d<float> baseColorMap [[texture(1)]],
+                               texture2d<float> normalMap [[texture(2)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -239,13 +276,18 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     const float metallic = uniforms.materialParams.x;
     const float roughness = clamp(uniforms.materialParams.y, 0.045, 1.0);
 
-    float3 n = normalize(in.normal);
+    // **Shading normal from the map, geometric normal kept for the shadow lookup.** Perturbing the
+    // normal used to bias a shadow sample moves the sample off the surface it belongs to, and the
+    // contact shadow detaches from its caster.
+    const float3 geometric = normalize(in.normal);
+    const float3 n = applyNormalMap(normalMap.sample(surfaceSampler, in.uv).xyz,
+                                    geometric, in.tangent, in.handedness);
     float lambert = max(dot(n, normalize(uniforms.sunDirection)), 0.0);
 
     // **Only the direct term is shadowed.** Ambient is light arriving from everywhere; multiplying
     // it by the sun's visibility would make shadowed faces black, which is the single most common
     // way a first shadow implementation ends up looking wrong.
-    float visibility = lambert > 0.0
+    float visibility = dot(geometric, normalize(uniforms.sunDirection)) > 0.0
         ? sunVisibility(frame, in.worldPosition, shadowMap, shadowSampler)
         : 1.0;
 

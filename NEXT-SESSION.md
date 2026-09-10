@@ -56,6 +56,34 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
 
+## Done 2026-09-10 — normal mapping (0.2.1)
+
+**The last material slot with nothing behind it.** `MeshLoader` generates a tangent basis when the
+pipeline asks for one and the file did not bring it; the sample is normal mapped throughout — crate,
+stone, ground and the figure.
+
+### Four things measured, each of which fails quietly
+
+- **Model I/O's OBJ reader recognises only `bump`.** All five spellings were tried: `map_Bump` (what
+  Blender and Maya write), `norm`, `map_Kn` and `map_normal` are read and **silently dropped** — no
+  property on the material, nothing logged.
+- **The basis must be built before the vertex descriptor is applied.** Handing a descriptor to
+  `MDLAsset(url:vertexDescriptor:)` converts at load and fills a missing tangent with **zeroes** —
+  degenerate rather than absent, which normalises to NaN and *deletes* the triangle.
+- **`w` is handedness, ±1.** A mirrored UV island — most of any character — has its bitangent
+  reversed; drop the sign and it is lit from the wrong side.
+- **A tangent transforms by the model matrix, not the normal matrix.** It lies along the surface.
+
+### And one about shadows
+
+**The shadow lookup keeps the geometric normal.** Biasing along a mapped normal moves the sample off
+the surface it belongs to and the contact shadow detaches — a bug that looks like a shadow problem
+and is a normal-mapping one.
+
+**The sample's normal maps are derived from the same height fields as its colours**, so they cannot
+drift; a normal map that disagrees with the colour under it reads as bad lighting rather than as a
+mistake.
+
 ## Done 2026-09-09 — every texture was upside down (0.2.0)
 
 **Metal puts texture (0, 0) at an image's top-left; USD and OBJ put `st` (0, 0) at its bottom-left.**
@@ -312,14 +340,13 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Materials still stop at base colour in a consumer.** `Material` carries normal, metallic,
-   roughness, occlusion and emissive slots and the sample binds only the first. Normal mapping is the
-   next visible step and it needs **tangents in the vertex layout** — which Model I/O can generate —
-   plus a mesh worth mapping.
-
-2. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
+1. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
    renders past 1.0 and writes it straight makes every lit surface clip identically, and each game
    currently supplies its own answer or none.
+
+2. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
+   `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as
+   scalars. A metallic-roughness *map* is the same wiring again and needs an asset that has one.
 
 ## Standing reminders
 
