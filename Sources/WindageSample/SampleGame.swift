@@ -116,29 +116,32 @@ final class SampleGame: GameLoop {
              normalMatrix: matrix_float3x3,
              albedo: SIMD3<Float>,
              sunDirection: SIMD3<Float>,
-             material: Material) {
+             material: Material,
+             specularLOD: Float) {
             self.viewProjection = viewProjection
             self.model = model
             self.normalMatrix = normalMatrix
             self.albedo = albedo
             self.sunDirection = sunDirection
             self.materialBaseColor = material.baseColor
-            self.materialParams = SIMD4(material.metallic, material.roughness, 0, 0)
+            self.materialParams = SIMD4(material.metallic, material.roughness, specularLOD, 0)
         }
     }
 
-    /// Mirrors `ShadowFrame` in `SampleShaders.metal`. **Frame-wide, so it is written once** — four
+    /// Mirrors `FrameUniforms` in `SampleShaders.metal`. **Frame-wide, so it is written once** — four
     /// matrices copied into every drawable's uniforms would multiply them by the object count for
     /// nothing.
-    private struct ShadowFrame {
+    private struct FrameUniforms {
         var cascadeViewProjection: (matrix_float4x4, matrix_float4x4, matrix_float4x4, matrix_float4x4)
+        /// Takes a clip-space point back to the world — how the sky pass turns a pixel into a ray.
+        var inverseViewProjection: matrix_float4x4
         var cascadeSplits: SIMD4<Float>
         var cascadeBlendStart: SIMD4<Float>
         var cascadeDepthBias: SIMD4<Float>
         var cameraPosition: SIMD3<Float>
         var texelSize: Float
     }
-    private static let shadowFrameStride = (MemoryLayout<ShadowFrame>.stride + 255) & ~255
+    private static let shadowFrameStride = (MemoryLayout<FrameUniforms>.stride + 255) & ~255
 
     private let engine: FrameRenderer
     private let pipeline: MTLRenderPipelineState
@@ -216,6 +219,14 @@ final class SampleGame: GameLoop {
     /// **One store for the whole game, not one per mesh.** Every crate names the same file; loading
     /// it per mesh would decode, upload and mipmap it again and hold N copies on the GPU.
     private let textures: TextureStore?
+
+    /// The sky, prefiltered: what surfaces reflect and what the player sees, from one source.
+    ///
+    /// **Rebuilt when the level changes**, because each level names its own sun and an environment
+    /// lit from somewhere the sun is not is the kind of wrong that looks like a bug in the shading.
+    private var environment: EnvironmentMap?
+    private let skyPipeline: MTLRenderPipelineState?
+    private let skyDepthState: MTLDepthStencilState?
     /// The base-colour and normal map for each of a mesh's submeshes, resolved once at load.
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var normalMaps: [String: [MTLTexture]] = [:]
@@ -284,6 +295,7 @@ final class SampleGame: GameLoop {
         self.previousCamera = camera
 
         let vertexDescriptor = SampleGame.vertexDescriptor()
+        var sky: MTLRenderPipelineState?
 
         let shaderLibrary: MTLLibrary
         do {
@@ -327,6 +339,19 @@ final class SampleGame: GameLoop {
             descriptor.vertexDescriptor = SampleGame.skinnedVertexDescriptor()
             skinnedPipeline = try compiler.makeRenderPipelineState(descriptor: descriptor,
                                                                    compilerTaskOptions: nil)
+
+            let skyVertex = MTL4LibraryFunctionDescriptor()
+            skyVertex.library = library
+            skyVertex.name = "sampleSkyVertex"
+            let skyFragment = MTL4LibraryFunctionDescriptor()
+            skyFragment.library = library
+            skyFragment.name = "sampleSkyFragment"
+            descriptor.label = "SampleSkyPipeline"
+            descriptor.vertexFunctionDescriptor = skyVertex
+            descriptor.fragmentFunctionDescriptor = skyFragment
+            // **No vertex descriptor**: the sky is a full-screen triangle built from its vertex id.
+            descriptor.vertexDescriptor = nil
+            sky = try compiler.makeRenderPipelineState(descriptor: descriptor, compilerTaskOptions: nil)
         } catch {
             print("WindageSample: pipeline failed — \(error)")
             return nil
@@ -337,12 +362,21 @@ final class SampleGame: GameLoop {
             return nil
         }
         self.depthState = depthState
+        skyPipeline = sky
+
+        // **The sky writes no depth and tests none.** It is drawn first and everything else covers
+        // it; writing depth would put the far plane in front of the scene, and testing it would need
+        // a cleared buffer the engine has only just handed over.
+        let skyDepth = MTLDepthStencilDescriptor()
+        skyDepth.depthCompareFunction = .always
+        skyDepth.isDepthWriteEnabled = false
+        skyDepthState = device.makeDepthStencilState(descriptor: skyDepth)
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
         tableDescriptor.maxBufferBindCount = 4
-        // 0: the shadow cascades · 1: this submesh's base colour · 2: its normal map.
-        tableDescriptor.maxTextureBindCount = 3
+        // 0: shadow cascades · 1: base colour · 2: normal map · 3: environment · 4: irradiance.
+        tableDescriptor.maxTextureBindCount = 5
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
             return nil
@@ -458,6 +492,7 @@ final class SampleGame: GameLoop {
             }
         }
         loadFigureAsset()
+        rebuildEnvironment()
         engine.commitResidency()
 
         rebuild()
@@ -651,6 +686,27 @@ final class SampleGame: GameLoop {
         }
     }
 
+    /// Prefilters the level's sky into the two cubes image-based lighting needs.
+    ///
+    /// **The sun here is the level's sun.** An environment lit from somewhere the sun is not reads as
+    /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
+    private func rebuildEnvironment() {
+        let started = CFAbsoluteTimeGetCurrent()
+        let sky = ProceduralSky(sunDirection: sunDirection)
+        guard let built = EnvironmentMap(device: engine.device, sky: sky) else {
+            print("WindageSample: no environment — metal will have nothing to reflect")
+            return
+        }
+        if let previous = environment {
+            engine.residencySet.removeAllocations(previous.allocations)
+        }
+        environment = built
+        engine.residencySet.addAllocations(built.allocations)
+        engine.commitResidency()
+        print(String(format: "WindageSample: environment prefiltered in %.0f ms (%d mips)",
+                     (CFAbsoluteTimeGetCurrent() - started) * 1000, built.specularMipCount))
+    }
+
     /// Turn the level into things to draw, walk into and click on.
     ///
     /// The sample's ground is a plane at zero, so the anchor resolver has a trivial job — but it is
@@ -737,6 +793,7 @@ final class SampleGame: GameLoop {
         // player's rather than the level's.
         run = SampleRun(objectives: level.markers(ofKind: "objective").map(\.position),
                         levelName: level.name)
+        rebuildEnvironment()
         print("WindageSample: '\(level.name)' — \(drawables.count) drawables from \(levelPath)")
     }
 
@@ -1040,6 +1097,11 @@ final class SampleGame: GameLoop {
 
     private var visibleFigureCount: Int { min(figures.count, SampleGame.maxFigures) }
 
+    /// The highest mip a shader may ask the specular cube for: `roughness × this`.
+    private var environmentLOD: Float {
+        Float(max((environment?.specularMipCount ?? 1) - 1, 0))
+    }
+
     private var visibleDrawableCount: Int { min(drawables.count, SampleGame.maxDrawables) }
 
     /// **Written before the shadow pass, not during the main one.** The shadow pass reads the same
@@ -1071,7 +1133,8 @@ final class SampleGame: GameLoop {
                                     normalMatrix: normalMatrix(from: drawable.transform),
                                     albedo: albedo,
                                     sunDirection: sunDirection,
-                                    material: drawable.mesh.material(forSubmesh: 0))
+                                    material: drawable.mesh.material(forSubmesh: 0),
+                                    specularLOD: environmentLOD)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -1084,7 +1147,8 @@ final class SampleGame: GameLoop {
                                     // point of it having one.
                                     albedo: SIMD3(repeating: 1),
                                     sunDirection: sunDirection,
-                                    material: figureMesh?.material(forSubmesh: 0) ?? Material())
+                                    material: figureMesh?.material(forSubmesh: 0) ?? Material(),
+                                    specularLOD: environmentLOD)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 
@@ -1107,15 +1171,18 @@ final class SampleGame: GameLoop {
                                                 sunDirection: sunDirection)
 
         let cascades = SampleGame.cascades
-        var frame = ShadowFrame(
+        let projection = matrix_perspective_right_hand_reverse_z(
+            fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+        var frame = FrameUniforms(
             cascadeViewProjection: (matrices[0], matrices[1], matrices[2], matrices[3]),
+            inverseViewProjection: simd_inverse(simd_mul(projection, view.viewMatrix)),
             cascadeSplits: cascades.splitVector,
             cascadeBlendStart: cascades.blendStartVector,
             cascadeDepthBias: cascades.depthBiasVector,
             cameraPosition: view.position,
             texelSize: 1 / Float(cascades.resolution))
         shadowFrameBuffer.contents().advanced(by: frameSlot * SampleGame.shadowFrameStride)
-            .copyMemory(from: &frame, byteCount: MemoryLayout<ShadowFrame>.size)
+            .copyMemory(from: &frame, byteCount: MemoryLayout<FrameUniforms>.size)
 
         guard let shadowPipeline else { return }
         var batches = [ShadowMap.Batch(
@@ -1147,6 +1214,12 @@ final class SampleGame: GameLoop {
         argumentTable.setAddress(
             shadowFrameBuffer.gpuAddress + UInt64(frameSlot * SampleGame.shadowFrameStride), index: 2)
         if let shadowMap { argumentTable.setTexture(shadowMap.texture.gpuResourceID, index: 0) }
+        if let environment {
+            argumentTable.setTexture(environment.specular.gpuResourceID, index: 3)
+            argumentTable.setTexture(environment.irradiance.gpuResourceID, index: 4)
+        }
+
+        encodeSky(into: encoder)
 
         for (index, drawable) in drawables.prefix(SampleGame.maxDrawables).enumerated() {
             argumentTable.setAddress(
@@ -1175,6 +1248,22 @@ final class SampleGame: GameLoop {
         }
 
         encodeFigures(into: encoder, frameSlot: frameSlot)
+    }
+
+    /// The sky, drawn first and covered by everything else.
+    ///
+    /// **The same cube the surfaces reflect.** A flat clear colour behind a metal object reflecting a
+    /// sky with a sun in it is two skies in one picture, and that is among the first things an eye
+    /// finds wrong with a render.
+    private func encodeSky(into encoder: MTL4RenderCommandEncoder) {
+        guard let skyPipeline, let skyDepthState, environment != nil else { return }
+        encoder.setRenderPipelineState(skyPipeline)
+        encoder.setDepthStencilState(skyDepthState)
+        encoder.drawPrimitives(primitiveType: .triangle, vertexStart: 0, vertexCount: 3)
+
+        // Put the scene's state back, since the sky borrowed the encoder.
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(depthState)
     }
 
     /// Binds a base-colour map, falling back to the store's white pixel.

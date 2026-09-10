@@ -78,8 +78,9 @@ window.contentView = view
 
 guard let game = SampleGame(engine: engine) else { exit(1) }
 engine.game = game
-// **Radiance now, not a screen colour** — the sky is drawn into an HDR target and goes through the
-// same curve as everything else.
+// **Now covered by the sky pass, and kept as the fallback it is.** Every pixel is written by the
+// environment cube, so this is only what shows if that pipeline fails to build — a scene with no sky
+// at all being more useful than a black window.
 engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
 
 // **Exposure is the game's dial, not the engine's.** ACES lifts midtones by roughly a fifth, so a

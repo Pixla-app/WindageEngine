@@ -25,8 +25,10 @@ constant int kCascadeCount = 4;
 /// Frame-wide, written once per frame rather than once per object. The per-object `Uniforms` below
 /// is copied for every drawable; putting four matrices in it would multiply them by the object count
 /// for no reason.
-struct ShadowFrame {
+struct FrameUniforms {
     float4x4 cascadeViewProjection[kCascadeCount];
+    /// Takes a clip-space point back to the world — how the sky pass turns a pixel into a ray.
+    float4x4 inverseViewProjection;
     float4   cascadeSplits;
     float4   cascadeBlendStart;
     float4   cascadeDepthBias;
@@ -233,22 +235,42 @@ static float3 environmentBRDF(float3 f0, float roughness, float NdotV)
     return f0 * ab.x + ab.y;
 }
 
-/// The sample's sky, as radiance arriving from a direction.
+/// The sky, drawn so that what a surface reflects and what the player sees are the same thing.
 ///
-/// **The cheapest thing that is not nothing.** A metal surface has no diffuse at all — its colour
-/// lives entirely in what it reflects — so with only a sun in the scene, every metal object is black
-/// except for one small highlight. A real engine reflects an environment map; this reflects a
-/// two-colour gradient, which is enough for metal to read as metal and costs a `mix`.
-static float3 skyRadiance(float3 direction)
+/// **They have to be the same texture.** A flat clear colour behind a metal object that reflects a
+/// gradient with a sun in it is two skies in one picture, and the eye finds that faster than it finds
+/// almost anything else wrong with a render.
+struct SkyVertexOut {
+    float4 position [[position]];
+    float3 direction;
+};
+
+vertex SkyVertexOut sampleSkyVertex(uint id [[vertex_id]],
+                                    constant FrameUniforms &frame [[buffer(2)]])
 {
-    const float3 up = float3(0.55, 0.70, 0.95);
-    const float3 down = float3(0.28, 0.27, 0.24);
-    return mix(down, up, saturate(direction.y * 0.5 + 0.5));
+    const float2 uv = float2((id << 1) & 2, id & 2);
+    const float4 clip = float4(uv * 2.0 - 1.0, 0.0, 1.0);
+
+    SkyVertexOut out;
+    out.position = clip;
+    // **Reversed-Z: depth 0 is infinitely far**, which is exactly where the sky is. Unproject the far
+    // plane and subtract the eye to get the ray this pixel looks along.
+    const float4 world = frame.inverseViewProjection * clip;
+    out.direction = world.xyz / world.w - frame.cameraPosition;
+    return out;
+}
+
+fragment float4 sampleSkyFragment(SkyVertexOut in [[stage_in]],
+                                  texturecube<float> environment [[texture(3)]])
+{
+    constexpr sampler skySampler(mag_filter::linear, min_filter::linear, mip_filter::linear);
+    // Mip 0 is the environment itself — the prefiltered mips below it are for rough reflections.
+    return float4(environment.sample(skySampler, normalize(in.direction), level(0.0)).rgb, 1.0);
 }
 
 /// One cascade's lookup. Lifted out of `sunVisibility` so that blending across a split samples the
 /// two cascades through identical code rather than a copy that can drift.
-static float sampleCascade(constant ShadowFrame &frame,
+static float sampleCascade(constant FrameUniforms &frame,
                            float3 worldPosition,
                            int cascade,
                            depth2d_array<float> shadowMap,
@@ -287,7 +309,7 @@ static float sampleCascade(constant ShadowFrame &frame,
 }
 
 /// Fraction of the sun reaching this fragment: 0 fully shadowed, 1 fully lit.
-static float sunVisibility(constant ShadowFrame &frame,
+static float sunVisibility(constant FrameUniforms &frame,
                            float3 worldPosition,
                            depth2d_array<float> shadowMap,
                            sampler shadowSampler)
@@ -325,10 +347,12 @@ static float sunVisibility(constant ShadowFrame &frame,
 
 fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                constant Uniforms &uniforms [[buffer(1)]],
-                               constant ShadowFrame &frame [[buffer(2)]],
+                               constant FrameUniforms &frame [[buffer(2)]],
                                depth2d_array<float> shadowMap [[texture(0)]],
                                texture2d<float> baseColorMap [[texture(1)]],
-                               texture2d<float> normalMap [[texture(2)]])
+                               texture2d<float> normalMap [[texture(2)]],
+                               texturecube<float> environmentSpecular [[texture(3)]],
+                               texturecube<float> environmentIrradiance [[texture(4)]])
 {
     // Declared here rather than bound: a comparison sampler is a constant of this shader, not
     // something the game has any reason to vary.
@@ -398,13 +422,23 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     const float3 kD = 1.0 - fresnel;
     const float3 direct = (kD * diffuseColour / M_PI_F + specular) * incoming;
 
-    // The sky, as an environment: irradiance for the diffuse, a reflection for the specular.
-    // **Roughness blurs the reflection towards the average**, which is what a prefiltered
-    // environment map does properly and what this approximates with one `mix`.
-    const float3 ambientDiffuse = diffuseColour * skyRadiance(n) * 0.55;
+    // **Image-based lighting: the environment, convolved twice ahead of time.** The irradiance cube
+    // is the whole hemisphere gathered with a cosine lobe — what a diffuse surface facing this way
+    // receives. The specular cube's mips are the same environment gathered with a GGX lobe, one
+    // roughness per level, so a rough surface reads a blurrier mip and a smooth one reads a sharper.
+    constexpr sampler environmentSampler(mag_filter::linear, min_filter::linear,
+                                         mip_filter::linear);
+
+    // **Divided by pi, because irradiance is not radiance.** The cube holds the integral of incoming
+    // light over the hemisphere; Lambert's BRDF is albedo/pi, and skipping the division makes every
+    // ambient-lit surface pi times too bright.
+    const float3 irradiance = environmentIrradiance.sample(environmentSampler, n).rgb;
+    const float3 ambientDiffuse = diffuseColour * irradiance / M_PI_F;
+
     const float3 reflected = reflect(-v, n);
-    const float3 prefiltered = mix(skyRadiance(reflected), skyRadiance(float3(0, 1, 0)) * 0.6,
-                                   roughness);
+    const float lod = roughness * uniforms.materialParams.z;
+    const float3 prefiltered = environmentSpecular.sample(environmentSampler, reflected,
+                                                          level(lod)).rgb;
     const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV);
 
     return float4(direct + ambientDiffuse + ambientSpecular, base.a);

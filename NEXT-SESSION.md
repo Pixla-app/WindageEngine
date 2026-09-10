@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-259 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+277 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,30 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — image-based lighting (0.4.1)
+
+**Metal reflects its surroundings now, not a gradient.** `ProceduralSky` is a sky as a function of
+direction; `EnvironmentMap` convolves it twice — a GGX-prefiltered cube whose mips are roughness
+levels, and a small cosine-convolved irradiance cube. The sample draws its sky from the same cube it
+reflects.
+
+**Prefiltered on the CPU, deliberately.** Everything here that can be *wrong* is arithmetic — cube
+face projection, importance sampling, two convolutions — and the rule is that such halves want tests
+and tests should not want a GPU. **92 ms release, 2.6 s debug**; the debug figure is what somebody
+running `swift run` sees, and it is the honest price. It prefilters a *function*, not a photograph.
+
+### Three things the tests found, all on first run
+
+- **Fireflies at high roughness.** At a fixed 96 samples the chain stops getting blurrier around
+  roughness 0.6 and gets *brighter* — 0.72 rising to 1.67 at roughness 1.0 where the truth is 0.60.
+  A wide lobe over a small bright sun: the estimate is decided by whether a sample hit the sun.
+  **Fixed for free by quadrupling samples per mip** — each level has a quarter of the texels, so the
+  cost per level is flat and the roughest mips are the cheapest place to spend.
+- **The irradiance integral was out by π.** A Riemann sum over `dφ dθ` weights each term by `step²`;
+  dividing by the sample count gives an average instead. Caught by the one value known in closed
+  form — a uniform sky of radiance L integrates to πL.
+- **The lower hemisphere must not be black**, or every lit object looks like it is floating.
 
 ## Done 2026-09-10 — a microfacet specular (0.4.0)
 
@@ -401,10 +425,10 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **A prefiltered environment map.** The analytic sky is enough for metal to read as metal and not
-   enough for a metal object to reflect its surroundings — which is the whole appeal of metal. A cube
-   map, a prefilter pass over its mip chain, and somewhere for a level to say what its sky is. The
-   biggest remaining gap in how the sample looks, and settled shape.
+1. **The sky is a `ProceduralSky` chosen in code, not something a level says.** Each level names a
+   sun pitch and yaw and the environment is rebuilt from those — but its colours, its ground bounce
+   and its sun size are hard-coded in the sample. They belong in the level file, beside `sunYaw`,
+   which is a small `Level` change and would let two levels look genuinely different.
 
 2. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
    `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as

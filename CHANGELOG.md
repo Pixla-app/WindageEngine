@@ -12,6 +12,51 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.4.1] — 2026-09-10
+
+**Image-based lighting.** A surface takes light from its whole environment, and how it takes it
+depends on how rough it is — a mirror reflects one direction, chalk gathers the hemisphere. Both are
+precomputed now, so a metal object reflects its surroundings instead of a gradient.
+
+### Added
+
+- **`ProceduralSky`** — a sky as a function of direction: gradient, horizon, ground bounce and a sun
+  disc, in radiance rather than colour.
+- **`EnvironmentMap`** — that environment convolved twice: `specular`, a cube whose mips are the GGX
+  lobe at increasing roughness, and `irradiance`, a small cube convolved with a cosine lobe.
+- **The sample draws its sky from the same cube it reflects**, and shades with both.
+
+### Built on the CPU, deliberately
+
+Every part of this that can be *wrong* is arithmetic — cube face projection, importance sampling, two
+convolutions — and this repository's rule is that such halves want tests and tests should not want a
+GPU. A compute prefilter would be faster and would put all of it somewhere only a screenshot could
+check.
+
+**Cost: 92 ms in a release build, 2.6 s in a debug one.** The debug figure is what somebody running
+`swift run WindageSample` sees, and it is the honest price of doing this in Swift on the CPU. It
+prefilters a *function*, not a photograph; an engine wanting to prefilter a captured HDR panorama
+will want the compute version, and this maths is what that would be written against.
+
+### Three things the tests found
+
+- **Fireflies at high roughness.** At a fixed 96 samples the chain stops getting blurrier around
+  roughness 0.6 and starts getting *brighter* — 0.72 rising to 1.67 at roughness 1.0, where the truth
+  falls to 0.60. A wide lobe over a small, very bright sun means the estimate is decided by whether a
+  sample happened to land on the sun. **Fixed by quadrupling the sample count per mip, which is
+  free**: each level has a quarter of the texels, so the cost per level is flat and the roughest mips
+  — which need it most — are the cheapest place to spend it.
+- **The irradiance integral was out by a factor of π.** It is a Riemann sum over dφ dθ, so each term
+  is worth `step²` of measure; dividing by the sample count gives an *average* instead. Caught by
+  asserting that a uniform sky of radiance L integrates to πL.
+- **The lower hemisphere must not be black.** A surface facing down is lit by the ground, and a black
+  ground is the commonest reason an image-based lit object looks like it is floating in a void.
+
+### And one in the shader
+
+**Irradiance is not radiance.** The cube holds light integrated over the hemisphere; Lambert's BRDF
+is `albedo / π`, and skipping the division makes every ambient-lit surface π times too bright.
+
 ## [0.4.0] — 2026-09-10
 
 **A microfacet specular, and the material data to drive it.** The sample's shading was Lambert plus a

@@ -143,7 +143,8 @@ asset-orientation correction for Z-up centimetre exports** · **materials and te
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
-scene target with exposure and tone mapping** · a versioned level format
+scene target with exposure and tone mapping** · **a prefiltered environment for image-based
+lighting** · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -735,12 +736,62 @@ are not the same shape, and one every renderer that reads OBJ makes some version
 - **`kD = 1 − F`.** What is not reflected is available to scatter. Skipping it makes a shiny surface
   brighter than the light falling on it — the usual way a first PBR shader breaks energy conservation.
 
-### Still missing
+### The analytic sky it started with is gone
 
-**A real prefiltered environment map.** The analytic sky is enough for metal to read as metal and not
-enough for a metal object to reflect its surroundings. That is the next honest step for materials, and
-it is a bigger piece of work: a cube map, a prefilter pass over its mip chain, and somewhere for a
-level to say what its sky is.
+It was replaced the same day by a real prefiltered environment — see below. The two-colour `mix` is
+kept in the history because it is the right first step: it costs one instruction, it is the difference
+between metal reading as metal and reading as a bug, and it is enough to get the BRDF correct before
+adding a cube map to the list of things that might be wrong.
+
+## Image-based lighting (2026-09-10)
+
+A surface takes light from its **whole** environment, and how it takes it depends on how rough it is:
+a mirror reflects one direction, chalk gathers the entire hemisphere. Doing that integral per pixel
+per frame is not affordable, so `EnvironmentMap` precomputes it twice.
+
+| | what it holds |
+|---|---|
+| `specular` | The environment convolved with the GGX lobe, **one roughness per mip**. Mip 0 is the environment itself; the last is nearly uniform. A shader samples it at `roughness × (mips − 1)`. |
+| `irradiance` | The environment convolved with a cosine lobe — what a diffuse surface facing a direction receives. 16×16, because a cosine convolution is a very heavy blur and the result genuinely has nothing finer in it. |
+
+### Built on the CPU, and that is the argument
+
+**Every part of this that can be *wrong* is arithmetic**: cube face projection, importance sampling,
+two convolutions. This repository's rule is that such halves want tests and tests should not want a
+GPU — a compute prefilter would be faster and would put all of it somewhere only a screenshot could
+check. Here they are ordinary functions with ordinary tests, and three of those tests failed the first
+time they ran.
+
+**92 ms in a release build; 2.6 s in a debug one.** The debug figure is what somebody running
+`swift run WindageSample` actually sees, and it is the honest price. The trade is also stated: this
+prefilters a **function**, not a photograph. An engine that wants to prefilter a captured HDR panorama
+will want the compute version, and this maths is what that would be written against.
+
+### Three things the tests found
+
+- **Fireflies at high roughness.** At a fixed 96 samples the chain stops getting blurrier around
+  roughness 0.6 and starts getting *brighter* again — 0.72 rising to 1.67 at roughness 1.0, where a
+  converged reference falls to 0.60. A wide lobe over a small, very bright sun means the estimate is
+  decided by whether any sample happened to land on the sun, and the rough mips come out blotched.
+
+  **The fix is free.** Quadrupling the sample count per mip exactly cancels the mip chain: each level
+  has a quarter of the texels, so the cost per level is flat, and the roughest mips — which need the
+  samples most — are the smallest and cheapest place to spend them.
+- **The irradiance integral was out by a factor of π.** It is a Riemann sum over `dφ dθ`, so each term
+  is worth `step²` of solid-angle measure; dividing by the sample count gives an *average* rather than
+  an integral. Caught by asserting the one value that is known in closed form: a uniform sky of
+  radiance L integrates to exactly πL.
+- **The lower hemisphere must not be black.** A surface facing down is lit by the ground, and a black
+  ground is the single commonest reason an image-based lit object looks like it is floating in a void.
+
+### Two things in the sample
+
+**The sky is drawn from the same cube that surfaces reflect.** A flat clear colour behind a metal
+object reflecting a sky with a sun in it is two skies in one picture, and that is among the first
+things an eye finds wrong with a render.
+
+**Irradiance is not radiance.** The cube holds light integrated over the hemisphere; Lambert's BRDF is
+`albedo / π`, and skipping the division makes every ambient-lit surface π times too bright.
 
 ## Tone mapping (2026-09-10)
 
