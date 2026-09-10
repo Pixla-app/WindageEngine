@@ -73,7 +73,22 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     /// Frames the CPU may run ahead of the GPU.
     public static let maxFramesInFlight = 3
 
+    /// What the **drawable** is: what a view's layer must be set to, and what an interface pipeline
+    /// draws into. `_srgb`, so the GPU encodes linear values for the display on write.
     public static let colorPixelFormat: MTLPixelFormat = .bgra8Unorm_srgb
+
+    /// What the **scene** is drawn into, and therefore what a game's scene pipelines must declare.
+    ///
+    /// **Sixteen-bit float, because shading does not stop at 1.** A surface lit by the sun with a
+    /// specular highlight on it is genuinely brighter than white paper; written straight to an 8-bit target
+    /// every value above 1 clips to the same white, and the brightest part of the image becomes the
+    /// part carrying no information. The scene is drawn here and ``ToneMapping`` fits it into what a
+    /// display can show.
+    ///
+    /// Half float rather than full: it holds far more range than a frame needs and costs half the
+    /// bandwidth of `rgba32Float`, which on a full-screen target is the whole cost of this pass.
+    public static let sceneColorPixelFormat: MTLPixelFormat = .rgba16Float
+
     public static let depthPixelFormat: MTLPixelFormat = .depth32Float_stencil8
 
     /// Reversed-Z: 0 is infinitely far, so that is what an untouched pixel starts at.
@@ -88,7 +103,14 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     public let residencySet: MTLResidencySet
 
     public private(set) var timestep: FixedTimestep
+
+    /// What an untouched pixel is, **in radiance** — the scene target is HDR, so this is a linear
+    /// value that will be tone mapped like everything else rather than a colour that reaches the
+    /// screen unchanged.
     public var clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+
+    /// The exposure and curve applied between the scene and the display. Change it whenever.
+    public var toneMapping = ToneMapping.default
 
     public weak var game: GameLoop?
 
@@ -96,6 +118,12 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     private let endFrameEvent: MTLSharedEvent
     private var frameIndex: Int
     private var depthTexture: MTLTexture?
+    private var sceneTexture: MTLTexture?
+    private var toneMapPipeline: MTLRenderPipelineState?
+    private let toneMapArgumentTable: MTL4ArgumentTable
+    private let toneMapUniformBuffer: MTLBuffer
+    /// Per frame in flight, because the GPU may still be reading last frame's exposure.
+    private static let toneMapStride = (MemoryLayout<ToneMapping.Packed>.stride + 255) & ~255
     private var lastPresentationTime: CFTimeInterval?
 
     public init?(device: MTLDevice, simulationStepsPerSecond: Double = 120) {
@@ -116,11 +144,51 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         guard let set = try? device.makeResidencySet(descriptor: descriptor) else { return nil }
         self.residencySet = set
 
+        let tableDescriptor = MTL4ArgumentTableDescriptor()
+        tableDescriptor.maxBufferBindCount = 1      // 0: the exposure and curve
+        tableDescriptor.maxTextureBindCount = 1     // 0: the scene, in radiance
+        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
+              let uniforms = device.makeBuffer(
+                length: FrameRenderer.toneMapStride * FrameRenderer.maxFramesInFlight,
+                options: .storageModeShared) else { return nil }
+        uniforms.label = "Tone Mapping"
+        self.toneMapArgumentTable = table
+        self.toneMapUniformBuffer = uniforms
+
         self.frameIndex = FrameRenderer.maxFramesInFlight
         event.signaledValue = UInt64(FrameRenderer.maxFramesInFlight - 1)
 
         super.init()
         queue.addResidencySet(set)
+        residencySet.addAllocations([uniforms])
+        residencySet.commit()
+
+        // **Built here rather than lazily, so a failure is reported once at start-up** instead of
+        // per frame from inside the render loop.
+        do {
+            let library = try ShaderLibrary.make(device: device, bundle: .module,
+                                                 sourceNamed: "ToneMapShaders")
+            let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
+
+            let vertexFunction = MTL4LibraryFunctionDescriptor()
+            vertexFunction.library = library
+            vertexFunction.name = "toneMapVertex"
+            let fragmentFunction = MTL4LibraryFunctionDescriptor()
+            fragmentFunction.library = library
+            fragmentFunction.name = "toneMapFragment"
+
+            let descriptor = MTL4RenderPipelineDescriptor()
+            descriptor.label = "Tone Map"
+            descriptor.vertexFunctionDescriptor = vertexFunction
+            descriptor.fragmentFunctionDescriptor = fragmentFunction
+            descriptor.colorAttachments[0].pixelFormat = FrameRenderer.colorPixelFormat
+            toneMapPipeline = try compiler.makeRenderPipelineState(descriptor: descriptor)
+        } catch {
+            // **Not fatal, and the fallback is a black screen rather than a crash.** A machine that
+            // cannot build this pipeline is one where nothing else will work either, and saying so
+            // is more use than a trap.
+            NSLog("\(Engine.name): tone mapping unavailable — \(error)")
+        }
     }
 
     /// Publishes residency changes to the GPU. Call after adding allocations.
@@ -179,12 +247,67 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         depthTexture = device.makeTexture(descriptor: descriptor)
         depthTexture?.label = "Depth"
 
+        // **The scene target cannot be memoryless**, unlike depth: the tone map pass reads it after
+        // the scene pass has ended, so it has to survive into main memory.
+        let sceneDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FrameRenderer.sceneColorPixelFormat, width: width, height: height,
+            mipmapped: false)
+        sceneDescriptor.usage = [.renderTarget, .shaderRead]
+        sceneDescriptor.storageMode = .private
+        let previous = sceneTexture
+        sceneTexture = device.makeTexture(descriptor: sceneDescriptor)
+        sceneTexture?.label = "Scene Colour (HDR)"
+
+        // **Removed as well as added.** A window dragged between displays resizes repeatedly, and a
+        // residency set that only ever grows holds every intermediate size resident for the life of
+        // the process.
+        if let previous { residencySet.removeAllocations([previous]) }
+        if let sceneTexture { residencySet.addAllocations([sceneTexture]) }
+        residencySet.commit()
+
         game?.viewportChanged(width: width, height: height)
+    }
+
+    /// Pass two: the scene fitted to the display, then the interface on top of it.
+    ///
+    /// **The interface is drawn here, after the curve, and that is the whole reason the two are one
+    /// pass.** Scene colour is radiance and gets tone mapped; interface colour is a *specification* —
+    /// a brand red is that red, not "that red as it would look lit by this sun". Tone map the HUD as
+    /// well and every interface colour arrives desaturated with nothing to say why.
+    private func encodeToneMapAndInterface(to drawable: CAMetalDrawable,
+                                           scene: MTLTexture,
+                                           frameSlot: Int,
+                                           game: GameLoop) {
+        let descriptor = MTL4RenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = drawable.texture
+        // Every pixel is written by the full-screen triangle, so there is nothing worth loading.
+        descriptor.colorAttachments[0].loadAction = .dontCare
+        descriptor.colorAttachments[0].storeAction = .store
+        // **No depth attachment.** Nothing here is occluded by anything, and a depth buffer would
+        // only be a state for the tone map and the HUD to disagree about.
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+        encoder.label = "Tone Map and Interface"
+
+        if let toneMapPipeline {
+            encoder.setRenderPipelineState(toneMapPipeline)
+            encoder.setArgumentTable(toneMapArgumentTable, stages: [.vertex, .fragment])
+            var uniforms = toneMapping.packed
+            let offset = frameSlot * FrameRenderer.toneMapStride
+            toneMapUniformBuffer.contents().advanced(by: offset)
+                .copyMemory(from: &uniforms, byteCount: MemoryLayout<ToneMapping.Packed>.size)
+            toneMapArgumentTable.setAddress(toneMapUniformBuffer.gpuAddress + UInt64(offset), index: 0)
+            toneMapArgumentTable.setTexture(scene.gpuResourceID, index: 0)
+            encoder.drawPrimitives(primitiveType: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+
+        game.encodeHUD(into: encoder, frameSlot: frameSlot)
+        encoder.endEncoding()
     }
 
     private func render(to drawable: CAMetalDrawable, interpolation alpha: Float) {
         updateRenderTargets(width: drawable.texture.width, height: drawable.texture.height)
-        guard let depthTexture, let game else { return }
+        guard let depthTexture, let sceneTexture, let game else { return }
 
         // Block until the frame that last used this slot has actually finished on the GPU. Apple's
         // template waits once with a 10 ms timeout and ignores the result, so on expiry it falls
@@ -202,8 +325,10 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
 
         game.encodePrePasses(into: commandBuffer, frameSlot: frameSlot, interpolation: alpha)
 
+        // **Pass one: the scene, into an HDR target.** Not into the drawable — see
+        // `sceneColorPixelFormat`.
         let passDescriptor = MTL4RenderPassDescriptor()
-        passDescriptor.colorAttachments[0].texture = drawable.texture
+        passDescriptor.colorAttachments[0].texture = sceneTexture
         passDescriptor.colorAttachments[0].loadAction = .clear
         passDescriptor.colorAttachments[0].clearColor = clearColor
         passDescriptor.colorAttachments[0].storeAction = .store
@@ -220,14 +345,11 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDescriptor) else {
             fatalError("Failed to create render command encoder")
         }
-        encoder.label = "Primary Render Encoder"
+        encoder.label = "Scene"
         game.encode(into: encoder, frameSlot: frameSlot, interpolation: alpha)
-
-        // The interface goes last, in the same pass, on top of a scene that has already been tone
-        // mapped. See `GameLoop.encodeHUD`.
-        game.encodeHUD(into: encoder, frameSlot: frameSlot)
-
         encoder.endEncoding()
+
+        encodeToneMapAndInterface(to: drawable, scene: sceneTexture, frameSlot: frameSlot, game: game)
 
         if let layerResidencySet = (drawable.layer as CAMetalLayer?)?.residencySet {
             commandBuffer.useResidencySet(layerResidencySet)

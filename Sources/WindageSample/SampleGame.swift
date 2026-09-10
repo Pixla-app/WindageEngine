@@ -309,7 +309,10 @@ final class SampleGame: GameLoop {
             descriptor.vertexFunctionDescriptor = vertexFunction
             descriptor.fragmentFunctionDescriptor = fragmentFunction
             descriptor.vertexDescriptor = vertexDescriptor
-            descriptor.colorAttachments[0].pixelFormat = FrameRenderer.colorPixelFormat
+            // **The scene target, not the drawable.** The scene is drawn into an HDR texture and
+            // fitted to the display by the engine's tone map pass; a pipeline declaring the
+            // drawable's format here would not match the attachment it is given.
+            descriptor.colorAttachments[0].pixelFormat = FrameRenderer.sceneColorPixelFormat
                 pipeline = try compiler.makeRenderPipelineState(descriptor: descriptor, compilerTaskOptions: nil)
 
             // The skinned pipeline differs only in its vertex function and its layout — same
@@ -810,6 +813,7 @@ final class SampleGame: GameLoop {
         case 35: run.togglePause(); return true              // p
         case 15: if !command { run.restart(); return true }  // r — but ⌘R is redo
         case 45: load(level: levelIndex + 1); return true    // n — next level
+        case 46: cycleToneMapping(); return true             // m — clamp, Reinhard, ACES
         default: break
         }
 
@@ -862,6 +866,20 @@ final class SampleGame: GameLoop {
         }
         rebuild()
         return true
+    }
+
+    /// Steps through the tone map curves, so the difference can be looked at rather than argued
+    /// about.
+    ///
+    /// **`clamp` is the one worth pressing.** It is what a renderer does with no tone mapping at all,
+    /// and on a lit scene the sunlit faces go flat: everything above 1 becomes the same white, so a
+    /// bright surface and a *very* bright surface arrive identical.
+    private func cycleToneMapping() {
+        let curves = ToneMapping.Curve.allCases
+        let next = curves[((curves.firstIndex(of: engine.toneMapping.curve) ?? 0) + 1) % curves.count]
+        engine.toneMapping.curve = next
+        print("WindageSample: tone map curve \(next), "
+              + "\(engine.toneMapping.exposureStops) stops")
     }
 
     /// Pick whatever is under the middle of the screen.
@@ -1279,7 +1297,7 @@ final class SampleGame: GameLoop {
                 : "WASD move · mouse look · click to capture · esc release"
             _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
                          pointSize: hint, color: white)
-            _ = hud.text("p pause · r restart · n next level · tab to edit the level",
+            _ = hud.text("p pause · r restart · n next level · m tone map · tab to edit the level",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         }
 

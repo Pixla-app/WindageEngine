@@ -12,6 +12,45 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.3.0] — 2026-09-10
+
+**The scene stops being written straight to the screen.** Shading does not stop at 1 — the sample's
+own lit faces reach about 1.13 before anything shiny is involved — and every value above it was
+clipping to the same white.
+
+**Breaking**: a game's scene pipelines must declare `sceneColorPixelFormat`, not `colorPixelFormat`.
+
+### Changed
+
+- **`FrameRenderer` renders in two passes.** The scene draws into an HDR target
+  (`sceneColorPixelFormat`, `rgba16Float`); a full-screen triangle then applies exposure and a curve
+  and writes the drawable, with `GameLoop.encodeHUD` running in *that* pass so the interface never
+  sees the curve. The ordering `encodeHUD` was designed around is now literally true.
+- **`FrameRenderer.colorPixelFormat` still means the drawable** — what a view's layer is set to and
+  what an interface pipeline draws into. Scene pipelines want the new one.
+- **`clearColor` is radiance now**, not a screen colour: it is tone mapped like everything else.
+
+### Added
+
+- **`ToneMapping`** — a curve (`clamp`, `reinhard`, `aces`) and an exposure in stops.
+  `FrameRenderer.toneMapping` is settable per frame. `apply(_:)` runs the curve on the CPU, which is
+  what makes it testable and what a game needs to pick an interface colour that matches a scene.
+- **The sample cycles curves with `m`**, so the difference can be looked at rather than argued about.
+
+### Two things worth knowing
+
+- **ACES lifts midtones by about a third** — middle grey 0.18 maps to 0.267. A scene tuned before
+  there was a curve comes out *brighter* when one is switched on, not darker, and looks washed until
+  its exposure is set. The sample sits at −0.5 stops for that reason.
+- **Narkowicz's fit is not asymptotic**: it passes 1 at an input of about 6.6, so the clamp after it
+  is doing real work rather than guarding an edge case.
+
+### Not here
+
+No auto-exposure — metering, what "correct" means for a game, and adaptation over time are contested,
+and the game's needs decide them. No bloom, colour grading or vignette: those are a look, and this is
+the part without which there is no picture.
+
 ## [0.2.1] — 2026-09-10
 
 **Normal mapping**, which was the last of the material slots with nothing behind it.

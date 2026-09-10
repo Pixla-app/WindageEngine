@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-246 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+256 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,40 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — tone mapping (0.3.0)
+
+**The scene stops being written straight to the screen.** Shading does not stop at 1 — the sample's
+own lit faces reach about 1.13 before anything shiny is involved — and everything above it was
+clipping to the same white, so the brightest part of the image carried no information.
+
+**Breaking**: a game's scene pipelines must declare `FrameRenderer.sceneColorPixelFormat`, not
+`colorPixelFormat`. The latter still means the drawable — what a view's layer is set to and what an
+interface pipeline draws into.
+
+- **Two passes now.** The scene into an HDR target (`rgba16Float`), then a full-screen triangle
+  applying exposure and a curve into the drawable. **`encodeHUD` runs in that second pass**, so the
+  ordering it has documented for months is now literally true rather than an intent.
+- **`ToneMapping`** — `clamp`, `reinhard` or `aces`, plus exposure **in stops**. `apply(_:)` runs the
+  curve on the CPU, which is what makes it testable at all and what a game needs to pick an interface
+  colour that matches a scene.
+- **The sample cycles curves with `m`**, so the difference can be looked at rather than argued about.
+
+### Two things worth knowing
+
+- **ACES lifts midtones by about a third** — middle grey 0.18 maps to 0.267. A scene tuned before
+  there was a curve comes out *brighter*, not darker, and looks washed until its exposure is set. The
+  sample sits at −0.5 stops; a game authored against the curve would sit at zero.
+- **Narkowicz's fit is not asymptotic.** It passes 1 at an input of about 6.6, so the clamp after it
+  is load-bearing rather than a guard. Found by pinning the curve's values in a test.
+
+**Not here: auto-exposure, bloom, colour grading, vignette.** The first is contested — metering, what
+"correct" means for a game, adaptation over time — and the rest are a look. This is the part without
+which there is no picture.
+
+> **Two copies of one formula, written down as a risk.** `ToneMapping.apply(_:)` is the definition
+> and `ToneMapShaders.metal` transcribes it. The tests pin specific input-output pairs, so a change
+> to one and not the other shows up in the numbers rather than only on screen.
 
 ## Done 2026-09-10 — normal mapping (0.2.1)
 
@@ -340,13 +374,18 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Post-processing and a tone-map curve.** Listed in the README as settled shape: an engine that
-   renders past 1.0 and writes it straight makes every lit surface clip identically, and each game
-   currently supplies its own answer or none.
-
-2. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
+1. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
    `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as
    scalars. A metallic-roughness *map* is the same wiring again and needs an asset that has one.
+
+2. **The specular is Blinn-Phong, and now that there is an HDR target it is the weakest part of the
+   shading.** A real microfacet lobe — GGX, a geometry term, Fresnel — is settled shape and is what
+   makes metal look like metal rather than like plastic with a bright spot. It belongs in the
+   sample's shader rather than the engine, since shading is a game's.
+
+3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
+   README says why. A fixed exposure per level would be a cheap middle step and is a level-format
+   change rather than an engine one.
 
 ## Standing reminders
 

@@ -142,7 +142,8 @@ clips, cross-fading and a joint palette, loaded from USD, with clips in files of
 asset-orientation correction for Z-up centimetre exports** · **materials and textures — the
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
-and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · a versioned level format
+and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
+scene target with exposure and tone mapping** · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -158,7 +159,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | ~~**The shadow pass**~~ | **Done 2026-09-09.** `ShadowMap` owns the texture, the depth state, the descriptors and the encoder loop; the game keeps its pipelines. See below. |
 | ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
 | ~~**Normal maps**~~ | **Done 2026-09-10.** `MeshLoader` generates a tangent basis on request; the sample is normal mapped throughout. See below. |
-| **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
+| ~~**Post-processing**~~ | **Tone mapping done 2026-09-10** — an HDR scene target, exposure in stops, and a choice of curve. See below. Bloom and colour grading are a *look* and are not here. |
 | **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
 | **A character controller** | Walking, ground-following, step height, crouch, slide. Written outside already, and every first-person game rewrites it. |
 | **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
@@ -655,10 +656,15 @@ spread across three files, in every game built on it, is a trap that will eventu
 
 ## The interface is drawn after tone mapping, and that is structural
 
-`GameLoop.encodeHUD` runs after `encode`, in the same pass, and `HUDRenderer`'s pipeline applies no
-curve. This is the one piece of ordering the engine enforces rather than documents, because the
-failure is silent: a HUD drawn inside the scene's shading goes through exposure and a filmic curve
-like everything else, and a brand colour arrives desaturated and shifted with nothing to say why.
+**True in the literal sense since 2026-09-10.** This section described the intent for months while
+there was no curve for the HUD to be after — the scene was written straight to the drawable. There
+is one now, and the ordering it was designed around is real: the scene is drawn into an HDR target,
+a second pass fits it to the display, and `GameLoop.encodeHUD` runs in **that** pass, after the
+curve.
+
+The engine enforces the ordering rather than documenting it because the failure is silent: a HUD
+drawn inside the scene's shading goes through exposure and a filmic curve like everything else, and
+a brand colour arrives desaturated and shifted with nothing to say why.
 
 **`UIColor` makes the distinction a type.** Scene colour is *radiance* — unbounded, linear, tone
 mapped. Interface colour is a *specification* — it must land on screen as exactly the value it was
@@ -679,6 +685,67 @@ a baked atlas is another asset to generate, version and keep in step with the me
 and those drift apart. It is a bitmap, not signed distance fields — SDF is the right answer
 eventually and a materially bigger piece of work, so this rasterises generously and scales *down*,
 which is the direction that stays sharp.
+
+## Tone mapping (2026-09-10)
+
+**Shading does not stop at 1.** A sunlit surface with a specular highlight on it is genuinely
+brighter than white paper, and once ambient, direct and specular are summed the result routinely
+passes 1.0 — the sample's own lit faces reach about 1.13 before anything shiny is involved. Written
+straight to an 8-bit display buffer, every one of those clips to the same white, so the brightest and
+most informative part of the image becomes the part carrying no information.
+
+That is not a missing polish pass. **A renderer that produces HDR and writes it to an LDR target is
+incomplete**, and the symptom — blown highlights, a plasticky look, colour sliding to white as it
+brightens — reads as bad art rather than as a missing stage.
+
+### The shape of it
+
+The frame is two passes now. The scene draws into `sceneColorPixelFormat` — `rgba16Float`, half
+float because it holds far more range than a frame needs at half the bandwidth of full float. Then a
+full-screen triangle reads it, applies exposure and a curve, and writes the drawable, with the
+interface drawn into that same second pass so it never sees the curve.
+
+**A triangle rather than a quad, and no vertex buffer at all.** Two triangles meeting across the
+screen have a diagonal seam where the rasteriser shades the same pixels twice; one oversized triangle
+covers the screen with no seam and is generated from `vertex_id`, so there is nothing to allocate,
+bind or keep resident.
+
+**The scene target cannot be memoryless**, unlike the depth buffer beside it: the tone map pass reads
+it after the scene pass has ended, so it has to survive into main memory.
+
+### Curves
+
+| | |
+|---|---|
+| `clamp` | Not a curve — what a renderer does with no tone mapping. Kept so the difference can be looked at rather than argued about. |
+| `reinhard` | Gentlest and most washed out. Scales all three channels equally, so hue is preserved exactly, which is either the virtue or the problem. |
+| `aces` | **The default.** Narkowicz's six-constant fit of the ACES curve. Rolls the shoulder off gradually and lets very bright colours desaturate towards white, which is what film does and what the eye reads as bright rather than clipped. |
+
+**Exposure is in stops**, photographic, because that is how brightness is actually reasoned about and
+because the useful range is small and symmetric — roughly −4 to +4, where a multiplier's is 0.06 to
+16 and reads as arbitrary.
+
+### Two things worth knowing
+
+- **ACES lifts midtones by about a third.** Middle grey 0.18 maps to 0.267. A scene whose values were
+  chosen before there was a curve comes out *brighter* when one is switched on, not darker, and looks
+  washed until its exposure is set. The sample sits at −0.5 stops for exactly that reason; a game
+  authored against the curve from the start would sit at zero.
+- **The fit is not asymptotic.** It passes 1 at an input of about 6.6, so the clamp after it is doing
+  real work rather than guarding an edge case. Both copies of the curve clamp.
+
+### What is deliberately not here
+
+**No auto-exposure.** Metering the frame, deciding what "correctly exposed" means for a game, and
+smoothing adaptation over time are genuinely contested — every engine does it differently and the
+game's needs decide it. **No bloom, no colour grading, no vignette**: those are a look. This is the
+part without which there is no picture.
+
+> **Two copies of one formula, and it is written down as a risk.** `ToneMapping.apply(_:)` is the
+> definition and `ToneMapShaders.metal` transcribes it. The alternative is no Swift version, which
+> means the curve cannot be tested at all without a GPU and a way to read pixels back — so the tests
+> pin specific input-output pairs instead, and a change to one copy and not the other shows up in the
+> numbers rather than only on screen.
 
 ## Distribution-agnostic, deliberately (2026-08-26)
 

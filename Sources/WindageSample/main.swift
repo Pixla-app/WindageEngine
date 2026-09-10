@@ -78,7 +78,14 @@ window.contentView = view
 
 guard let game = SampleGame(engine: engine) else { exit(1) }
 engine.game = game
+// **Radiance now, not a screen colour** — the sky is drawn into an HDR target and goes through the
+// same curve as everything else.
 engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
+
+// **Exposure is the game's dial, not the engine's.** ACES lifts midtones by roughly a fifth, so a
+// scene whose values were chosen before there was a curve comes out bright; half a stop down puts it
+// back. A game authored against the curve from the start would sit at zero.
+engine.toneMapping = ToneMapping(curve: .aces, exposureStops: -0.5)
 view.game = game
 
 guard let metalLayer = view.layer as? CAMetalLayer else {
