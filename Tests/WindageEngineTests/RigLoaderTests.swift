@@ -105,6 +105,69 @@ struct RigLoaderTests {
         }
     }
 
+    // MARK: - Clips in files of their own
+
+    /// **The shape a real character actually arrives in.** Every toolchain that exports one animation
+    /// at a time gives a file per clip, and each carries a whole copy of the mesh and the skeleton.
+    @Test("Clips load from a second file onto the first file's rig")
+    func clipsLoadFromAnotherFile() throws {
+        let rig = try RigLoader.load(named: "offset-rig", withExtension: "usda",
+                                     clipFiles: ["offset-rig-walk"], bundle: .module)
+        #expect(rig.clips.count == 2)
+        #expect(rig.clip(named: "Swing") != nil)
+        // A file with one clip has it renamed to the file's own name — an exporter's internal name
+        // for an animation is not something a game wants to ask for.
+        #expect(rig.clip(named: "offset-rig-walk") != nil)
+        #expect(rig.jointsNotDrivenBy(try #require(rig.clip(named: "offset-rig-walk"))).isEmpty)
+    }
+
+    /// **The trap this fixture exists for.** The walk file's copy of the skeleton has the child joint
+    /// at (0, 9, 0) where the rig says (0, 1, 0) — because a clip file's rest pose is wherever the
+    /// exporter left the rig, not the rig's own. Merge it and every joint the clip does not animate
+    /// stands in the wrong place, and the fault changes depending on which files were loaded.
+    @Test("A clip file's own skeleton is ignored")
+    func clipFileSkeletonIsIgnored() throws {
+        let rig = try RigLoader.load(named: "offset-rig", withExtension: "usda",
+                                     clipFiles: ["offset-rig-walk"], bundle: .module)
+        #expect(simd_distance(rig.skeleton.restTransforms[1].columns.3, SIMD4(0, 1, 0, 1)) < 1e-5,
+                "the rest pose came from a clip file")
+
+        let pose = SkeletonPose(skeleton: rig.skeleton)
+        for matrix in pose.skinningMatrices {
+            #expect(simd_almost_equal_elements(matrix, matrix_identity_float4x4, 1e-5))
+        }
+    }
+
+    @Test("Clips can be read on their own")
+    func clipsAloneCanBeRead() throws {
+        let clips = try RigLoader.clips(named: "offset-rig-walk", withExtension: "usda", bundle: .module)
+        #expect(clips.count == 1)
+        #expect(clips[0].jointPaths == ["root", "root/mid"])
+    }
+
+    @Test("A clip can be renamed without changing anything else")
+    func renamingKeepsTheClip() throws {
+        let clip = try #require(loadRig().clip(named: "Swing"))
+        let renamed = clip.renamed(to: "swing")
+        #expect(renamed.name == "swing")
+        #expect(renamed.duration == clip.duration)
+        #expect(renamed.jointPaths == clip.jointPaths)
+        #expect(renamed.rotation.times == clip.rotation.times)
+    }
+
+    /// A clip file that is missing is reported, not thrown — one absent animation should not stop a
+    /// character loading.
+    @Test("A missing clip file is reported rather than fatal")
+    func missingClipFileIsReported() throws {
+        var reports: [String] = []
+        let rig = try RigLoader.load(named: "offset-rig", withExtension: "usda",
+                                     clipFiles: ["no-such-clip"], bundle: .module) {
+            reports.append($0)
+        }
+        #expect(rig.clips.count == 1, "the base file's own clip should still be there")
+        #expect(reports.count == 1)
+    }
+
     @Test("A missing file is named in the error")
     func missingFileThrows() {
         #expect(throws: RigLoaderError.self) {

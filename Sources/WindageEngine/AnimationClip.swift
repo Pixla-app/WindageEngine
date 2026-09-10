@@ -153,6 +153,15 @@ public nonisolated struct AnimationClip: Sendable {
                             scale.times.last ?? 0)
     }
 
+    /// The same clip under a different name.
+    ///
+    /// **For the names an exporter produces.** A clip arrives called
+    /// `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`; a game asks for `walk`.
+    public func renamed(to name: String) -> AnimationClip {
+        AnimationClip(name: name, jointPaths: jointPaths,
+                      translation: translation, rotation: rotation, scale: scale)
+    }
+
     /// Wraps or clamps a time into the clip's own range.
     ///
     /// **A looping clip wraps rather than clamping**, and its first and last keys are expected to

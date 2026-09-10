@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-218 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+231 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,33 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — what a real character needs (0.1.1)
+
+**An 87-joint character from a real toolchain was loaded, and it arrived in three shapes the engine
+had no answer for.** All three are now handled, and the sample ships the untidy version so the path
+stays tested.
+
+- **Clips in files of their own.** `RigLoader.clips(named:)` reads only animations;
+  `load(named:clipFiles:)` puts a rig from one file together with clips from others. A file holding
+  one clip has it renamed to the file's own name — the exporter's name is
+  `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`. A clip that drives none of the rig's joints is
+  dropped and reported; a missing clip file is reported, not thrown.
+- **A clip file's skeleton is ignored, and that is the load-bearing part.** Its rest pose is wherever
+  the exporter left the rig — measured, the same joint is (10.42, 4.08, 7.84) in the base file and
+  (3.16, 1.17, 7.84) in the walk file. Merge them and every joint a clip does not animate stands
+  wrong, and the fault changes as animations are added.
+- **`AssetOrientation`** — Z-up and a hundred units to the metre, corrected by **one matrix in front
+  of the model matrix**, which fixes the mesh, the rig and the clips together because skinning
+  happens in model space. `MDLAsset` exposes `upAxis` and **not** `metersPerUnit`, so the axis is read
+  and the scale is measured once and written down.
+- **The sample's figure is now written the way a real export arrives** — Z-up centimetres, second
+  clip in its own file, that file's rest pose deliberately wrong. It renders identically to the
+  version it replaced, which is the point.
+
+**What a real character still tests that the sample does not:** its material named no texture, so the
+colour map ships beside it as a PNG the game binds by name. The file-carries-its-own-texture path is
+proved by the sample alone.
 
 ## Done 2026-09-09 — versioning and a changelog
 
@@ -194,30 +221,7 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **A real character exists, and it exposes three gaps.** An 87-joint rigged character is available
-   as `.usdc` with five clips in separate files, and it was probed on 2026-09-09: the skeleton, the
-   weights, the UVs and a non-identity geometry bind transform all come through. What does not work
-   yet, and is genuinely engine work rather than a game's:
-
-   - **Clips live in one file each**, and each of those files carries a whole copy of the mesh and
-     the skeleton. `RigLoader.load` reads one file and returns skeleton *and* clips, so loading six
-     clips means parsing six copies of a 34,650-vertex mesh. **Needs a way to read clips alone and
-     bind them to a skeleton already loaded** — `AnimationBinding` matches by path, so the mechanism
-     is there; the entry point is not.
-   - **The rest pose differs between those files.** The same joint reports a different rest
-     transform in the base file and in a walk file, because a clip file's rest pose is whatever the
-     exporter left the rig at. **The skeleton must come from the base file**, which is a rule
-     nothing currently states or enforces.
-   - **It is Z-up and in centimetres** — 176 units tall, `upAxis` (0, 0, 1). Model I/O does not
-     convert either. Every real export from that toolchain will be like this, so an import transform
-     (scale plus up-axis) is a settled, cheap thing the engine should own rather than every game
-     rediscovering it.
-
-   Its material also names no texture: the colour map ships beside it as a PNG the game binds by
-   name. That is normal and fine, but it means the file-carries-its-own-texture path stays proved
-   only by the sample.
-
-2. **Extract the shadow pass. It is one thing implemented twice, and that is a defect.** The
+1. **Extract the shadow pass. It is one thing implemented twice, and that is a defect.** The
    *arithmetic* has been in the engine since `ShadowCascades`; the **pass** — the texture, the
    pipelines, the per-cascade encoder loop — exists in the sample and again in a game, and a fix to
    one does not reach the other.
@@ -235,6 +239,13 @@ and sorts what is missing into three buckets:
    with the game (they are compiled against the game's shaders and its vertex descriptor), and the
    sample keeps only the half that is genuinely its own. A game replacing its copy afterwards is that
    game's work on that game's schedule — this repository does not wait on it.
+
+2. **Load the real character into the sample, or decide not to.** Everything it needs now exists and
+   is tested against fixtures that reproduce its shape — but the character itself lives outside this
+   repository and cannot be committed to it, so it has been *probed* rather than *run*. Worth one
+   session: point the sample at it behind an environment variable, look at it, and write down
+   whatever the fixtures did not predict. Expect the material to name no texture, and expect facing
+   to need a yaw.
 
 ## Standing reminders
 

@@ -12,6 +12,45 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.1.1] — 2026-09-09
+
+**Everything a real character needs that a generated one did not show.** An 87-joint rigged character
+from an actual toolchain was loaded, and it arrives in three shapes the engine had no answer for.
+Additive: nothing that compiled against 0.1.0 changes.
+
+### Added
+
+- **`AssetOrientation`** — the up axis and unit scale an asset was authored in, and the one matrix
+  that corrects it. A character out of a game-engine toolchain by way of Blender arrives **Z-up and
+  in centimetres**; applied in front of the model matrix, one matrix corrects the mesh, the rig and
+  the animation together, because skinning happens in model space.
+- **`RigLoader.clips(named:withExtension:bundle:)`** — reads only the animations from a file.
+- **`RigLoader.load(named:withExtension:clipFiles:bundle:reportingTo:)`** — a rig from one file and
+  its animations from others, which is how a character exported one clip at a time arrives. A file
+  holding one clip has it renamed to the file's own name. A clip that drives none of the rig's joints
+  is dropped and reported; a clip file that is missing is reported, not thrown.
+- **`Rig.adding(_:)`** and **`Rig.jointsNotDrivenBy(_:)`**.
+- **`AnimationClip.renamed(to:)`** — for the names an exporter produces.
+
+### Changed
+
+- **The sample's figure is now written the way a real export arrives**: Z-up, a hundred units to the
+  metre, and its second clip in a file of its own whose copy of the skeleton has the wrong rest pose.
+  It renders identically to the Y-up metre version it replaced, which is the point. A sample that
+  only ever loads tidy assets leaves the untidy path untested.
+
+### Notes for anyone loading a real character
+
+- **A clip file's skeleton is not the rig's skeleton.** Its rest pose is wherever the exporter left
+  the rig — usually the clip's first frame. Measured: one joint reports (10.42, 4.08, 7.84) in the
+  base file and (3.16, 1.17, 7.84) in the walk file. Merge them and every joint a clip does not
+  animate stands in the wrong place, and the fault changes with which files were loaded.
+- **Model I/O exposes `upAxis` and not `metersPerUnit`.** The axis can be read; the scale has to be
+  measured once and written down.
+- **Each per-clip export carries a whole copy of the mesh.** Model I/O offers no way to open an
+  asset's animations alone, so the parse cost stays; what `clips(...)` avoids is the expensive half,
+  since nothing is laid out or uploaded to a GPU without a vertex descriptor and an allocator.
+
 ## [0.1.0] — 2026-09-09
 
 **The first version with a number.** Everything before this was a folder inside a studio repository,

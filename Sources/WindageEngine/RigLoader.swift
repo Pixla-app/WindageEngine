@@ -35,6 +35,26 @@ public nonisolated struct Rig: Sendable {
     public func clip(named name: String) -> AnimationClip? {
         clips.first { $0.name == name }
     }
+
+    /// The same rig with more clips on it.
+    ///
+    /// **This is how a real character arrives.** Every toolchain that exports one animation at a time
+    /// gives you a file per clip — and each of those files carries a whole copy of the mesh and the
+    /// skeleton with it. The skeleton comes from the base file, once; the clips come from the others.
+    /// See ``RigLoader/clips(named:withExtension:bundle:)`` for why the skeletons in those files must
+    /// be ignored rather than merged.
+    public func adding(_ moreClips: [AnimationClip]) -> Rig {
+        Rig(skeleton: skeleton, clips: clips + moreClips)
+    }
+
+    /// The rig's joints that a clip says nothing about.
+    ///
+    /// **Empty is what you want; everything is what a clip for a different rig looks like.** Worth
+    /// checking once at load — a clip that binds to nothing is indistinguishable at runtime from a
+    /// character standing still.
+    public func jointsNotDrivenBy(_ clip: AnimationClip) -> [String] {
+        AnimationBinding(clip: clip, skeleton: skeleton).unboundJoints
+    }
 }
 
 /// Reads a skeleton and its clips out of a USD file.
@@ -74,6 +94,69 @@ public nonisolated enum RigLoader {
             throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
         }
         return try rig(from: MDLAsset(url: url), named: "\(name).\(fileExtension)")
+    }
+
+    /// Loads a rig from one file and its animations from others.
+    ///
+    /// - Parameter clipFiles: resource names, same extension. **A file holding exactly one clip has
+    ///   that clip renamed to the file's own name**, because an exporter's internal name for an
+    ///   animation is something like `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer` and a game
+    ///   wants to ask for `walk`. A file holding several leaves their names alone, since there is
+    ///   then no single name the file could mean.
+    ///
+    /// Clips that drive none of the rig's joints are **dropped and reported** rather than kept: a
+    /// clip bound to nothing is indistinguishable at runtime from a character standing still, and
+    /// finding that out at load is the difference between a one-line fix and an afternoon.
+    public static func load(named name: String,
+                            withExtension fileExtension: String = "usdc",
+                            clipFiles: [String],
+                            bundle: Bundle = .main,
+                            reportingTo report: ((String) -> Void)? = nil) throws -> Rig {
+        var rig = try load(named: name, withExtension: fileExtension, bundle: bundle)
+        for file in clipFiles {
+            do {
+                let loaded = try clips(named: file, withExtension: fileExtension, bundle: bundle)
+                let named = loaded.count == 1 ? [loaded[0].renamed(to: file)] : loaded
+                let usable = named.filter { clip in
+                    let unbound = rig.jointsNotDrivenBy(clip)
+                    guard unbound.count == rig.skeleton.jointCount else { return true }
+                    report?("\(file): clip '\(clip.name)' drives none of this rig's joints — dropped")
+                    return false
+                }
+                rig = rig.adding(usable)
+            } catch {
+                report?("\(file): \(error)")
+            }
+        }
+        return rig
+    }
+
+    /// Reads **only** the animations out of a file, ignoring everything else in it.
+    ///
+    /// ### Ignoring the skeleton in a clip file is the whole point
+    ///
+    /// A per-clip export carries a full copy of the rig, and **its rest pose is not the rig's rest
+    /// pose** — it is wherever the exporter happened to leave the skeleton, which is usually the
+    /// clip's first frame. Measured on a real character: one joint's rest transform is
+    /// (10.42, 4.08, 7.84) in the base file and (3.16, 1.17, 7.84) in the walk file, for the same
+    /// joint of the same skeleton.
+    ///
+    /// So a loader that merges skeletons from clip files gets a different rest pose depending on
+    /// which file it read last, and every joint a clip does *not* animate falls back to it. The
+    /// character stands wrong, in a way that changes when you add an animation.
+    ///
+    /// **The rig comes from the base file. Clip files contribute clips and nothing else.**
+    ///
+    /// > **The mesh in those files is still parsed**, because Model I/O offers no way to open an
+    /// > asset's animations alone. What this avoids is the expensive half — no vertex descriptor and
+    /// > no buffer allocator, so nothing is laid out, converted or uploaded to a GPU.
+    public static func clips(named name: String,
+                             withExtension fileExtension: String = "usdc",
+                             bundle: Bundle = .main) throws -> [AnimationClip] {
+        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
+            throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
+        }
+        return clips(in: MDLAsset(url: url))
     }
 
     /// Pulls the rig out of an already-open asset.
@@ -143,7 +226,7 @@ public nonisolated enum RigLoader {
     /// **From `asset.animations`, which is not part of the object hierarchy.** Named by the last
     /// component of the animation's path, because `/Root/Walk` is where the clip lives and `Walk` is
     /// what a game asks for.
-    private static func clips(in asset: MDLAsset) -> [AnimationClip] {
+    static func clips(in asset: MDLAsset) -> [AnimationClip] {
         guard let container = asset.animations as? MDLObjectContainer else { return [] }
         return container.objects.compactMap { object in
             guard let packed = object as? MDLPackedJointAnimation else { return nil }

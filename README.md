@@ -138,7 +138,8 @@ needs to ship* — the picture is a real product with real gaps.
 
 Frame pacing and frames in flight · fixed timestep · reversed-Z depth · camera · keyboard, mouse and
 gamepad input with stick shaping · mesh loading through Model I/O · **skinned animation — skeletons,
-clips, cross-fading and a joint palette, loaded from USD** · **materials and textures — the
+clips, cross-fading and a joint palette, loaded from USD, with clips in files of their own and an
+asset-orientation correction for Z-up centimetre exports** · **materials and textures — the
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · shadow cascade arithmetic · a versioned level format
@@ -356,6 +357,72 @@ it was authored. Both mistakes look like a lighting problem rather than a loadin
   ground tint of 0.32 took an already-dark texture to a sixth of its brightness, and the courtyard
   went black. Identity is the material's job now; the game's tint says only what a file cannot
   know — an objective already reached, and whatever is selected in the editor.
+
+## What a real character brings that a made-up one does not (2026-09-09)
+
+The rig loader was built and proved against a figure written by a script — eleven joints, two clips,
+one file. **Then an 87-joint character from an actual toolchain was loaded**, and it arrived in three
+shapes the engine had no answer for. None of them was a bug in what existed; all three were things a
+generated asset had no way to show.
+
+### One file per clip, and each one carries a whole copy of the rig
+
+Every toolchain that exports one animation at a time gives a file per clip, and each of those files
+contains the mesh and the skeleton as well. `RigLoader.load` read one file and returned skeleton
+*and* clips, so five animations meant five copies of a 34,650-vertex mesh.
+
+`clips(named:)` reads only the animations, and `load(named:clipFiles:)` puts a rig from one file
+together with animations from others. **The mesh in those files is still parsed** — Model I/O has no
+way to open an asset's animations alone — but nothing is laid out or uploaded, because there is no
+vertex descriptor and no buffer allocator.
+
+A file holding one clip has it **renamed to the file's own name**. The internal name is
+`root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`; a game asks for `walk`.
+
+### A clip file's rest pose is not the rig's rest pose
+
+**The trap, and the reason clip files' skeletons are ignored rather than merged.** A per-clip export
+carries a full rig whose rest transforms are wherever the exporter left it — usually the clip's first
+frame. Measured on the same joint of the same skeleton:
+
+| file | rest translation |
+|---|---|
+| base | (10.42, 4.08, 7.84) |
+| walk | (3.16, 1.17, 7.84) |
+
+Merge them and every joint a clip does *not* animate falls back to whichever file was read last. The
+character stands wrong, and the fault changes as animations are added — which makes it look like an
+animation bug rather than a loading one.
+
+### Z-up, and a hundred units to the metre
+
+The character is **176 units tall** with `upAxis` (0, 0, 1). Neither is a mistake anybody made: they
+are the conventions of the tools it passed through. Model I/O converts neither.
+
+`AssetOrientation` is one matrix, applied in front of the model matrix. **Not a conversion pass over
+the vertices** — a skinned character has its geometry, its bind transforms and its clip translations
+all in that space, so converting the mesh alone leaves the skeleton a hundred times too big. Skinning
+happens in model space, so one matrix in front of the model matrix corrects all three at once.
+
+**The up axis can be read and the scale cannot.** `MDLAsset` surfaces `upAxis` and nothing about
+units, although USD records `metersPerUnit` in the file. Measure the asset's height once and write
+the number down beside it.
+
+> **Facing is deliberately not part of it.** Which way is "forward" varies by tool *and* by rig, so
+> guessing it makes every asset that disagrees silently backwards. It is a yaw applied where the
+> thing is placed, which is somewhere a game already has to think.
+
+### The sample now ships the untidy version
+
+Its figure is written **Z-up in centimetres with its second clip in a file of its own**, and that
+clip file's copy of the skeleton has the wrong rest pose — the fault, not a tidied version of it. It
+renders identically to the Y-up metre single-file version it replaced, which is the whole point: a
+sample that only ever loads tidy assets leaves the path a real one takes untested.
+
+**One thing a real character still tests that this does not.** Its material named no texture at all —
+the colour map ships beside it as a PNG a game binds by name, because the tool builds that map in
+memory and there is no file to reference. So "the file carries its own texture" stays proved by the
+sample alone.
 
 ## The probe that said this was possible — 2026-09-06
 

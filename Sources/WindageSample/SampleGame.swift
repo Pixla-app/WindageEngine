@@ -195,6 +195,10 @@ final class SampleGame: GameLoop {
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var figureMaps: [MTLTexture] = []
 
+    /// What space the figure was authored in — Z-up centimetres, as a real export is. One matrix in
+    /// front of the model matrix corrects the mesh, the rig and the animation together.
+    private var figureOrientation: AssetOrientation = .identity
+
     private var figureMesh: LoadedMesh?
     private var figureRig: Rig?
     private var figures: [Figure] = []
@@ -401,7 +405,13 @@ final class SampleGame: GameLoop {
     private func loadFigureAsset() {
         guard skinnedPipeline != nil else { return }
         do {
-            figureRig = try RigLoader.load(named: "figure", withExtension: "usda", bundle: .module)
+            // **The rig from one file, the second animation from another.** That is how a character
+            // exported one clip at a time arrives, and the clip file's own copy of the skeleton is
+            // ignored — its rest pose is wherever the exporter left the rig, not the rig's.
+            figureRig = try RigLoader.load(named: "figure", withExtension: "usda",
+                                           clipFiles: ["figure-wave"], bundle: .module) {
+                print("WindageSample: figure clips — \($0)")
+            }
         } catch {
             print("WindageSample: no figure rig — \(error)")
             return
@@ -421,6 +431,15 @@ final class SampleGame: GameLoop {
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
         if let textures { engine.residencySet.addAllocations(textures.allocations) }
 
+        // **The asset is Z-up and in centimetres**, like every character that comes out of a real
+        // toolchain. Model I/O reports the up axis and says nothing about units, so the scale is
+        // measured once and written here — the figure is 186 units tall for a 1.86 m mannequin.
+        if let url = Bundle.module.url(forResource: "figure", withExtension: "usda") {
+            figureOrientation = AssetOrientation.read(from: MDLAsset(url: url), unitsPerMetre: 100)
+            print("WindageSample: figure asset is \(figureOrientation.upAxis)-up, "
+                  + "\(figureOrientation.unitsPerMetre) units to the metre")
+        }
+
         if let rig = figureRig {
             print("WindageSample: figure rig — \(rig.skeleton.jointCount) joints, clips: "
                   + rig.clips.map(\.name).joined(separator: ", "))
@@ -437,16 +456,23 @@ final class SampleGame: GameLoop {
     /// game would not prove the level format can carry one, and moving it would mean a rebuild.
     private func rebuildFigures() {
         figures.removeAll(keepingCapacity: true)
+        // "figure-wave" rather than "Wave": a clip file holding one animation has it renamed to the
+        // file's own name, because an exporter's internal name for an animation is not something a
+        // game wants to ask for.
         guard let rig = figureRig, let idleClip = rig.clip(named: "Idle"),
-              let waveClip = rig.clip(named: "Wave") else { return }
+              let waveClip = rig.clip(named: "figure-wave") else { return }
 
         for marker in level.markers(ofKind: "figure").prefix(SampleGame.maxFigures) {
             let yaw = marker.yaw
             let c = cos(yaw), s = sin(yaw)
-            let transform = matrix_float4x4(columns: (SIMD4(c, 0, -s, 0),
-                                                      SIMD4(0, 1, 0, 0),
-                                                      SIMD4(s, 0, c, 0),
-                                                      SIMD4(marker.position, 1)))
+            let placement = matrix_float4x4(columns: (SIMD4(c, 0, -s, 0),
+                                                     SIMD4(0, 1, 0, 0),
+                                                     SIMD4(s, 0, c, 0),
+                                                     SIMD4(marker.position, 1)))
+            // **The correction goes inside the placement, not outside it.** The other way round
+            // scales the marker's position by a hundred as well, and the figure appears in the next
+            // county.
+            let transform = placement * figureOrientation.transform
             var figure = Figure(pose: SkeletonPose(skeleton: rig.skeleton),
                                 idle: AnimationPlayhead(clip: idleClip, skeleton: rig.skeleton),
                                 wave: AnimationPlayhead(clip: waveClip, skeleton: rig.skeleton),

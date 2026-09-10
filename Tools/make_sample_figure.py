@@ -50,6 +50,31 @@ RINGS = [(0.00, 0.50), (0.25, 0.25), (0.60, 0.00), (1.00, 0.00)]
 SIDES = 6           # cross-section of a limb; six reads as round enough and stays cheap
 
 
+# --- The space it is written in ------------------------------------------------------------------
+#
+# **Authored Y-up in metres, written Z-up in centimetres**, because that is what a real character
+# export arrives in and the sample's job is to be a realistic consumer. A character taken out of a
+# game engine, through an FBX, through Blender and into USD comes out Z-up and a hundred units to the
+# metre — neither of those is a mistake anybody made, they are the conventions of the tools it passed
+# through. Writing the sample's figure in a tidier space than that would leave `AssetOrientation`
+# with no consumer, which is the same as leaving it untested.
+#
+# The conversion is mechanical: a point becomes (x, -z, y) and is scaled; a normal takes the rotation
+# without the scale; and every rotation in this file is built from an axis, so converting the *axis*
+# converts the quaternion — no quaternion algebra required.
+
+UNITS_PER_METRE = 100.0
+
+
+def to_file_space(p, scaled=True):
+    k = UNITS_PER_METRE if scaled else 1.0
+    return (p[0] * k, -p[2] * k, p[1] * k)
+
+
+def axis_to_file_space(a):
+    return (a[0], -a[2], a[1])
+
+
 def sub(a, b): return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 def add(a, b): return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
 def mul(a, s): return (a[0] * s, a[1] * s, a[2] * s)
@@ -145,9 +170,10 @@ def build_mesh():
 # --- The clips ---------------------------------------------------------------------------------
 
 def quat_axis(axis, degrees):
+    """A rotation, with its axis already converted into the space the file is written in."""
     half = math.radians(degrees) / 2
     s = math.sin(half)
-    a = norm(axis)
+    a = norm(axis_to_file_space(axis))
     return (math.cos(half), a[0] * s, a[1] * s, a[2] * s)
 
 
@@ -235,40 +261,84 @@ def fmt4(v): return "(%.6f, %.6f, %.6f, %.6f)" % v
 
 
 def matrix(translation):
-    return "( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (%.5f, %.5f, %.5f, 1) )" % translation
+    return "( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (%.5f, %.5f, %.5f, 1) )" % to_file_space(translation)
 
 
-def write(path):
-    points, normals, uvs, joints, weights, counts, indices = build_mesh()
-    clips = [clip("Idle", 72, idle), clip("Wave", 48, wave)]
-    frames = max(max(c[1]) for c in clips)
+def header(frames):
+    return ('#usda 1.0\n(\n    defaultPrim = "Figure"\n'
+            '    metersPerUnit = %g\n    upAxis = "Z"\n'
+            '    timeCodesPerSecond = 24\n    startTimeCode = 0\n    endTimeCode = %d\n)\n'
+            % (1.0 / UNITS_PER_METRE, frames))
 
-    out = []
-    out.append('#usda 1.0\n(\n    defaultPrim = "Figure"\n    metersPerUnit = 1\n    upAxis = "Y"\n'
-               '    timeCodesPerSecond = 24\n    startTimeCode = 0\n    endTimeCode = %d\n)\n' % frames)
-    out.append('\ndef SkelRoot "Figure"\n{\n')
 
-    out.append('    def Skeleton "Rig" (\n        prepend apiSchemas = ["SkelBindingAPI"]\n    )\n    {\n')
+def skeleton_block(rest_from=None):
+    """The rig. `rest_from` supplies a rest pose other than the true one — see `write_clip`."""
+    rest = [local_translation(p) for p in PATHS] if rest_from is None else rest_from
+    out = ['    def Skeleton "Rig" (\n        prepend apiSchemas = ["SkelBindingAPI"]\n    )\n    {\n']
     out.append('        uniform token[] joints = [%s]\n' % ", ".join('"%s"' % p for p in PATHS))
     out.append('        uniform matrix4d[] bindTransforms = [\n            %s\n        ]\n'
                % ",\n            ".join(matrix(j[1]) for j in JOINTS))
     out.append('        uniform matrix4d[] restTransforms = [\n            %s\n        ]\n'
-               % ",\n            ".join(matrix(local_translation(p)) for p in PATHS))
+               % ",\n            ".join(matrix(t) for t in rest))
+    return out
+
+
+def clip_block(name, rotations, translations):
+    out = ['\n    def SkelAnimation "%s"\n    {\n' % name]
+    out.append('        uniform token[] joints = [%s]\n' % ", ".join('"%s"' % p for p in PATHS))
+    out.append('        float3[] translations.timeSamples = {\n')
+    for frame in sorted(translations):
+        out.append('            %d: [%s],\n'
+                   % (frame, ", ".join(fmt3(to_file_space(t)) for t in translations[frame])))
+    out.append('        }\n        half3[] scales.timeSamples = {\n            0: [%s],\n        }\n'
+               % ", ".join("(1, 1, 1)" for _ in PATHS))
+    out.append('        quatf[] rotations.timeSamples = {\n')
+    for frame in sorted(rotations):
+        out.append('            %d: [%s],\n' % (frame, ", ".join(fmt4(q) for q in rotations[frame])))
+    out.append('        }\n    }\n')
+    return out
+
+
+def write_clip(path, name, built):
+    """One animation in a file of its own — which is how a real character arrives.
+
+    **Its copy of the skeleton has the wrong rest pose, on purpose.** A per-clip export carries a full
+    rig whose rest transforms are wherever the exporter left it, usually the clip's first frame, and
+    not the rig's actual rest pose. That is exactly what is written here. An engine that merged
+    skeletons out of clip files would pick this up and stand the character wrong — so the sample ships
+    the fault rather than a tidied version of it, and `RigLoader` ignoring it is a thing the sample
+    proves rather than a thing a comment claims.
+
+    It carries no mesh, where a real export would. That is the one liberty taken: the point being made
+    is about the skeleton, and the repository does not need a second copy of the same 1,188 vertices.
+    """
+    _, rotations, translations = built
+    out = [header(max(rotations))]
+    out.append('\ndef SkelRoot "Figure"\n{\n')
+    out += skeleton_block(rest_from=translations[0])
+    out.append('        rel skel:animationSource = </Figure/%s>\n    }\n' % name)
+    out += clip_block(name, rotations, translations)
+    out.append('}\n')
+    with open(path, "w") as handle:
+        handle.write("".join(out))
+    print("wrote %s — clip '%s', %d keys" % (os.path.basename(path), name, len(rotations)))
+
+
+def write(path):
+    points, normals, uvs, joints, weights, counts, indices = build_mesh()
+    clips = [clip("Idle", 72, idle)]
+    frames = max(max(c[1]) for c in clips)
+
+    out = []
+    out.append(header(frames))
+    out.append('\ndef SkelRoot "Figure"\n{\n')
+
+    out += skeleton_block()
     out.append('        rel skel:animationSource = </Figure/%s>\n' % clips[0][0])
     out.append('    }\n')
 
     for name, rotations, translations in clips:
-        out.append('\n    def SkelAnimation "%s"\n    {\n' % name)
-        out.append('        uniform token[] joints = [%s]\n' % ", ".join('"%s"' % p for p in PATHS))
-        out.append('        float3[] translations.timeSamples = {\n')
-        for frame in sorted(translations):
-            out.append('            %d: [%s],\n' % (frame, ", ".join(fmt3(t) for t in translations[frame])))
-        out.append('        }\n        half3[] scales.timeSamples = {\n            0: [%s],\n        }\n'
-                   % ", ".join("(1, 1, 1)" for _ in PATHS))
-        out.append('        quatf[] rotations.timeSamples = {\n')
-        for frame in sorted(rotations):
-            out.append('            %d: [%s],\n' % (frame, ", ".join(fmt4(q) for q in rotations[frame])))
-        out.append('        }\n    }\n')
+        out += clip_block(name, rotations, translations)
 
     out.append('\n    def Mesh "Body" (\n'
                '        prepend apiSchemas = ["SkelBindingAPI", "MaterialBindingAPI"]\n    )\n    {\n')
@@ -282,9 +352,9 @@ def write(path):
     out.append('        float[] primvars:skel:jointWeights = [%s] (\n'
                '            elementSize = 2\n            interpolation = "vertex"\n        )\n'
                % ", ".join("%.3f" % w for w in weights))
-    out.append('        point3f[] points = [%s]\n' % ", ".join(fmt3(p) for p in points))
+    out.append('        point3f[] points = [%s]\n' % ", ".join(fmt3(to_file_space(p)) for p in points))
     out.append('        normal3f[] normals = [%s] (\n            interpolation = "vertex"\n        )\n'
-               % ", ".join(fmt3(n) for n in normals))
+               % ", ".join(fmt3(to_file_space(n, scaled=False)) for n in normals))
     out.append('        texCoord2f[] primvars:st = [%s] (\n            interpolation = "vertex"\n        )\n'
                % ", ".join(fmt2(t) for t in uvs))
     out.append('        int[] faceVertexCounts = [%s]\n' % ", ".join(str(c) for c in counts))
@@ -297,8 +367,8 @@ def write(path):
 
     with open(path, "w") as handle:
         handle.write("".join(out))
-    print("wrote %s — %d joints, %d vertices, %d faces, clips: %s"
-          % (path, len(JOINTS), len(points), len(counts), ", ".join(c[0] for c in clips)))
+    print("wrote %s — %d joints, %d vertices, %d faces, clip: %s"
+          % (os.path.basename(path), len(JOINTS), len(points), len(counts), clips[0][0]))
 
 
 MATERIAL = """
@@ -338,4 +408,6 @@ MATERIAL = """
 
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
-    write(os.path.join(here, "..", "Sources", "WindageSample", "Resources", "figure.usda"))
+    out = os.path.join(here, "..", "Sources", "WindageSample", "Resources")
+    write(os.path.join(out, "figure.usda"))
+    write_clip(os.path.join(out, "figure-wave.usda"), "Wave", clip("Wave", 48, wave))
