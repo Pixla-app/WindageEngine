@@ -26,8 +26,10 @@ gets built" carries the table and the reasoning; read it before proposing a diff
 >
 > **And a driving game does not have to contain everything this engine can do** — that inference is
 > wrong and expensive, and the README's table says where capabilities actually come from. Most of
-> what an engine owes a game has a settled industry shape and needs no game to discover it. The next
-> task is one of those.
+> what an engine owes a game has a settled industry shape and needs no game to discover it.
+> **Skinned animation was the worked example**: built engine-first on 2026-09-09, proved in the
+> sample, and every fault in it found by the sample rather than by a game. The next task is another
+> one of those.
 
 What that means for the next session, concretely:
 
@@ -38,18 +40,58 @@ What that means for the next session, concretely:
 - **A game adopts afterwards.** If a game already has its own version of something the engine now
   owns, replacing it is that game's work, on that game's schedule — not a prerequisite here.
 - **A second sample arrives only when a capability needs a shape the courtyard cannot express.**
-  Skinned animation is the first genuine case: a box cannot show a skeleton.
+  Skinned animation was expected to be that case and **was not** — what it needed was a character
+  standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
 ## State — 2026-09-09
 
-162 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
-JSON, an in-game level editor, positional audio, a win/lose loop and a save — all against the public
-API only.
+199 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
+characters** — all against the public API only.
 
 **In the package:** frame pacing and frames in flight (`FrameRenderer`, `FixedTimestep`), the
 reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshLoader`, `Math`,
 `BoundingBox`, `Volume` and the one hit test, `Frustum`, `ShadowCascades`, `Level` and `LevelEditor`,
-`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`.
+`HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, and **`Skeleton`,
+`AnimationClip`, `SkeletonPose` and `RigLoader`**.
+
+## Done 2026-09-09 — skinned animation
+
+**The biggest gap is closed: a game with a person or a creature in it can use this engine.** Four
+types, 37 new tests, and the sample uses every one of them through the public API.
+
+- **`Skeleton`** — joint paths, parentage *derived from the paths* and checked rather than trusted,
+  the rest pose, and inverse bind matrices with any geometry bind transform folded in.
+- **`AnimationClip`** + `JointTransform`, `JointTrack`, `AnimationBinding` — keys with binary-searched
+  sampling, and a clip's joints matched to a rig's **by path, once at load** rather than per frame.
+- **`SkeletonPose`** — samples one clip, cross-fades two, or takes a pose outright; produces local,
+  model-space and skinning matrices. Allocates nothing per frame.
+- **`RigLoader`** — skeleton and every clip out of a USD file, **with no GPU**, which is what makes
+  the half with all the convention in it testable against a real fixture.
+- **The sample** draws figures placed by `figure` markers in both levels: idling, cross-fading into a
+  wave as the player comes within 7 m, and casting **skinned shadows** through the same cascades.
+  Its rig is written by `Tools/make_sample_figure.py` — 11 joints, two clips, a readable `.usda`.
+
+### Three findings, each of which produces a wrong character rather than a failed build
+
+1. **`MDLSkeleton`'s two transform arrays are in different spaces** — rest is joint-local, bind is
+   skeleton-space. **They hold the same numbers in any rig rooted at the origin**, so a test rig that
+   does not separate them passes while wrong. `Tests/…/Resources/offset-rig.usda` puts its root at
+   (5, 0, 0) for that reason alone.
+2. **Clips are not in the object hierarchy** — they come from `MDLAsset.animations`. Walk the objects
+   looking for them and every character is a statue.
+3. **`MDLAnimationBindComponent.jointPaths` is empty** even with the skeleton attached; the paths are
+   on `MDLSkeleton.jointPaths`.
+
+Two smaller ones: **times arrive in seconds**, converted from the file's time codes; and **asking for
+four influences when the file authored two is safe** — Model I/O pads with joint 0 at weight 0.
+
+### What was deliberately left out, and why
+
+**No animation state machine, no retargeting, no IK, no root motion.** Cross-fading two clips is a
+settled shape; *choosing* which two is not, and there is nothing to design it from — the sample has
+two clips and a distance check. See the README section, which says what a bought character would test
+that a generated one cannot.
 
 ## Done 2026-09-08/09
 
@@ -70,41 +112,40 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 ## The roadmap, and the rule that produces it
 
 **`README.md` §"Where this engine actually stands" is the real answer to "what is missing".** Read it
-before planning anything — it enumerates the gap honestly (this is ~3,000 lines; Godot is ~a million)
+before planning anything — it enumerates the gap honestly (this is ~3,800 lines; Godot is ~a million)
 and sorts what is missing into three buckets:
 
 - **Settled shape** — everybody's version looks alike, so build it on a roadmap. No game has to ask.
-  Animation, transform hierarchy, materials, post-processing, particles, a character controller, LOD.
-- **Contested architecture** — ECS, a scene node model, scripting. Defer, and say so; shipping
-  without them is the norm, not a shortcut.
+  Materials and textures, post-processing, particles, a character controller, LOD, object parenting.
+- **Contested architecture** — ECS, a scene node model, scripting, *animation state*. Defer, and say
+  so; shipping without them is the norm, not a shortcut.
 - **Enormous cost** — an editor application, a second platform, physics, networking. Business
   decisions with the cost written down.
 
 > **"Nothing gets built until a game needs it" was too blunt and is corrected.** It is circular while
 > an engine is small: nobody needs what nobody can use. Only the *contested* bucket waits on a game.
+> Skinned animation is the worked example — it was in the settled bucket, it was built engine-first,
+> and the sample found every fault in it.
 
 ## Next — in order
 
-1. **Skinned animation.** The single biggest gap: no game with a person or a creature in it can use
-   this engine. **Probed 2026-09-06 and found tractable — Model I/O does import UsdSkel**; see the
-   README section, which has the working `.usda` and what came back.
+1. **Materials and a texture path.** The largest remaining *routine* gap, and now the one holding the
+   sample back visually: every consumer hand-rolls albedo/roughness uniforms and its own texture
+   loading, and the sample's characters are one flat colour because there is nowhere to put a skin.
+   Settled shape — no game has to ask.
 
-   **This one is legitimately engine-first**, and the rule against speculation does not block it:
-   that rule is about *architecture* with no single right answer, and skinned animation has a settled
-   industry shape — skeleton, bind pose, joint palette, one matrix per joint per frame. Build it
-   here, prove it in the sample.
+2. **A bought rigged character, once one is worth buying.** The generated figure proved the API; what
+   it cannot test is a hundred joints, four influences per vertex genuinely in use, a non-identity
+   geometry bind transform, and whatever a real exporter does. **Buy USD, or FBX with a Blender step
+   — OBJ carries no skeleton.** Not a blocker for anything; a confidence check on the loader.
 
-   **It is also the first real case for a second sample**, because a courtyard of boxes cannot show a
-   skeleton. Expect a small `WindageSampleCharacter` or an added mesh in the existing one — decide
-   which when the loading works, not before.
-
-2. **The shadow pass seam.** It is implemented twice now — here and in a game. What the two agree on:
-   the depth texture array, the front-face cull, the reversed-Z depth state, the slope-scaled bias,
-   the per-cascade pass descriptors. What they do not: how a game binds its own vertex layout and its
-   own per-object uniform buffer. That is the seam. **A third implementation would answer it better
+3. **The shadow pass seam.** It is implemented twice now — here and in a game — and the sample's copy
+   has since grown a *second* pipeline for skinned geometry, which is new evidence about the seam:
+   what varies is the vertex layout and the per-object bindings, and the batch shape in
+   `SampleShadowMap.Batch` is one answer to it. **A third implementation would still answer it better
    than a second one guessing**, so this waits unless something else needs a shadow pass first.
 
-3. **Semantic versioning and a changelog.** Stated in the README as worth doing from the first
+4. **Semantic versioning and a changelog.** Stated in the README as worth doing from the first
    outside consumer — cheap now, impossible to reconstruct later. Not started. The window title
    already says `0.1.0`; nothing else does.
 

@@ -32,9 +32,30 @@ final class SampleShadowMap {
                                          resolution: 1024,
                                          lightDepthRange: 200)
 
+    /// What one call to ``encode(into:frameSlot:batches:)`` records: a pipeline, and how to reach
+    /// each thing it draws.
+    ///
+    /// **Batches rather than one loop, because a skinned mesh has a different vertex layout** and so
+    /// needs a different pipeline. Rolling that into the drawable loop would mean switching pipeline
+    /// per object; keeping it as a list of batches means the state changes once per kind.
+    struct Batch {
+        let pipeline: MTLRenderPipelineState
+        let count: Int
+        let mesh: (Int) -> MTKMesh
+        /// Where this drawable's `Uniforms` sit, for the frame slot being encoded.
+        let uniformAddress: (Int) -> UInt64
+        /// Where its joint palette sits, or nil for anything not skinned.
+        let jointPaletteAddress: ((Int) -> UInt64)?
+    }
+
     let texture: MTLTexture
+    /// The pipeline for everything with a plain position/normal layout.
+    var staticPipeline: MTLRenderPipelineState { pipeline }
     private let pipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
+    /// **Optional: no skinned pipeline means no skinned shadows, not no shadows.** The rest of the
+    /// scene should still cast.
+    private(set) var skinnedPipeline: MTLRenderPipelineState?
     private let argumentTable: MTL4ArgumentTable
 
     /// One light matrix per cascade per frame in flight. **Per frame in flight** because the GPU may
@@ -42,7 +63,10 @@ final class SampleShadowMap {
     private let matrixBuffer: MTLBuffer
     private static let matrixStride = MemoryLayout<matrix_float4x4>.stride
 
-    init?(device: MTLDevice, library: MTLLibrary, vertexDescriptor: MTLVertexDescriptor) {
+    init?(device: MTLDevice,
+          library: MTLLibrary,
+          vertexDescriptor: MTLVertexDescriptor,
+          skinnedVertexDescriptor: MTLVertexDescriptor) {
         let count = SampleShadowMap.cascades.count
 
         let descriptor = MTLTextureDescriptor()
@@ -80,6 +104,14 @@ final class SampleShadowMap {
             pipelineDescriptor.vertexDescriptor = vertexDescriptor
             pipelineDescriptor.rasterSampleCount = 1
             pipeline = try compiler.makeRenderPipelineState(descriptor: pipelineDescriptor)
+
+            let skinnedFunction = MTL4LibraryFunctionDescriptor()
+            skinnedFunction.library = library
+            skinnedFunction.name = "sampleSkinnedShadowVertex"
+            pipelineDescriptor.label = "SampleSkinnedShadowPipeline"
+            pipelineDescriptor.vertexFunctionDescriptor = skinnedFunction
+            pipelineDescriptor.vertexDescriptor = skinnedVertexDescriptor
+            skinnedPipeline = try compiler.makeRenderPipelineState(descriptor: pipelineDescriptor)
         } catch {
             print("WindageSample: shadow pipeline failed — \(error)")
             return nil
@@ -93,7 +125,8 @@ final class SampleShadowMap {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 3
+        // 0: vertex buffer · 1: per-object uniforms · 2: this cascade's light matrix · 3: joints.
+        tableDescriptor.maxBufferBindCount = 4
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else { return nil }
         argumentTable = table
     }
@@ -122,13 +155,9 @@ final class SampleShadowMap {
     ///
     /// The per-drawable uniforms must already be written for this frame slot — the shadow pass reads
     /// the same `model` matrix the main pass will, which is what keeps a shadow attached to the
-    /// thing that cast it.
-    func encode(into commandBuffer: MTL4CommandBuffer,
-                frameSlot: Int,
-                drawableCount: Int,
-                meshFor: (Int) -> MTKMesh,
-                uniformBuffer: MTLBuffer,
-                offsetForDrawable: (Int) -> Int) {
+    /// thing that cast it. The same goes for a skinned drawable's joint palette: a shadow posed one
+    /// frame behind its character is a shadow that lags a wave.
+    func encode(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, batches: [Batch]) {
 
         let count = SampleShadowMap.cascades.count
         let matrixBase = frameSlot * count * SampleShadowMap.matrixStride
@@ -152,7 +181,6 @@ final class SampleShadowMap {
             // shadows detach from their casters.
             encoder.setCullMode(.front)
             encoder.setFrontFacing(.counterClockwise)
-            encoder.setRenderPipelineState(pipeline)
             encoder.setDepthStencilState(depthState)
 
             // Slope-scaled bias handles what culling does not: a surface nearly edge-on to the light
@@ -166,21 +194,26 @@ final class SampleShadowMap {
                 matrixBuffer.gpuAddress + UInt64(matrixBase + cascade * SampleShadowMap.matrixStride),
                 index: 2)
 
-            for index in 0..<drawableCount {
-                argumentTable.setAddress(uniformBuffer.gpuAddress + UInt64(offsetForDrawable(index)),
-                                         index: 1)
-                let mesh = meshFor(index)
-                for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
-                    argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
-                                             index: bufferIndex)
-                }
-                for submesh in mesh.submeshes {
-                    encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
-                                                  indexCount: submesh.indexCount,
-                                                  indexType: submesh.indexType,
-                                                  indexBuffer: submesh.indexBuffer.buffer.gpuAddress
-                                                      + UInt64(submesh.indexBuffer.offset),
-                                                  indexBufferLength: submesh.indexBuffer.length)
+            for batch in batches where batch.count > 0 {
+                encoder.setRenderPipelineState(batch.pipeline)
+                for index in 0..<batch.count {
+                    argumentTable.setAddress(batch.uniformAddress(index), index: 1)
+                    if let joints = batch.jointPaletteAddress {
+                        argumentTable.setAddress(joints(index), index: 3)
+                    }
+                    let mesh = batch.mesh(index)
+                    for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
+                        argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
+                                                 index: bufferIndex)
+                    }
+                    for submesh in mesh.submeshes {
+                        encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
+                                                      indexCount: submesh.indexCount,
+                                                      indexType: submesh.indexType,
+                                                      indexBuffer: submesh.indexBuffer.buffer.gpuAddress
+                                                          + UInt64(submesh.indexBuffer.offset),
+                                                      indexBufferLength: submesh.indexBuffer.length)
+                    }
                 }
             }
             encoder.endEncoding()

@@ -43,6 +43,32 @@ struct VertexOut {
     float3 worldPosition;
 };
 
+/// A skinned vertex carries two more attributes: which joints move it, and how much each one does.
+///
+/// **Four influences, padded.** The sample's figure uses two, and Model I/O pads the rest with a
+/// joint index of 0 and a weight of 0 — which contributes nothing, so no branch is needed to skip
+/// them. Four is what every rig authoring tool exports and what a real character will bring.
+struct SkinnedVertexIn {
+    float3  position [[attribute(0)]];
+    float3  normal   [[attribute(1)]];
+    ushort4 joints   [[attribute(2)]];
+    float4  weights  [[attribute(3)]];
+};
+
+/// Linear blend skinning: the weighted sum of the joint matrices moving this vertex.
+///
+/// **Summed as matrices, then applied once.** Transforming the vertex by each joint and averaging
+/// the results gives the same answer here and four times the work; more to the point, the matrix
+/// form is what lets the normal be transformed by the same basis without recomputing anything.
+static float4x4 skinningMatrix(constant float4x4 *palette, ushort4 joints, float4 weights)
+{
+    float4x4 skin = palette[joints.x] * weights.x;
+    skin += palette[joints.y] * weights.y;
+    skin += palette[joints.z] * weights.z;
+    skin += palette[joints.w] * weights.w;
+    return skin;
+}
+
 vertex VertexOut sampleVertex(VertexIn in [[stage_in]],
                               constant Uniforms &uniforms [[buffer(1)]])
 {
@@ -54,6 +80,30 @@ vertex VertexOut sampleVertex(VertexIn in [[stage_in]],
     return out;
 }
 
+/// The same scene, wearing a pose.
+///
+/// **The palette is per character, not per vertex** — one matrix per joint, written on the CPU by
+/// `SkeletonPose` and read here. Every joint's parent chain, every clip sample and every blend has
+/// already happened by the time this runs; a vertex shader that had to walk a hierarchy would do it
+/// once per vertex instead of once per joint.
+vertex VertexOut sampleSkinnedVertex(SkinnedVertexIn in [[stage_in]],
+                                     constant Uniforms &uniforms [[buffer(1)]],
+                                     constant float4x4 *palette [[buffer(3)]])
+{
+    const float4x4 skin = skinningMatrix(palette, in.joints, in.weights);
+    const float3x3 skinBasis = float3x3(skin[0].xyz, skin[1].xyz, skin[2].xyz);
+
+    VertexOut out;
+    float4 world = uniforms.model * (skin * float4(in.position, 1.0));
+    out.position = uniforms.viewProjection * world;
+    // **The normal is posed too.** Skip this and a waving arm keeps the shading of the arm it was
+    // modelled as — lit from the wrong side, and it reads as a lighting bug rather than a skinning
+    // one.
+    out.normal = normalize(uniforms.normalMatrix * (skinBasis * in.normal));
+    out.worldPosition = world.xyz;
+    return out;
+}
+
 /// The shadow pass: position only. **No fragment function and no colour attachment** — nothing is
 /// being shaded, only occlusion recorded, so everything but the depth write is wasted work.
 vertex float4 sampleShadowVertex(VertexIn in [[stage_in]],
@@ -61,6 +111,20 @@ vertex float4 sampleShadowVertex(VertexIn in [[stage_in]],
                                  constant float4x4 &lightViewProjection [[buffer(2)]])
 {
     return lightViewProjection * (uniforms.model * float4(in.position, 1.0));
+}
+
+/// The shadow pass for skinned geometry.
+///
+/// **A second pipeline rather than a flag**, because the vertex layout differs — and it has to exist
+/// at all: a character that is lit and shadowed by the scene but casts nothing reads as floating,
+/// which is worse than a scene with no shadows in it.
+vertex float4 sampleSkinnedShadowVertex(SkinnedVertexIn in [[stage_in]],
+                                        constant Uniforms &uniforms [[buffer(1)]],
+                                        constant float4x4 &lightViewProjection [[buffer(2)]],
+                                        constant float4x4 *palette [[buffer(3)]])
+{
+    const float4x4 skin = skinningMatrix(palette, in.joints, in.weights);
+    return lightViewProjection * (uniforms.model * (skin * float4(in.position, 1.0)));
 }
 
 /// One cascade's lookup. Lifted out of `sunVisibility` so that blending across a split samples the

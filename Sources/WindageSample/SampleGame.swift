@@ -36,6 +36,48 @@ final class SampleGame: GameLoop {
         return descriptor
     }
 
+    /// The same, plus the two attributes that make a mesh skinnable.
+    ///
+    /// **A separate layout and therefore a separate pipeline.** Putting joints and weights on every
+    /// vertex in the level would double the size of a courtyard's geometry to say "no joint" 40,000
+    /// times.
+    static let skinnedSemantics: [Int: String] = [
+        0: MDLVertexAttributePosition,
+        1: MDLVertexAttributeNormal,
+        2: MDLVertexAttributeJointIndices,
+        3: MDLVertexAttributeJointWeights,
+    ]
+
+    /// **Four influences per vertex, whatever the file holds.** The sample's figure is authored with
+    /// two; Model I/O pads the rest with a joint index of 0 and a weight of 0, which contributes
+    /// nothing — measured, not assumed. Four is what a bought character will bring.
+    static func skinnedVertexDescriptor() -> MTLVertexDescriptor {
+        let descriptor = vertexDescriptor()
+        descriptor.attributes[2].format = .ushort4
+        descriptor.attributes[2].offset = 24
+        descriptor.attributes[2].bufferIndex = 0
+        descriptor.attributes[3].format = .float4
+        descriptor.attributes[3].offset = 32
+        descriptor.attributes[3].bufferIndex = 0
+        descriptor.layouts[0].stride = 48
+        return descriptor
+    }
+
+    /// One animated character: the rig, where it stands, and where it is in its two clips.
+    ///
+    /// **The pose is kept between frames rather than rebuilt**, because it owns its arrays — posing
+    /// a character allocates nothing, and that only holds if the character keeps its pose.
+    private struct Figure {
+        var pose: SkeletonPose
+        var idle: AnimationPlayhead
+        var wave: AnimationPlayhead
+        /// How much of the wave is showing, 0…1. Eased toward a target so a player walking past
+        /// does not switch a character between clips in one frame.
+        var waveWeight: Float = 0
+        let transform: matrix_float4x4
+        let position: SIMD3<Float>
+    }
+
     private struct Uniforms {
         var viewProjection: matrix_float4x4
         var model: matrix_float4x4
@@ -59,6 +101,8 @@ final class SampleGame: GameLoop {
 
     private let engine: FrameRenderer
     private let pipeline: MTLRenderPipelineState
+    /// **Optional: no skinned pipeline means no characters, not no sample.**
+    private let skinnedPipeline: MTLRenderPipelineState?
     private let depthState: MTLDepthStencilState
     private let hud: HUDRenderer?
 
@@ -100,6 +144,14 @@ final class SampleGame: GameLoop {
     /// Which drawables are objectives, so a collected one can go dark without searching the level.
     private var objectiveDrawables: [Int] = []
 
+    /// The character mesh and the rig it wears — loaded once, shared by every figure in the level.
+    ///
+    /// **A `Skeleton` is structure, not pose**, so one of these serves any number of characters; what
+    /// is per-character is the ``SkeletonPose`` inside each ``Figure``.
+    private var figureMesh: LoadedMesh?
+    private var figureRig: Rig?
+    private var figures: [Figure] = []
+
     private var run: SampleRun
     /// Seconds left on the pause between winning and the next level, or nil.
     private var advanceAfterWinning: Double?
@@ -118,6 +170,18 @@ final class SampleGame: GameLoop {
     /// says so out loud rather than leaving it to be discovered.
     private static let maxDrawables = 128
     private static let uniformStride = (MemoryLayout<Uniforms>.stride + 255) & ~255
+
+    /// Figures take uniform slots after the level's drawables, in the same buffer.
+    private static let maxFigures = 8
+    private static let uniformSlots = maxDrawables + maxFigures
+
+    /// **A ceiling, not the rig's joint count.** The buffer is allocated before any rig is loaded,
+    /// so it has to be sized for a plausible character rather than for the one that turns up. A
+    /// hundred joints is a humanoid with fingers.
+    private static let maxJoints = 128
+    private static let jointPaletteStride =
+        (MemoryLayout<matrix_float4x4>.stride * maxJoints + 255) & ~255
+    private let jointBuffer: MTLBuffer
 
     init?(engine: FrameRenderer) {
         self.engine = engine
@@ -166,6 +230,19 @@ final class SampleGame: GameLoop {
             descriptor.vertexDescriptor = vertexDescriptor
             descriptor.colorAttachments[0].pixelFormat = FrameRenderer.colorPixelFormat
                 pipeline = try compiler.makeRenderPipelineState(descriptor: descriptor, compilerTaskOptions: nil)
+
+            // The skinned pipeline differs only in its vertex function and its layout — same
+            // fragment shader, so a character is lit and shadowed by exactly the code the rest of
+            // the scene is. Two fragment shaders that are meant to match is how a character ends up
+            // subtly the wrong brightness.
+            let skinnedVertex = MTL4LibraryFunctionDescriptor()
+            skinnedVertex.library = library
+            skinnedVertex.name = "sampleSkinnedVertex"
+            descriptor.label = "SampleSkinnedPipeline"
+            descriptor.vertexFunctionDescriptor = skinnedVertex
+            descriptor.vertexDescriptor = SampleGame.skinnedVertexDescriptor()
+            skinnedPipeline = try compiler.makeRenderPipelineState(descriptor: descriptor,
+                                                                   compilerTaskOptions: nil)
         } catch {
             print("WindageSample: pipeline failed — \(error)")
             return nil
@@ -178,8 +255,8 @@ final class SampleGame: GameLoop {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data.
-        tableDescriptor.maxBufferBindCount = 3
+        // 0: vertex buffer · 1: per-object uniforms · 2: the frame's shadow data · 3: joints.
+        tableDescriptor.maxBufferBindCount = 4
         tableDescriptor.maxTextureBindCount = 1
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
             print("WindageSample: argument table failed")
@@ -188,12 +265,24 @@ final class SampleGame: GameLoop {
         argumentTable = table
 
         guard let buffer = device.makeBuffer(
-            length: SampleGame.uniformStride * SampleGame.maxDrawables * FrameRenderer.maxFramesInFlight,
+            length: SampleGame.uniformStride * SampleGame.uniformSlots * FrameRenderer.maxFramesInFlight,
             options: .storageModeShared) else {
             print("WindageSample: uniform buffer failed")
             return nil
         }
         uniformBuffer = buffer
+
+        // One palette per figure per frame in flight — **per frame in flight**, because the GPU is
+        // still reading the previous frame's pose while this one is written. Sharing one palette
+        // across frames is the animation version of tearing.
+        guard let joints = device.makeBuffer(
+            length: SampleGame.jointPaletteStride * SampleGame.maxFigures * FrameRenderer.maxFramesInFlight,
+            options: .storageModeShared) else {
+            print("WindageSample: joint palette buffer failed")
+            return nil
+        }
+        joints.label = "Joint Palettes"
+        jointBuffer = joints
 
         guard let shadowFrames = device.makeBuffer(
             length: SampleGame.shadowFrameStride * FrameRenderer.maxFramesInFlight,
@@ -204,7 +293,8 @@ final class SampleGame: GameLoop {
         shadowFrameBuffer = shadowFrames
 
         shadowMap = SampleShadowMap(device: device, library: shaderLibrary,
-                                    vertexDescriptor: vertexDescriptor)
+                                    vertexDescriptor: vertexDescriptor,
+                                    skinnedVertexDescriptor: SampleGame.skinnedVertexDescriptor())
         if shadowMap == nil { print("WindageSample: no shadows — the scene will be flat-lit") }
 
         // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
@@ -227,7 +317,7 @@ final class SampleGame: GameLoop {
         // **Everything the GPU reads has to be in the residency set.** A buffer or texture that is
         // not is read as whatever memory happens to be there — which is not a black screen, it is
         // garbage that looks like a shader bug.
-        engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer])
+        engine.residencySet.addAllocations([uniformBuffer, shadowFrameBuffer, jointBuffer])
         if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
@@ -244,10 +334,75 @@ final class SampleGame: GameLoop {
                 print("WindageSample: no mesh named \(name)")
             }
         }
+        loadFigureAsset()
         engine.commitResidency()
 
         rebuild()
         print("WindageSample: '\(level.name)' — \(drawables.count) drawables from \(levelPath)")
+    }
+
+    /// Loads the rigged figure: one mesh, one skeleton, two clips, all from one USD file.
+    ///
+    /// **Everything about the rig comes out of the file** — the joint hierarchy, the bind pose and
+    /// both clips. Nothing about this figure is written into this game, which is the check that
+    /// matters: a loader that only works on a rig the programmer already knows is not a loader.
+    private func loadFigureAsset() {
+        guard skinnedPipeline != nil else { return }
+        do {
+            figureRig = try RigLoader.load(named: "figure", withExtension: "usda", bundle: .module)
+        } catch {
+            print("WindageSample: no figure rig — \(error)")
+            return
+        }
+        guard let mesh = try? MeshLoader.load(named: "figure", withExtension: "usda",
+                                              device: engine.device,
+                                              vertexDescriptor: SampleGame.skinnedVertexDescriptor(),
+                                              semantics: SampleGame.skinnedSemantics,
+                                              bundle: .module).first else {
+            print("WindageSample: no figure mesh")
+            figureRig = nil
+            return
+        }
+        figureMesh = mesh
+        engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
+        engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
+
+        if let rig = figureRig {
+            print("WindageSample: figure rig — \(rig.skeleton.jointCount) joints, clips: "
+                  + rig.clips.map(\.name).joined(separator: ", "))
+            if rig.skeleton.jointCount > SampleGame.maxJoints {
+                print("WindageSample: WARNING the rig has more joints than the palette holds")
+                figureRig = nil
+            }
+        }
+    }
+
+    /// Places a figure wherever the level puts a `figure` marker.
+    ///
+    /// **From the level file, like everything else in the scene.** A character hard-coded into the
+    /// game would not prove the level format can carry one, and moving it would mean a rebuild.
+    private func rebuildFigures() {
+        figures.removeAll(keepingCapacity: true)
+        guard let rig = figureRig, let idleClip = rig.clip(named: "Idle"),
+              let waveClip = rig.clip(named: "Wave") else { return }
+
+        for marker in level.markers(ofKind: "figure").prefix(SampleGame.maxFigures) {
+            let yaw = marker.yaw
+            let c = cos(yaw), s = sin(yaw)
+            let transform = matrix_float4x4(columns: (SIMD4(c, 0, -s, 0),
+                                                      SIMD4(0, 1, 0, 0),
+                                                      SIMD4(s, 0, c, 0),
+                                                      SIMD4(marker.position, 1)))
+            var figure = Figure(pose: SkeletonPose(skeleton: rig.skeleton),
+                                idle: AnimationPlayhead(clip: idleClip, skeleton: rig.skeleton),
+                                wave: AnimationPlayhead(clip: waveClip, skeleton: rig.skeleton),
+                                transform: transform,
+                                position: marker.position)
+            // **Started at different points in the clip.** A row of characters moving in lockstep
+            // reads as one object drawn several times, which is exactly what it is.
+            figure.idle.advance(by: Float(figures.count) * 0.9)
+            figures.append(figure)
+        }
     }
 
     /// Turn the level into things to draw, walk into and click on.
@@ -277,6 +432,7 @@ final class SampleGame: GameLoop {
             // run — is worse than not having it, because the file says something untrue.
             if placement.tags.contains("solid") { solidVolumes.append(volume) }
         }
+        rebuildFigures()
         if drawables.count > SampleGame.maxDrawables {
             print("WindageSample: WARNING \(drawables.count) drawables against a cap of "
                   + "\(SampleGame.maxDrawables) — the rest of the level will not be drawn")
@@ -486,6 +642,8 @@ final class SampleGame: GameLoop {
             }
         }
 
+        animateFigures(deltaTime: deltaTime)
+
         // Where the ears are. Once per step is more often than needed — once per frame would do —
         // but it costs two vector writes and cannot go stale.
         audio?.updateListener(position: camera.position, forward: camera.forward, up: SIMD3(0, 1, 0))
@@ -499,6 +657,39 @@ final class SampleGame: GameLoop {
             // and pretending otherwise here would put a physics engine in a walkthrough.
             camera.position.y = 1.7
             camera.position = resolved(from: before, to: camera.position)
+        }
+    }
+
+    /// How far away a figure notices the player. Chosen so a figure is waving by the time you are
+    /// close enough to read the blend rather than after you have walked past it.
+    private static let noticeDistance: Float = 7
+
+    /// Advances every figure's clips and blends between them.
+    ///
+    /// **This is the whole animation update, and it is nine lines.** Everything expensive —
+    /// sampling, the parent chain, the cross-fade — is `SkeletonPose.set(to:blendedWith:weight:)`,
+    /// and the game's part is deciding *what* to play. That split is the point: a game that had to
+    /// walk a joint hierarchy to make a character wave would have an engine that had not finished
+    /// the job.
+    ///
+    /// **Runs while editing and while paused.** A frozen character in a paused game looks broken in
+    /// a way a frozen crate does not.
+    private func animateFigures(deltaTime: Float) {
+        for index in figures.indices {
+            figures[index].idle.advance(by: deltaTime)
+            figures[index].wave.advance(by: deltaTime)
+
+            let distance = simd_distance(figures[index].position, camera.position)
+            let target: Float = distance < SampleGame.noticeDistance ? 1 : 0
+            // Eased rather than switched. A cross-fade is the only reason the pose keeps rotation as
+            // a quaternion, and snapping between clips would waste it — a quarter of a second is
+            // about where a hand-over stops reading as a glitch.
+            let rate = min(deltaTime / 0.25, 1)
+            figures[index].waveWeight += (target - figures[index].waveWeight) * rate
+
+            figures[index].pose.set(to: figures[index].idle,
+                                    blendedWith: figures[index].wave,
+                                    weight: figures[index].waveWeight)
         }
     }
 
@@ -535,8 +726,19 @@ final class SampleGame: GameLoop {
     }
 
     private func uniformOffset(frameSlot: Int, drawable index: Int) -> Int {
-        frameSlot * SampleGame.uniformStride * SampleGame.maxDrawables + index * SampleGame.uniformStride
+        frameSlot * SampleGame.uniformStride * SampleGame.uniformSlots + index * SampleGame.uniformStride
     }
+
+    /// Figures take the slots after the level's drawables in the same buffer.
+    private func uniformOffset(frameSlot: Int, figure index: Int) -> Int {
+        uniformOffset(frameSlot: frameSlot, drawable: SampleGame.maxDrawables + index)
+    }
+
+    private func jointOffset(frameSlot: Int, figure index: Int) -> Int {
+        (frameSlot * SampleGame.maxFigures + index) * SampleGame.jointPaletteStride
+    }
+
+    private var visibleFigureCount: Int { min(figures.count, SampleGame.maxFigures) }
 
     private var visibleDrawableCount: Int { min(drawables.count, SampleGame.maxDrawables) }
 
@@ -568,6 +770,25 @@ final class SampleGame: GameLoop {
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
+
+        for (index, figure) in figures.prefix(SampleGame.maxFigures).enumerated() {
+            var uniforms = Uniforms(viewProjection: viewProjection,
+                                    model: figure.transform,
+                                    normalMatrix: normalMatrix(from: figure.transform),
+                                    // Warm, so a figure reads as a person rather than as another
+                                    // crate the level forgot to tag.
+                                    albedo: SIMD3(0.78, 0.62, 0.44),
+                                    sunDirection: sunDirection)
+            uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
+                .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
+
+            // The palette straight out of the pose — no conversion, because `skinningMatrices` is
+            // already exactly what the vertex shader indexes.
+            figure.pose.skinningMatrices.withUnsafeBytes { source in
+                jointBuffer.contents().advanced(by: jointOffset(frameSlot: frameSlot, figure: index))
+                    .copyMemory(from: source.baseAddress!, byteCount: source.count)
+            }
+        }
     }
 
     /// The shadow pass, before anything is drawn to the screen.
@@ -590,12 +811,26 @@ final class SampleGame: GameLoop {
         shadowFrameBuffer.contents().advanced(by: frameSlot * SampleGame.shadowFrameStride)
             .copyMemory(from: &frame, byteCount: MemoryLayout<ShadowFrame>.size)
 
-        shadowMap.encode(into: commandBuffer,
-                         frameSlot: frameSlot,
-                         drawableCount: visibleDrawableCount,
-                         meshFor: { self.drawables[$0].mesh.mesh },
-                         uniformBuffer: uniformBuffer,
-                         offsetForDrawable: { self.uniformOffset(frameSlot: frameSlot, drawable: $0) })
+        var batches = [SampleShadowMap.Batch(
+            pipeline: shadowMap.staticPipeline,
+            count: visibleDrawableCount,
+            mesh: { self.drawables[$0].mesh.mesh },
+            uniformAddress: { self.uniformBuffer.gpuAddress
+                + UInt64(self.uniformOffset(frameSlot: frameSlot, drawable: $0)) },
+            jointPaletteAddress: nil)]
+
+        if let skinned = shadowMap.skinnedPipeline, let mesh = figureMesh, visibleFigureCount > 0 {
+            batches.append(SampleShadowMap.Batch(
+                pipeline: skinned,
+                count: visibleFigureCount,
+                mesh: { _ in mesh.mesh },
+                uniformAddress: { self.uniformBuffer.gpuAddress
+                    + UInt64(self.uniformOffset(frameSlot: frameSlot, figure: $0)) },
+                jointPaletteAddress: { self.jointBuffer.gpuAddress
+                    + UInt64(self.jointOffset(frameSlot: frameSlot, figure: $0)) }))
+        }
+
+        shadowMap.encode(into: commandBuffer, frameSlot: frameSlot, batches: batches)
     }
 
     func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
@@ -613,6 +848,39 @@ final class SampleGame: GameLoop {
                 index: 1)
 
             let mesh = drawable.mesh.mesh
+            for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
+                argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
+                                         index: bufferIndex)
+            }
+            for submesh in mesh.submeshes {
+                encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
+                                              indexCount: submesh.indexCount,
+                                              indexType: submesh.indexType,
+                                              indexBuffer: submesh.indexBuffer.buffer.gpuAddress
+                                                  + UInt64(submesh.indexBuffer.offset),
+                                              indexBufferLength: submesh.indexBuffer.length)
+            }
+        }
+
+        encodeFigures(into: encoder, frameSlot: frameSlot)
+    }
+
+    /// The characters, in one pipeline change rather than one per object.
+    ///
+    /// **Same fragment shader, same shadow map, same uniforms** — a skinned mesh differs from the
+    /// rest of the scene in exactly two things: where its vertices are and what moved them there.
+    private func encodeFigures(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+        guard let skinnedPipeline, let mesh = figureMesh?.mesh, visibleFigureCount > 0 else { return }
+        encoder.setRenderPipelineState(skinnedPipeline)
+
+        for index in 0..<visibleFigureCount {
+            argumentTable.setAddress(
+                uniformBuffer.gpuAddress + UInt64(uniformOffset(frameSlot: frameSlot, figure: index)),
+                index: 1)
+            argumentTable.setAddress(
+                jointBuffer.gpuAddress + UInt64(jointOffset(frameSlot: frameSlot, figure: index)),
+                index: 3)
+
             for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
                 argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
                                          index: bufferIndex)

@@ -82,8 +82,11 @@ Those are different, and the difference is the whole discipline here:
    runs, geometry that mostly cannot be seen, light that is not one sun, ground that moves. A few
    hundred lines and their tests, never a game.
 4. **A second sample arrives only when a capability needs a shape the first cannot express.** Skinned
-   animation needs a character, and a courtyard of boxes cannot show one; that is a real reason.
-   "More demos" is not.
+   animation was expected to be the first real case — a courtyard of boxes cannot show a skeleton —
+   and **it turned out not to be.** What the sample needed was a character *in* it, not a second
+   sample around it; a generated rig standing in the courtyard exercised the whole animation API and
+   kept one scene to maintain. **The bar is higher than it looked**, and "more demos" still does not
+   meet it.
 
 ### The game does **not** have to contain everything the engine can do
 
@@ -124,7 +127,7 @@ where a roadmap belongs.
 
 ## Where this engine actually stands
 
-**About 3,000 lines.** Godot is roughly a million; Unreal several. That comparison is only useful for
+**About 3,800 lines.** Godot is roughly a million; Unreal several. That comparison is only useful for
 one thing: **this cannot become a general-purpose engine, and any plan that assumes it will is a plan
 to never ship anything.**
 
@@ -134,7 +137,8 @@ needs to ship* — the picture is a real product with real gaps.
 ### Present
 
 Frame pacing and frames in flight · fixed timestep · reversed-Z depth · camera · keyboard, mouse and
-gamepad input with stick shaping · mesh loading through Model I/O · maths · bounding boxes, volumes
+gamepad input with stick shaping · mesh loading through Model I/O · **skinned animation — skeletons,
+clips, cross-fading and a joint palette, loaded from USD** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · shadow cascade arithmetic · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
@@ -145,8 +149,9 @@ library that survives having no Xcode · and a complete sample game exercising a
 
 | | why it is next, or not |
 |---|---|
-| **Skinned animation** | The hard blocker. No game with a person or a creature in it can use this engine at all. Probed: Model I/O imports UsdSkel. |
-| **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. Animation needs it, so it arrives with it. |
+| ~~**Skinned animation**~~ | **Done 2026-09-09.** `Skeleton`, `AnimationClip`, `SkeletonPose` and `RigLoader`; the sample's figures are posed, cross-faded and shadowed. See below. |
+| **A transform hierarchy** | Not a scene graph — just parenting, so a thing can be attached to a joint or to another thing. **Half arrived with animation**: a rig *is* a hierarchy, and `SkeletonPose.modelTransform(ofJoint:)` is where a weapon hangs off a hand. What is still missing is parenting between *objects*. |
+| **Animation state** | What plays next, and what interrupts what. The engine cross-fades two clips; deciding *which two* is a game's job today, and there is no evidence yet about where the line sits. Wait for a game to have more than two clips. |
 | **The shadow pass** | The maths is here; the pass is written twice outside. Extract when a third consumer says what the seam is. |
 | **Materials and a texture path** | Every consumer currently hand-rolls albedo/roughness uniforms and its own texture loading. This is the largest *routine* gap after animation. |
 | **Post-processing** | Tone mapping is per-game today, and it must not be: shading past 1.0 and writing it straight makes every lit surface clip identically. An engine that renders HDR owes a curve. |
@@ -227,10 +232,67 @@ Two details worth not undoing:
   loops. A reticle that reads a distance the round will not travel is worse than no readout, because
   the player acts on it.
 
-## Skinned animation is tractable here — probed 2026-09-06
+## Skinned animation (2026-09-09)
 
-**The engine cannot animate a character, and that is its single biggest gap**: any game with a person
-or a creature in it will want one. Before treating that as a plan, the load-bearing
+**The engine's single biggest gap, and it is closed.** A game with a person or a creature in it can
+use this engine now. Four types, none of which needs a GPU to test:
+
+| | what it is |
+|---|---|
+| `Skeleton` | Structure only — joint paths, derived parentage, the rest pose, and the inverse bind matrices. Shared by every character wearing the rig. |
+| `AnimationClip` | Keys for translation, rotation and scale, with the clip's own joint names. Plus `AnimationBinding`, which matches a clip's joints to a rig's **by path, once**. |
+| `SkeletonPose` | A rig with a pose on it. Samples a clip, cross-fades two, or takes a pose outright, and produces the joint palette a vertex shader indexes. Allocates nothing per frame. |
+| `RigLoader` | Reads the skeleton and every clip out of a USD file. **No GPU**, which is why the fiddly half is testable. |
+
+The sample proves it: figures placed by the level file, standing in an idle clip, cross-fading into a
+wave as the player comes near, lit and shadowed by exactly the shaders the rest of the scene uses.
+Their rig is generated by `Tools/make_sample_figure.py` — 11 joints, two clips, written as `.usda`
+rather than shipped as a binary nobody can read.
+
+### Three things measured, that the API does not tell you
+
+Each one produces a character that is wrong rather than a build that fails, which is why each is now
+a test with a fixture behind it.
+
+1. **`MDLSkeleton`'s two transform arrays are in different spaces.** `jointRestTransforms` is
+   **joint-local**; `jointBindTransforms` is **skeleton-space**, already accumulated. They hold the
+   same numbers in any rig rooted at the origin — which is most hand-written test rigs and no real
+   character — so a test rig that does not separate them passes while wrong. `offset-rig.usda` puts
+   its root at (5, 0, 0) for exactly this reason.
+2. **Clips are not in the object hierarchy.** They arrive in `MDLAsset.animations`, a container of
+   its own, named by their full path. Walk the objects looking for them and every character is a
+   statue.
+3. **`MDLAnimationBindComponent.jointPaths` comes back empty** even with the skeleton attached. The
+   paths are on `MDLSkeleton.jointPaths`.
+
+Two smaller ones, both measured rather than assumed: **keyframe times arrive in seconds**, converted
+from the file's time codes, so nothing downstream needs the frame rate; and **asking for four
+influences per vertex when the file authored two is safe** — Model I/O pads with joint 0 at weight 0,
+which contributes nothing, so the shader needs no branch.
+
+### What is deliberately not here
+
+**No animation state machine.** The engine cross-fades two clips; *which* two, and what interrupts
+what, is the game's decision today. That is a contested shape, not a settled one, and there is no
+evidence to design it from — the sample has two clips and a distance check.
+
+**No retargeting, no IK, no root motion.** Each is real, each is wanted eventually, and none of them
+can be designed from a rig somebody generated to test the loader.
+
+### Why this was legitimate to build engine-first
+
+It is the second row of the table above: a settled shape. Nobody has to discover what a skeleton, a
+joint palette or a cross-fade is, and no game could teach a better answer than the one every engine
+already uses. What a game *would* have taught — how clips get chosen, how a controller drives them —
+is exactly what was left out.
+
+> **The rule this seemed to break, and did not.** "Nothing enters this package speculatively" is
+> about architecture with no single right answer. Applied to skinning it would have kept the engine
+> unusable by any game with a person in it, waiting for a game that could not be built.
+
+## The probe that said this was possible — 2026-09-06
+
+Before any of the above was treated as a plan, the load-bearing
 assumption got tested — *does Model I/O actually import UsdSkel, or does it silently drop it?*
 
 A hand-written eight-vertex, two-joint `.usda` loaded through `MDLAsset`:
@@ -254,13 +316,14 @@ parsing is not work this package owns, and no third-party importer is needed.
 so asking for `MDLVertexAttributeJointIndices` and `MDLVertexAttributeJointWeights` is a dictionary
 entry. The seam was already in the right place.
 
-### What it would actually cost, and why the extraction rule does not bar it
+### What it was estimated to cost
 
 Vertex format (joints + weights), a skeleton and clip value type, sampling to a joint-matrix palette,
-and skinning in the vertex shader. Real, bounded, and **not speculative in the way the rule warns
-about** — that rule protects against designing things that cannot be designed correctly from one
-game, like a scene graph or a material system. Skinned animation has one standard shape, and Model
-I/O hands over the data in it.
+and skinning in the vertex shader. **That estimate held**, and the one thing it missed was the
+authoring problem — a courtyard of boxes cannot show a skeleton, so the sample needed a rig before it
+could show anything. Generating one was a smaller job than buying one and a far better test: a rig
+whose every joint, weight and key is written by a script in this repository is one whose failures can
+be attributed.
 
 ### The authoring half is proved too — 2026-09-06
 
@@ -310,12 +373,18 @@ The tooling that does all of this is `Studio/Characters/` — see its README.
 > **What the 2026-09-06 probe did *not* prove:** the export above came from Blender-authored data,
 > not from an imported FBX. That is the gap the 2026-09-07 run closed.
 
-> **The trigger is an asset, not a decision.** Building a clip and blending API with nothing to skin
-> *is* the speculative version — you would be guessing at the interface with no consumer. Buy a
-> rigged **USD** character first, then build against it.
+> **"The trigger is an asset, not a decision" — half right, and worth recording as such.** The note
+> here said a clip and blending API built with nothing to skin would be guesswork, and that a rigged
+> character had to be bought first. The first half was right and the second was not: what the API
+> needed was *a* rig, not a *bought* one. `Tools/make_sample_figure.py` writes an eleven-joint figure
+> with two clips, and it exercised the interface hard enough to find every fault listed above.
 >
-> **And that changes what to buy: OBJ carries no skeleton.** An OBJ character is a statue by format,
-> not by engine limitation. See the buying filter in `../docs/ASSETS.md`.
+> **What a bought character will still test that a generated one cannot**: a hundred joints rather
+> than eleven, four influences per vertex actually in use, a non-identity geometry bind transform,
+> and whatever an exporter does that a script does not.
+>
+> **The format filter stands: OBJ carries no skeleton.** An OBJ character is a statue by format, not
+> by engine limitation.
 
 ## The split
 
@@ -379,7 +448,7 @@ can ship direct *or* on the store without the engine changing.
 A game picks its own store, and that is the game's local fact, never a constraint this package may
 encode. **The engine must run sandboxed or not**, because it is not the thing being distributed.
 
-## Conventions## Conventions
+## Conventions
 
 - **`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`**, matching the game targets. Anything pure — maths,
   simulation, anything bound for a render thread — must say `nonisolated` explicitly. Making a type
@@ -414,8 +483,13 @@ It deliberately has:
   run, and that was the sample teaching the opposite of what the format claims: a level assembled by
   a function says the file is an export. The files were generated once from those functions, so the
   courtyard is byte-for-byte the courtyard it always was, and the functions are gone.
-- **No art dependency.** Its three meshes are hand-written OBJ files of a box, a taller box and a
-  ground quad. A sample that needs an asset pack cannot be run by whoever just cloned this.
+- **No art dependency.** Its static meshes are hand-written OBJ files of a box, a taller box and a
+  ground quad, and its one rigged character is written by `Tools/make_sample_figure.py`. A sample
+  that needs an asset pack cannot be run by whoever just cloned this.
+- **Animated characters, from the level file.** Figures stand where a `figure` marker puts them,
+  idling, and cross-fade into a wave as the player comes near — which is what proves `SkeletonPose`
+  blends rather than switches. They cast skinned shadows through the same cascades as everything
+  else, because a character lit by the scene that casts nothing reads as floating.
 - **No Xcode project.** `swift run WindageSample`. Anything requiring a project is a thing the reader
   must own before they can start.
 - **No cleverness.** One directional light, no textures. A sample with impressive rendering teaches

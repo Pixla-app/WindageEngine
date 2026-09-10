@@ -94,6 +94,39 @@
         0,
         -70
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "figure",
+      "name" : "greeter",
+      "position" : [
+        1.5,
+        0,
+        1
+      ],
+      "yaw" : 3.0
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "figure",
+      "name" : "sentry",
+      "position" : [
+        -5,
+        0,
+        -18
+      ],
+      "yaw" : -0.6
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "figure",
+      "name" : "lookout",
+      "position" : [
+        4,
+        0,
+        -33
+      ],
+      "yaw" : 2.4
     }
   ],
   "name" : "RUINS",

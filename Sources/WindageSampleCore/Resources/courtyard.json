@@ -67,6 +67,28 @@
         0,
         -24
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "figure",
+      "name" : "greeter",
+      "position" : [
+        1.5,
+        0,
+        7.5
+      ],
+      "yaw" : 3.0
+    },
+    {
+      "anchor" : "absolute",
+      "kind" : "figure",
+      "name" : "watcher",
+      "position" : [
+        -7,
+        0,
+        -3
+      ],
+      "yaw" : 1.2
     }
   ],
   "name" : "COURTYARD",
