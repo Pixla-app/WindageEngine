@@ -98,6 +98,19 @@ final class SampleGame: GameLoop {
         let position: SIMD3<Float>
     }
 
+    /// One lamp as the shader reads it: **`w` carries the range**, so a `float3` and a scalar pack
+    /// into one `float4` and there is no padding for the two sides to disagree about.
+    private struct PackedLight {
+        var positionAndRange: SIMD4<Float> = .zero
+        var colour: SIMD4<Float> = .zero
+
+        init() {}
+        init(_ light: PunctualLight) {
+            positionAndRange = SIMD4(light.position, light.range)
+            colour = SIMD4(light.colour, 0)
+        }
+    }
+
     private struct Uniforms {
         var viewProjection: matrix_float4x4
         var model: matrix_float4x4
@@ -117,6 +130,14 @@ final class SampleGame: GameLoop {
         /// wants of it right now. **`w` unused**, for the same padding reason.
         var emissive: SIMD4<Float>
 
+        /// How many of ``lights`` are real.
+        var lightCount: UInt32
+        var lightPadding: SIMD3<UInt32> = .zero
+
+        /// The lamps reaching this draw. **Fixed size, matching `kLightBudget` in the shader** —
+        /// which is `LightSet.budget`, because the two are one number.
+        var lights: (PackedLight, PackedLight, PackedLight, PackedLight)
+
         init(viewProjection: matrix_float4x4,
              model: matrix_float4x4,
              normalMatrix: matrix_float3x3,
@@ -125,7 +146,8 @@ final class SampleGame: GameLoop {
              material: Material,
              specularLOD: Float,
              sunColour: SIMD3<Float>,
-             emissive: SIMD3<Float>) {
+             emissive: SIMD3<Float>,
+             lights: [PunctualLight]) {
             self.viewProjection = viewProjection
             self.model = model
             self.normalMatrix = normalMatrix
@@ -141,6 +163,13 @@ final class SampleGame: GameLoop {
             // may use, override or ignore, and defaulting is the caller's job because only the caller
             // knows whether this surface is currently powered.
             self.emissive = SIMD4(emissive, 0)
+
+            let packed = lights.prefix(4).map(PackedLight.init)
+            self.lightCount = UInt32(packed.count)
+            self.lights = (packed.count > 0 ? packed[0] : PackedLight(),
+                           packed.count > 1 ? packed[1] : PackedLight(),
+                           packed.count > 2 ? packed[2] : PackedLight(),
+                           packed.count > 3 ? packed[3] : PackedLight())
         }
     }
 
@@ -776,6 +805,7 @@ final class SampleGame: GameLoop {
             if placement.tags.contains("solid") { solidVolumes.append(volume) }
         }
         rebuildFigures()
+        rebuildLights()
         if drawables.count > SampleGame.maxDrawables {
             print("WindageSample: WARNING \(drawables.count) drawables against a cap of "
                   + "\(SampleGame.maxDrawables) — the rest of the level will not be drawn")
@@ -798,6 +828,33 @@ final class SampleGame: GameLoop {
     /// meant the sun and the sky it belongs to were two separate facts that could disagree — and one
     /// of them was not in the file at all.
     private var sunDirection: SIMD3<Float> { level.resolvedSky.sunDirection }
+
+    /// The level's lamps, plus whatever the game is lighting right now.
+    ///
+    /// **Rebuilt when the run changes, not every frame.** Selection is a sort over the level's lights
+    /// per drawable, which is cheap — but rebuilding the *list* every frame would allocate for a set
+    /// that changes only when a crate is collected.
+    private var lightSet = LightSet()
+
+    /// Assembles the level's lamps and the ones the game owns.
+    ///
+    /// **An uncollected objective is a light as well as a glow.** Emission alone makes a crate look
+    /// lit and leaves the ground beneath it dark, which is the tell that a glowing thing is a texture
+    /// rather than a lamp. This is the sample's one dynamic light, and it goes out when the crate is
+    /// taken.
+    private func rebuildLights() {
+        var lights = level.lights
+        for (slot, position) in run.objectives.enumerated() {
+            let taken = run.collected.indices.contains(slot) && run.collected[slot]
+            guard !taken else { continue }
+            lights.append(PunctualLight(position: position + SIMD3(0, 0.6, 0),
+                                        colour: SIMD3(0.6, 6.0, 2.6), range: 4.5))
+        }
+        lightSet = LightSet(lights: lights, budget: SampleGame.lightBudget)
+    }
+
+    /// **Must equal `kLightBudget` in the shader.** The two are one number.
+    private static let lightBudget = 4
 
     /// The light the sun actually delivers — its radiance times the solid angle its disc subtends,
     /// which is a very small number and is why the two are not interchangeable.
@@ -1190,7 +1247,14 @@ final class SampleGame: GameLoop {
                                     material: drawable.mesh.material(forSubmesh: 0),
                                     specularLOD: environmentLOD,
                                     sunColour: sunIrradiance,
-                                    emissive: emissive)
+                                    emissive: emissive,
+                                    // **Chosen against the drawable's bounds, not its centre.** A
+                                    // wall whose middle is out of a lamp's reach still has an end
+                                    // inside it, and lighting the whole draw by its centre is how
+                                    // one end of a corridor goes dark.
+                                    lights: lightSet.affecting(
+                                        Volume(local: drawable.mesh.bounds,
+                                               transform: drawable.transform).worldBounds))
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -1211,7 +1275,8 @@ final class SampleGame: GameLoop {
                                     // than white — and a seam that is exactly white does not read as
                                     // lit. How much brighter is a look decision, so it lives here.
                                     emissive: (figureMesh?.material(forSubmesh: 0).emissive ?? .zero)
-                                        * SampleGame.figureGlow)
+                                        * SampleGame.figureGlow,
+                                    lights: lightSet.affecting(figure.position + SIMD3(0, 1, 0)))
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 

@@ -69,20 +69,67 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     /// Optional, because a level that says nothing about its sky gets a plausible one.
     public var sky: ProceduralSky?
 
+    /// The lamps in this level, beyond the sun its ``sky`` carries.
+    ///
+    /// **A named list rather than markers with values on them.** A marker is a *place* the game
+    /// interprets — a spawn, an objective — and its `values` dictionary is scalars. A light is a
+    /// position, a colour, a brightness and a range, and expressing it as five loose numbers under a
+    /// marker means nothing checks that they belong together.
+    public var lights: [PunctualLight]
+
     public var placements: [Placement]
     public var markers: [Marker]
 
     public init(name: String,
                 settings: [String: Double] = [:],
                 sky: ProceduralSky? = nil,
+                lights: [PunctualLight] = [],
                 placements: [Placement] = [],
                 markers: [Marker] = []) {
         self.formatVersion = Level.currentVersion
         self.name = name
         self.settings = settings
         self.sky = sky
+        self.lights = lights
         self.placements = placements
         self.markers = markers
+    }
+
+    // MARK: - Codable
+    //
+    // **Written by hand rather than synthesised, so that every field but the version is optional.**
+    // A level file is edited by hand as often as by a tool, and the synthesised decoder throws on a
+    // missing key — so adding `lights` to this type would have refused every level already written,
+    // including the ones a player edited and saved into Application Support.
+    //
+    // The version is the one thing that must be there: it is what makes a file readable at all.
+
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion, name, settings, sky, lights, placements, markers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "UNTITLED"
+        settings = try container.decodeIfPresent([String: Double].self, forKey: .settings) ?? [:]
+        sky = try container.decodeIfPresent(ProceduralSky.self, forKey: .sky)
+        lights = try container.decodeIfPresent([PunctualLight].self, forKey: .lights) ?? []
+        placements = try container.decodeIfPresent([Placement].self, forKey: .placements) ?? []
+        markers = try container.decodeIfPresent([Marker].self, forKey: .markers) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(formatVersion, forKey: .formatVersion)
+        try container.encode(name, forKey: .name)
+        try container.encode(settings, forKey: .settings)
+        try container.encodeIfPresent(sky, forKey: .sky)
+        // **Omitted when empty**, so a level with no lamps does not carry an empty array explaining
+        // that it has none. Same for the sky above.
+        if !lights.isEmpty { try container.encode(lights, forKey: .lights) }
+        try container.encode(placements, forKey: .placements)
+        try container.encode(markers, forKey: .markers)
     }
 
     /// The sky to light this level with, whatever the file did or did not say.

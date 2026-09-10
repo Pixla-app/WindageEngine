@@ -12,6 +12,58 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.0] — 2026-09-10
+
+**Lights that are not the sun.** A directional sun and an environment map light an outdoor scene
+correctly and have no answer at all for an interior — the sun does not reach inside, and a
+sky-coloured ambient lights a cellar as though the sky were overhead.
+
+**Extracted from a probe built to ask exactly this**, and stripped of the game that asked it.
+
+### Added
+
+- **`PunctualLight`** — a position, a radiant intensity, a range, and a physical windowed
+  inverse-square falloff.
+- **`LightSet`** — a budget and the rule for choosing which lights fill it, plus
+  `isOverSubscribed(at:)`.
+- **`Level.lights`**, a named list in the level format.
+- **`BoundingBox.closestPoint(to:)`**.
+
+### Changed
+
+- **`Level` decodes explicitly and tolerantly now.** Every field but the version is optional, because
+  the synthesised decoder throws on a missing key — so adding `lights` would have refused every level
+  already written, including any a player edited into Application Support.
+
+### What the probe had wrong
+
+It ranked lights by **falloff alone**, ignoring how bright they are — so a candle at one metre
+outranked a floodlight at ten, and the floodlight was the one dropped. Influence is weighted by
+luminance now, which costs a dot product and makes the ordering mean what it claims.
+
+### What the probe had right, and it is the important part
+
+**A hard budget cannot promise a smooth hand-over in an arbitrary level.** If five lights all
+contribute at a point, one is dropped, and how visible that is depends entirely on how the level was
+built. Ordering by influence does not save it and a bigger budget only moves the number.
+
+So the promise is conditional: **where no more than the budget are above `negligible`, nothing the
+player can see is ever dropped** — and `isOverSubscribed(at:)` is what makes that checkable before a
+corridor ships with a flicker in it.
+
+### Four smaller ones
+
+- **Selection is per draw and uses the box's nearest point, not its centre.** A long wall whose middle
+  is out of a lamp's reach still has an end inside it.
+- **The falloff needs a floor.** A fragment exactly at a lamp's position is a division by zero, and
+  the pixel that produces is not "very bright" — it is `NaN`, which draws black.
+- **Local lights cast no shadows.** There is one shadow map and the sun has it, so a lamp reaches
+  through a wall. That is why the sample's ranges are short: it is only obvious when a lamp reaches
+  far enough for it to be.
+- **A lamp in daylight does almost nothing**, which is correct and is why the sunlit level has none.
+  Its local lighting is the objectives, which are dynamic — so between the two levels both paths are
+  exercised: lamps from the file, and lights the game owns.
+
 ## [0.5.2] — 2026-09-10
 
 **Emission** — the last material slot with nothing reading it. Every slot `Material` carries now

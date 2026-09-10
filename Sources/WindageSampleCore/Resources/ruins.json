@@ -1,5 +1,63 @@
 {
   "formatVersion" : 1,
+  "lights" : [
+    {
+      "colour" : [
+        1.0,
+        0.66,
+        0.34
+      ],
+      "intensity" : 34,
+      "position" : [
+        0,
+        2.2,
+        -4
+      ],
+      "range" : 10
+    },
+    {
+      "colour" : [
+        1.0,
+        0.6,
+        0.3
+      ],
+      "intensity" : 30,
+      "position" : [
+        -4.5,
+        2.2,
+        -16
+      ],
+      "range" : 9
+    },
+    {
+      "colour" : [
+        0.55,
+        0.78,
+        1.0
+      ],
+      "intensity" : 26,
+      "position" : [
+        4.5,
+        2.2,
+        -24
+      ],
+      "range" : 9
+    },
+    {
+      "colour" : [
+        1.0,
+        0.55,
+        0.28
+      ],
+      "intensity" : 34,
+      "position" : [
+        -3.0,
+        2.2,
+        -33
+      ],
+      "range" : 10
+    }
+  ],
   "markers" : [
     {
       "anchor" : "absolute",

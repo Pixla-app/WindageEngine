@@ -10,6 +10,17 @@
 #include <metal_stdlib>
 using namespace metal;
 
+/// **Must equal `LightSet.budget`.** The two are one number: the shader reads a fixed-size array and
+/// the engine decides what goes in it, so a mismatch reads past the end of the uniforms.
+constant int kLightBudget = 4;
+
+/// One lamp, as the shader sees it. **`w` carries the range**, which packs a `float3` and a scalar
+/// into one `float4` and leaves nothing for the two sides to disagree about.
+struct PunctualLight {
+    float4 positionAndRange;
+    float4 colour;
+};
+
 struct Uniforms {
     float4x4 viewProjection;
     float4x4 model;
@@ -20,9 +31,15 @@ struct Uniforms {
     float4   materialParams;  // x metallic, y roughness, z highest specular mip
     float4   sunColour;       // the level's sun, in radiance; w unused
     float4   emissive;        // what this surface emits, in radiance; w unused
+    /// How many of `lights` are real. **Selected per draw on the CPU** — a fragment shader cannot
+    /// loop over every lamp in a level, so the engine picks the few that matter to this mesh.
+    uint     lightCount;
+    uint3    lightPadding;
+    PunctualLight lights[kLightBudget];
 };
 
 constant int kCascadeCount = 4;
+
 
 /// Frame-wide, written once per frame rather than once per object. The per-object `Uniforms` below
 /// is copied for every drawable; putting four matrices in it would multiply them by the object count
@@ -460,6 +477,39 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                                                           level(lod)).rgb;
     const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV) * occlusion;
 
+    // **Every lamp that reaches this draw, shaded with the same lobe as the sun.** A second lighting
+    // model for local lights is how a scene ends up with two looks in it — the sun's highlights
+    // sharp and the lamps' soft, for no reason a player could name.
+    float3 local = float3(0.0);
+    for (uint i = 0; i < uniforms.lightCount; ++i) {
+        const float3 toLight = uniforms.lights[i].positionAndRange.xyz - in.worldPosition;
+        const float range = uniforms.lights[i].positionAndRange.w;
+        const float distanceSquared = max(length_squared(toLight), 1e-4);
+
+        // The same windowed inverse square as `PunctualLight.attenuation`, which is the definition.
+        const float ratio = distanceSquared / max(range * range, 1e-6);
+        const float window = saturate(1.0 - ratio * ratio);
+        const float attenuation = window * window / distanceSquared;
+        if (attenuation <= 0.0) { continue; }
+
+        const float3 lightDirection = toLight * rsqrt(distanceSquared);
+        const float lampNdotL = saturate(dot(n, lightDirection));
+        if (lampNdotL <= 0.0) { continue; }
+
+        const float3 lampHalf = normalize(v + lightDirection);
+        const float3 lampFresnel = fresnelSchlick(f0, saturate(dot(v, lampHalf)));
+        const float3 lampSpecular = lampFresnel
+                                  * distributionGGX(saturate(dot(n, lampHalf)), alpha)
+                                  * visibilitySmithGGX(NdotV, lampNdotL, alpha);
+        const float3 lampDiffuse = (1.0 - lampFresnel) * diffuseColour / M_PI_F;
+
+        // **No shadow term.** These lamps cast none — there is one shadow map and the sun has it —
+        // so a wall does not stop them. That is a real limitation and it is why their ranges are
+        // short: a lamp that reaches through a wall is only obvious when it reaches far enough to.
+        local += (lampDiffuse + lampSpecular) * uniforms.lights[i].colour.rgb
+               * attenuation * lampNdotL;
+    }
+
     // **Added, not lit.** Emission is light the surface makes, so nothing multiplies it: not the
     // sun's angle, not the shadow map, not the ambient occlusion. A glowing seam that dimmed when a
     // shadow crossed it would be a lamp that goes out when you stand in front of it.
@@ -469,5 +519,5 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     // somewhere above white to roll it into.
     const float3 emitted = uniforms.emissive.rgb * emissiveMap.sample(surfaceSampler, in.uv).rgb;
 
-    return float4(direct + ambientDiffuse + ambientSpecular + emitted, base.a);
+    return float4(direct + local + ambientDiffuse + ambientSpecular + emitted, base.a);
 }

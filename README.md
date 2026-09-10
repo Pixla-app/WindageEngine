@@ -144,7 +144,7 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
-lighting** · a versioned level format
+lighting** · **punctual lights with a budget and a selection rule** · a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
 library that survives having no Xcode · and a complete sample game exercising all of it.
 
@@ -742,6 +742,64 @@ It was replaced the same day by a real prefiltered environment — see below. Th
 kept in the history because it is the right first step: it costs one instruction, it is the difference
 between metal reading as metal and reading as a bug, and it is enough to get the BRDF correct before
 adding a cube map to the list of things that might be wrong.
+
+## Lights that are not the sun (2026-09-10)
+
+A directional sun and an environment map light an outdoor scene correctly and have **no answer at all
+for an interior**: the sun does not reach inside, and a sky-coloured ambient lights a cellar as though
+the sky were overhead.
+
+`PunctualLight` and `LightSet` were **extracted from a probe built to ask exactly this question**, and
+stripped of the game that asked it. That is what the probes are for.
+
+### What the probe had right, and it is the important part
+
+**A hard budget cannot promise a smooth hand-over in an arbitrary level.** A fragment shader cannot
+loop over every lamp in a building, so a game needs a budget and a rule for choosing which lights fill
+it. The obvious rule — the nearest few — has an obvious bug: *nearest* changes as the player walks, so
+a light drops out and a surface goes dark in one frame.
+
+Choosing by **influence** rather than distance fixes the common case, because a light then leaves the
+set where it had nearly stopped mattering. It does not fix the general one: if five lights all
+contribute at a point, one is dropped, and how visible that is depends entirely on how the level was
+built. A bigger budget only moves the number.
+
+So the promise is conditional, and `isOverSubscribed(at:)` checks the condition: **where no more than
+the budget are above `negligible`, nothing the player can see is ever dropped.** A level that violates
+it has a lighting fault built into its geometry — findable before it ships rather than after somebody
+reports a flicker in one corridor.
+
+### What the probe had wrong
+
+It ranked lights by **falloff alone** and ignored how bright they are, so a candle at one metre
+outranked a floodlight at ten — and the floodlight was the one dropped. Influence is weighted by
+luminance now: a dot product, and the ordering means what it claims.
+
+> This is what a probe is supposed to produce — not code to paste in, but a shape and a finding, both
+> of which survived, and one mistake that was cheaper to find there than here.
+
+### Four smaller ones
+
+- **Selection is per draw, against the box's nearest point rather than its centre.** A long wall whose
+  middle is out of a lamp's reach still has an end inside it, and lighting a whole draw by its centre
+  is how one end of a corridor goes dark while the lamp is plainly shining on it.
+- **The falloff needs a floor in the denominator.** A fragment exactly at a lamp's position is a
+  division by zero, and the pixel that produces is not "very bright" — it is `NaN`, which draws black.
+- **Local lights cast no shadows.** There is one shadow map and the sun has it, so a lamp reaches
+  through a wall. A real limitation, and the reason the sample's ranges are short: it is only obvious
+  when a lamp reaches far enough for it to be.
+- **A lamp in daylight does almost nothing**, which is correct and is why the sunlit level has none.
+
+### Two things in the level and the sample
+
+**Lights are a named list in the level file**, not markers with values on them. A marker is a *place*
+the game interprets and its `values` are scalars; a light is a position, a colour, a brightness and a
+range, and five loose numbers under a marker means nothing checks they belong together.
+
+**`Level` decodes explicitly and tolerantly now.** Every field but the version is optional, because
+the synthesised decoder throws on a missing key — so adding `lights` to the type would have refused
+every level already written, including any a player edited and saved into Application Support. The
+same reasoning as the sky's optional fields, applied one level up.
 
 ## Emission (2026-09-10)
 

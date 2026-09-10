@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-287 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+301 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,43 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — lights that are not the sun (0.6.0)
+
+**A sun and an environment map have no answer for an interior.** `PunctualLight` and `LightSet` are
+extracted from the probe built to ask this, stripped of the game that asked it. `Level.lights` is a
+named list in the format; the sample selects per draw and shades lamps with the same GGX lobe as the
+sun.
+
+### What the probe had right
+
+**A hard budget cannot promise a smooth hand-over in an arbitrary level.** Choosing by influence
+rather than distance fixes the common case; it does not fix the general one, and a bigger budget only
+moves the number. So the promise is conditional and `isOverSubscribed(at:)` checks it: where no more
+than the budget are above `negligible`, nothing visible is ever dropped. That is a constraint on how a
+level is built, findable before it ships.
+
+### What the probe had wrong
+
+It ranked by **falloff alone**, so a candle at one metre outranked a floodlight at ten and the
+floodlight was dropped. Influence is luminance-weighted now.
+
+### Four smaller ones
+
+Selection is per draw against the box's **nearest point**, not its centre. The falloff needs a floor
+or a fragment at the lamp's position is `NaN`, which draws black rather than bright. **Local lights
+cast no shadows** — one shadow map, and the sun has it — which is why the sample's ranges are short.
+And a lamp in daylight does almost nothing, correctly, which is why the sunlit level has none.
+
+### And one about the format
+
+**`Level` decodes explicitly and tolerantly now.** Every field but the version is optional: the
+synthesised decoder throws on a missing key, so adding `lights` would have refused every level already
+written, including any a player saved into Application Support.
+
+> **The stale-build hazard bit again** — adding a parameter to `Level.init` left the sample-core tests
+> linking against the old mangled name. Same rule: delete the build directory when a shared type
+> changes shape.
 
 ## Done 2026-09-10 — emission (0.5.2)
 
@@ -516,12 +553,14 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Emission lights nothing but itself.** A glowing seam does not illuminate the surface beside it,
-   because there is no light in the scene except the sun and the environment. That is what a
-   punctual-light system is for, and there isn't one — the engine has a single directional sun and an
-   environment map. **Local lights are the biggest remaining gap in what a game can express**, and
-   `Sedgefall`'s probe already asked the question that matters: which lights reach a point, within a
-   budget. Settled shape.
+1. **Spot lights.** `PunctualLight` radiates in every direction, which covers lamps and fires and not
+   torches, headlights or anything aimed. A cone angle and a falloff between inner and outer is the
+   settled shape and slots into the same selection rule — the influence test just gains an angular
+   term. The cheapest genuinely useful addition from here.
+
+2. **Local lights cast no shadows**, so a lamp reaches through a wall. Real, and much larger than spot
+   lights: it wants a shadow map per light, a cube map for a point light, and an atlas to hold them.
+   Worth writing down as the cost before anyone assumes it is next.
 
 3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format
