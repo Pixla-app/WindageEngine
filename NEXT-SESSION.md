@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-238 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+241 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,29 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-09 — node transforms, and a correction (0.1.3)
+
+**A wrong diagnosis, corrected, and the real defect behind it fixed.** The handoff below said a real
+character "is Z-up and in centimetres — 176 units tall". The centimetres half was wrong in its
+explanation: the conversion sits on a **parent node** scaled by 0.01, exactly where an FBX import puts
+it, and the file is entirely consistent. **What was actually wrong was the engine** — `MeshLoader` and
+`RigLoader` read a mesh's bounds and a skeleton's joints and never walked the node chain above them,
+so any exported asset came in a hundred times too big.
+
+- **`LoadedMesh.nodeTransform` and `Rig.nodeTransform`** report the composed hierarchy. Applied in
+  front of the model matrix, like `AssetOrientation`. `SceneObject` composes it into its volume.
+- **The sample's figure is now written the way a real export is**: centimetre data, Y-up, under a node
+  scaled by 0.01. It previously wrote hand-converted Z-up coordinates, on the same wrong diagnosis.
+- **The up-axis half stands.** Blender's USD exporter writes Blender's Z-up unless told otherwise, and
+  `AssetOrientation` handles that. The studio's exporter now states `upAxis = "Y"` — USD's own default
+  and what Model I/O, Quick Look and Preview assume — so our own characters need no correction, and a
+  bought one still might.
+
+> **The lesson is about the probe, not the asset.** The measurement that produced the wrong answer
+> read `MDLMesh.boundingBox` and stopped, never asking what the mesh hung off — so it could not see
+> the half of the answer sitting one level up. **A probe that reports a number without reporting the
+> space it is in will eventually be believed.**
 
 ## Done 2026-09-09 — the shadow pass is extracted (0.1.2)
 
@@ -249,10 +272,11 @@ and sorts what is missing into three buckets:
 
 1. **Load the real character into the sample, or decide not to.** Everything it needs now exists and
    is tested against fixtures that reproduce its shape — but the character itself lives outside this
-   repository and cannot be committed to it, so it has been *probed* rather than *run*. Worth one
-   session: point the sample at it behind an environment variable, look at it, and write down
-   whatever the fixtures did not predict. Expect the material to name no texture, and expect facing
-   to need a yaw.
+   repository and cannot be committed to it, so it has been *probed* rather than *run*. **Probing is
+   what produced the one wrong answer this repository has had to correct**, which is the argument for
+   actually running it: point the sample at it behind an environment variable, look at it, and write
+   down whatever the fixtures did not predict. Expect the material to name no texture, and expect
+   facing to need a yaw.
 
 2. **Materials still stop at base colour in a consumer.** `Material` carries normal, metallic,
    roughness, occlusion and emissive slots and the sample binds only the first. Normal mapping is the

@@ -52,27 +52,35 @@ SIDES = 6           # cross-section of a limb; six reads as round enough and sta
 
 # --- The space it is written in ------------------------------------------------------------------
 #
-# **Authored Y-up in metres, written Z-up in centimetres**, because that is what a real character
-# export arrives in and the sample's job is to be a realistic consumer. A character taken out of a
-# game engine, through an FBX, through Blender and into USD comes out Z-up and a hundred units to the
-# metre — neither of those is a mistake anybody made, they are the conventions of the tools it passed
-# through. Writing the sample's figure in a tidier space than that would leave `AssetOrientation`
-# with no consumer, which is the same as leaving it untested.
+# **Authored in metres, written in centimetres under a node scaled by 0.01** — which is exactly the
+# shape a real character export arrives in, and the reason the sample is written this way.
 #
-# The conversion is mechanical: a point becomes (x, -z, y) and is scaled; a normal takes the rotation
-# without the scale; and every rotation in this file is built from an axis, so converting the *axis*
-# converts the quaternion — no quaternion algebra required.
+# A character out of a game engine, through an FBX, through Blender has its mesh data and its bind
+# transforms in centimetres, with the conversion to metres sitting on a parent node the FBX import
+# creates. Measured on a real one: 176 units tall in its own space, 1.76 m in the world. **Nothing
+# about that is a mistake**, and a consumer that reads the mesh bounds while ignoring the node chain
+# concludes the file is a hundred times too big when it is perfectly correct.
+#
+# The sample ships that shape rather than a tidier one, because a loader that only ever sees identity
+# node transforms is a loader whose node handling is untested — and that is precisely the bug this
+# arrangement caught.
 
 UNITS_PER_METRE = 100.0
 
 
 def to_file_space(p, scaled=True):
+    """Metres to the file's own units. **Y-up either way** — the axis is not converted here.
+
+    An earlier version of this script wrote Z-up as well, on the belief that a real export is Z-up.
+    It is not: the geometry is Y-up and the file says so, and the studio's own exporter now states
+    `upAxis = "Y"` explicitly rather than letting Blender's internal convention leak out.
+    """
     k = UNITS_PER_METRE if scaled else 1.0
-    return (p[0] * k, -p[2] * k, p[1] * k)
+    return (p[0] * k, p[1] * k, p[2] * k)
 
 
 def axis_to_file_space(a):
-    return (a[0], -a[2], a[1])
+    return a
 
 
 def sub(a, b): return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
@@ -265,10 +273,19 @@ def matrix(translation):
 
 
 def header(frames):
+    # `metersPerUnit = 1` with centimetre data is not a contradiction: the conversion lives on the
+    # node below, exactly as a real export puts it, so the file *is* in metres at world level.
     return ('#usda 1.0\n(\n    defaultPrim = "Figure"\n'
-            '    metersPerUnit = %g\n    upAxis = "Z"\n'
+            '    metersPerUnit = 1\n    upAxis = "Y"\n'
             '    timeCodesPerSecond = 24\n    startTimeCode = 0\n    endTimeCode = %d\n)\n'
-            % (1.0 / UNITS_PER_METRE, frames))
+            % frames)
+
+
+def scale_op():
+    """The node that carries the centimetre-to-metre conversion, like an FBX import's parent empty."""
+    return ('    double3 xformOp:scale = (%g, %g, %g)\n'
+            '    uniform token[] xformOpOrder = ["xformOp:scale"]\n'
+            % (1 / UNITS_PER_METRE, 1 / UNITS_PER_METRE, 1 / UNITS_PER_METRE))
 
 
 def skeleton_block(rest_from=None):
@@ -315,6 +332,7 @@ def write_clip(path, name, built):
     _, rotations, translations = built
     out = [header(max(rotations))]
     out.append('\ndef SkelRoot "Figure"\n{\n')
+    out.append(scale_op())
     out += skeleton_block(rest_from=translations[0])
     out.append('        rel skel:animationSource = </Figure/%s>\n    }\n' % name)
     out += clip_block(name, rotations, translations)
@@ -332,6 +350,7 @@ def write(path):
     out = []
     out.append(header(frames))
     out.append('\ndef SkelRoot "Figure"\n{\n')
+    out.append(scale_op())
 
     out += skeleton_block()
     out.append('        rel skel:animationSource = </Figure/%s>\n' % clips[0][0])

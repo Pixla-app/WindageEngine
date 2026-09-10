@@ -27,9 +27,19 @@ public nonisolated struct Rig: Sendable {
     public let skeleton: Skeleton
     public let clips: [AnimationClip]
 
-    public init(skeleton: Skeleton, clips: [AnimationClip]) {
+    /// Where the rig sits in the file's own node hierarchy, composed from the root.
+    ///
+    /// **The same matrix the mesh under it carries**, and for the same reason: an exported character
+    /// has its geometry *and* its skeleton in centimetres under a parent scaled by 0.01. Apply it in
+    /// front of the model matrix and the mesh, the rig and the clips are all corrected at once.
+    public let nodeTransform: matrix_float4x4
+
+    public init(skeleton: Skeleton,
+                clips: [AnimationClip],
+                nodeTransform: matrix_float4x4 = matrix_identity_float4x4) {
         self.skeleton = skeleton
         self.clips = clips
+        self.nodeTransform = nodeTransform
     }
 
     public func clip(named name: String) -> AnimationClip? {
@@ -44,7 +54,7 @@ public nonisolated struct Rig: Sendable {
     /// See ``RigLoader/clips(named:withExtension:bundle:)`` for why the skeletons in those files must
     /// be ignored rather than merged.
     public func adding(_ moreClips: [AnimationClip]) -> Rig {
-        Rig(skeleton: skeleton, clips: clips + moreClips)
+        Rig(skeleton: skeleton, clips: clips + moreClips, nodeTransform: nodeTransform)
     }
 
     /// The rig's joints that a clip says nothing about.
@@ -184,7 +194,9 @@ public nonisolated enum RigLoader {
         }
 
         let skeleton = try Skeleton(mdlSkeleton, geometryBindTransform: geometryBind ?? matrix_identity_float4x4)
-        return Rig(skeleton: skeleton, clips: clips(in: asset))
+        return Rig(skeleton: skeleton,
+                   clips: clips(in: asset),
+                   nodeTransform: nodeTransform(of: mdlSkeleton, in: asset))
     }
 
     /// The skeleton bound to a mesh if there is one, otherwise the first in the hierarchy.
@@ -203,6 +215,25 @@ public nonisolated enum RigLoader {
         var found: MDLSkeleton?
         walk(asset) { object in
             if found == nil, let skeleton = object as? MDLSkeleton { found = skeleton }
+        }
+        return found
+    }
+
+    /// The skeleton's own place in the file's node hierarchy.
+    ///
+    /// **Not decoration — see ``LoadedMesh/nodeTransform``.** An exported character's rig is in
+    /// centimetres under a parent scaled by 0.01, and a loader that reads the joints and ignores the
+    /// node chain produces a skeleton a hundred times too big for the world it is placed in.
+    private static func nodeTransform(of skeleton: MDLSkeleton, in asset: MDLAsset) -> matrix_float4x4 {
+        var found = matrix_identity_float4x4
+        var matched = false
+        func descend(_ object: MDLObject, _ parent: matrix_float4x4) {
+            let world = object.transform.map { parent * $0.matrix } ?? parent
+            if object === skeleton { found = world; matched = true }
+            for child in object.children.objects where !matched { descend(child, world) }
+        }
+        for index in 0..<asset.count where !matched {
+            descend(asset.object(at: index), matrix_identity_float4x4)
         }
         return found
     }

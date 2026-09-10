@@ -211,8 +211,7 @@ final class SampleGame: GameLoop {
     private var baseColorMaps: [String: [MTLTexture]] = [:]
     private var figureMaps: [MTLTexture] = []
 
-    /// What space the figure was authored in — Z-up centimetres, as a real export is. One matrix in
-    /// front of the model matrix corrects the mesh, the rig and the animation together.
+    /// The up axis the figure's file declares. Identity here, and not for a bought Z-up asset.
     private var figureOrientation: AssetOrientation = .identity
 
     private var figureMesh: LoadedMesh?
@@ -480,13 +479,13 @@ final class SampleGame: GameLoop {
         engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
         if let textures { engine.residencySet.addAllocations(textures.allocations) }
 
-        // **The asset is Z-up and in centimetres**, like every character that comes out of a real
-        // toolchain. Model I/O reports the up axis and says nothing about units, so the scale is
-        // measured once and written here — the figure is 186 units tall for a 1.86 m mannequin.
+        // **Honour the up axis the file declares.** This one says Y, so the correction is the
+        // identity — but a USD out of a Blender or Unreal pipeline that did not pass through the
+        // studio's own exporter says Z, and a consumer that never asks lays that character on its
+        // side. Asking costs a matrix multiply at load.
         if let url = Bundle.module.url(forResource: "figure", withExtension: "usda") {
-            figureOrientation = AssetOrientation.read(from: MDLAsset(url: url), unitsPerMetre: 100)
-            print("WindageSample: figure asset is \(figureOrientation.upAxis)-up, "
-                  + "\(figureOrientation.unitsPerMetre) units to the metre")
+            figureOrientation = AssetOrientation.read(from: MDLAsset(url: url))
+            print("WindageSample: figure asset is \(figureOrientation.upAxis)-up")
         }
 
         if let rig = figureRig {
@@ -518,10 +517,12 @@ final class SampleGame: GameLoop {
                                                      SIMD4(0, 1, 0, 0),
                                                      SIMD4(s, 0, c, 0),
                                                      SIMD4(marker.position, 1)))
-            // **The correction goes inside the placement, not outside it.** The other way round
-            // scales the marker's position by a hundred as well, and the figure appears in the next
-            // county.
-            let transform = placement * figureOrientation.transform
+            // **Two corrections, both inside the placement.** The file's declared up axis, and the
+            // mesh's own place in the file's node hierarchy — which is where an exported character's
+            // centimetre-to-metre scale lives. Either one outside the placement would scale or rotate
+            // the marker's position too, and the figure would appear in the next county.
+            let node = figureMesh?.nodeTransform ?? matrix_identity_float4x4
+            let transform = placement * figureOrientation.transform * node
             var figure = Figure(pose: SkeletonPose(skeleton: rig.skeleton),
                                 idle: AnimationPlayhead(clip: idleClip, skeleton: rig.skeleton),
                                 wave: AnimationPlayhead(clip: waveClip, skeleton: rig.skeleton),
@@ -548,10 +549,13 @@ final class SampleGame: GameLoop {
             guard let mesh = meshes[placement.mesh] else { continue }
             let position = level.worldPosition(of: placement, on: ground)
             let c = cos(placement.yaw), s = sin(placement.yaw), k = placement.scale
+            // **Times the mesh's node transform**, which is the identity for these hand-written OBJs
+            // and would not be for anything exported. Composing it unconditionally is what stops a
+            // level looking correct until the first asset that has one.
             let transform = matrix_float4x4(columns: (SIMD4(c * k, 0, -s * k, 0),
                                                       SIMD4(0, k, 0, 0),
                                                       SIMD4(s * k, 0, c * k, 0),
-                                                      SIMD4(position, 1)))
+                                                      SIMD4(position, 1))) * mesh.nodeTransform
             drawables.append((mesh, transform, SampleGame.albedo(for: placement),
                               baseColorMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }

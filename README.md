@@ -394,30 +394,46 @@ Merge them and every joint a clip does *not* animate falls back to whichever fil
 character stands wrong, and the fault changes as animations are added — which makes it look like an
 animation bug rather than a loading one.
 
-### Z-up, and a hundred units to the metre
+### The scale is on a node, and the loaders were ignoring it
 
-The character is **176 units tall** with `upAxis` (0, 0, 1). Neither is a mistake anybody made: they
-are the conventions of the tools it passed through. Model I/O converts neither.
+**Corrected 2026-09-09, after a first diagnosis that was wrong.** The character measured 176 units
+tall, which was read as "the asset is in centimetres and the file does not say so". It does say so.
+The mesh data is in centimetres and the **conversion sits on a parent node** — the empty an FBX
+import creates, scaled by 0.01 — so the character is 176 units in its own space and 1.77 m in the
+world, and every part of the file agrees.
 
-`AssetOrientation` is one matrix, applied in front of the model matrix. **Not a conversion pass over
-the vertices** — a skinned character has its geometry, its bind transforms and its clip translations
-all in that space, so converting the mesh alone leaves the skeleton a hundred times too big. Skinning
-happens in model space, so one matrix in front of the model matrix corrects all three at once.
+**What was actually wrong was the engine.** `MeshLoader` and `RigLoader` read a mesh's bounds and a
+skeleton's joints and never walked the node chain above them, so any asset with a parent transform
+came in a hundred times too big. Harmless for a hand-written OBJ at the origin, which is every asset
+this repository had until a real one arrived.
 
-**The up axis can be read and the scale cannot.** `MDLAsset` surfaces `upAxis` and nothing about
-units, although USD records `metersPerUnit` in the file. Measure the asset's height once and write
-the number down beside it.
+`LoadedMesh.nodeTransform` and `Rig.nodeTransform` report it now, and it is applied the same way as
+everything else in this family — **in front of the model matrix**, where one matrix corrects the
+mesh, the rig and the animation at once.
 
-> **Facing is deliberately not part of it.** Which way is "forward" varies by tool *and* by rig, so
-> guessing it makes every asset that disagrees silently backwards. It is a yaw applied where the
-> thing is placed, which is somewhere a game already has to think.
+> **The lesson, and it is about the probe rather than the asset.** The measurement that produced the
+> wrong answer read `MDLMesh.boundingBox` and stopped. It never asked what the mesh hung off, so it
+> could not see the half of the answer that was sitting one level up. A probe that reports a number
+> without reporting the space it is in is a probe that will eventually be believed.
 
-### The sample now ships the untidy version
+### Up axis: real, and now handled at both ends
 
-Its figure is written **Z-up in centimetres with its second clip in a file of its own**, and that
-clip file's copy of the skeleton has the wrong rest pose — the fault, not a tidied version of it. It
-renders identically to the Y-up metre single-file version it replaced, which is the whole point: a
-sample that only ever loads tidy assets leaves the path a real one takes untested.
+Separately from the scale, the file *was* Z-up, because Blender's USD exporter writes Blender's own
+convention unless told otherwise. That is genuine and `AssetOrientation` handles it.
+
+**The studio's exporter now states `upAxis = "Y"`**, which is USD's own default and what Model I/O,
+Quick Look and Preview assume — a Z-up character opens in Preview lying on its side. So our own
+characters need no correction, and a bought one still might. **Honouring the file's declared up axis
+is what a correct loader does**, and it costs a matrix multiply at load whether or not it turns out
+to be the identity.
+
+### The sample ships the untidy version
+
+Its figure is written **in centimetres under a node scaled by 0.01, with its second clip in a file of
+its own** whose copy of the skeleton has the wrong rest pose — the faults, not tidied versions of
+them. It renders identically to the tidy single-file version it replaced, which is the whole point: a
+loader that only ever sees identity node transforms is a loader whose node handling is untested, and
+that is exactly the bug this arrangement caught.
 
 **One thing a real character still tests that this does not.** Its material named no texture at all —
 the colour map ships beside it as a PNG a game binds by name, because the tool builds that map in

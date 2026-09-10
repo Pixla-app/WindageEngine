@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.1.3] — 2026-09-09
+
+**A correction, and the defect behind it.** 0.1.1 said a real character "arrives Z-up and in
+centimetres", and treated the scale as something the file failed to record. That was wrong: the
+conversion sits on a parent node, and **the loaders were ignoring node transforms entirely**.
+
+### Fixed
+
+- **`MeshLoader` and `RigLoader` now compose the file's node hierarchy.** They read a mesh's bounds
+  and a skeleton's joints and never walked the nodes above them, so any asset with a parent transform
+  loaded a hundred times too big — harmless for a hand-written OBJ at the origin, which was every
+  asset this repository had until a real one arrived.
+- **`SceneObject` composes the mesh's node transform** into its volume, so a placement means the same
+  thing whatever the geometry came from.
+
+### Added
+
+- **`LoadedMesh.nodeTransform`** and **`Rig.nodeTransform`** — where the mesh or rig sits in the
+  file's own hierarchy, composed from the root. Applied in front of the model matrix, like
+  `AssetOrientation`, because skinning happens in model space.
+
+### Changed
+
+- **The sample's figure is written in centimetres under a node scaled by 0.01**, Y-up, which is the
+  shape a real export actually has. It previously wrote hand-converted Z-up coordinates, on the same
+  wrong diagnosis.
+
+### Correcting 0.1.1
+
+That entry's "Z-up" half stands — Blender's USD exporter writes Blender's convention unless told
+otherwise, and `AssetOrientation` handles it. Its "in centimetres, and the file does not say so" half
+does not: the file says so, on a node. **The probe that produced the wrong answer read
+`MDLMesh.boundingBox` and stopped**, never asking what the mesh hung off.
+
 ## [0.1.2] — 2026-09-09
 
 **The shadow pass stops being written twice.** The arithmetic has been here since `ShadowCascades`;

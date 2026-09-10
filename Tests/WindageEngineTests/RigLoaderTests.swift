@@ -105,6 +105,34 @@ struct RigLoaderTests {
         }
     }
 
+    /// **The defect this fixture's scaled root exists for, found by loading a real character.** An
+    /// exported rig sits under a node that converts its centimetres to metres, and a loader that
+    /// reads the joints while ignoring the node chain produces a skeleton a hundred times too big
+    /// for the world it is placed in — which looks like a broken asset rather than a broken loader.
+    @Test("The rig's place in the file's node hierarchy is reported")
+    func nodeTransformIsComposed() throws {
+        let rig = try loadRig()
+        let scale = simd_length(SIMD3(rig.nodeTransform.columns.0.x,
+                                      rig.nodeTransform.columns.0.y,
+                                      rig.nodeTransform.columns.0.z))
+        #expect(abs(scale - 0.01) < 1e-6, "the node chain above the skeleton was ignored")
+    }
+
+    /// The joints themselves stay in the space the file wrote them in. **Both halves are needed**:
+    /// the node transform goes in front of the model matrix, and correcting the joints as well would
+    /// apply it twice.
+    @Test("The node transform is not baked into the joints")
+    func jointsStayInTheirOwnSpace() throws {
+        let skeleton = try loadRig().skeleton
+        #expect(simd_distance(skeleton.restTransforms[1].columns.3, SIMD4(0, 1, 0, 1)) < 1e-5)
+    }
+
+    @Test("Clips added from another file keep the rig's node transform")
+    func addingClipsKeepsTheNodeTransform() throws {
+        let rig = try loadRig()
+        #expect(rig.adding([]).nodeTransform == rig.nodeTransform)
+    }
+
     // MARK: - Clips in files of their own
 
     /// **The shape a real character actually arrives in.** Every toolchain that exports one animation

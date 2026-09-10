@@ -6,6 +6,11 @@
 # between those two spaces passes its tests. Here they differ: the child's bind transform is
 # (5, 1, 0) and its rest transform is (0, 1, 0).
 #
+# **It also carries a scale on its root node**, like an exported character does: an FBX import builds
+# a parent scaled by 0.01 over mesh data authored in centimetres, so the geometry is a hundred times
+# the size it appears at in the world. A loader that reads the mesh and the joints while ignoring the
+# node chain gets a character a hundred times too big and concludes the file is wrong when it is not.
+#
 # Hand-written rather than exported, so everything it claims can be checked by reading it.
 (
     defaultPrim = "Root"
@@ -18,6 +23,9 @@
 
 def SkelRoot "Root"
 {
+    double3 xformOp:scale = (0.01, 0.01, 0.01)
+    uniform token[] xformOpOrder = ["xformOp:scale"]
+
     def Skeleton "Skel" (
         prepend apiSchemas = ["SkelBindingAPI"]
     )

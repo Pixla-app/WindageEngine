@@ -68,6 +68,8 @@ public nonisolated enum MeshLoader {
         let (modelMeshes, metalMeshes) = try MTKMesh.newMeshes(asset: asset, device: device)
         guard !metalMeshes.isEmpty else { throw MeshLoaderError.noMeshes(name) }
 
+        let transforms = nodeTransforms(in: asset)
+
         // Bounds and materials come from the Model I/O mesh, which still knows them — `MTKMesh`
         // carries neither, and recomputing bounds from the vertex buffers afterwards means reading
         // GPU memory back.
@@ -77,8 +79,37 @@ public nonisolated enum MeshLoader {
                 mesh: metal,
                 bounds: BoundingBox(minimum: SIMD3(box.minBounds.x, box.minBounds.y, box.minBounds.z),
                                     maximum: SIMD3(box.maxBounds.x, box.maxBounds.y, box.maxBounds.z)),
-                materials: materials(of: model, count: metal.submeshes.count))
+                materials: materials(of: model, count: metal.submeshes.count),
+                nodeTransform: transforms[ObjectIdentifier(model)] ?? matrix_identity_float4x4)
         }
+    }
+
+    /// Every mesh's place in the file's node hierarchy, composed from the root.
+    ///
+    /// ### The transform is not decoration, and ignoring it is how an asset comes in wrong
+    ///
+    /// **This loader ignored it until 2026-09-09, and a real character is what showed it.** A
+    /// character out of a game engine, through an FBX, through Blender arrives with its mesh data in
+    /// **centimetres** and a **scale of 0.01 on a parent node** — 176 units tall in its own space and
+    /// 1.76 m in the world. Read the mesh's bounds alone and it is a hundred times too big, and the
+    /// file looks wrong when it is not.
+    ///
+    /// It is the same shape of correction as ``AssetOrientation``: one matrix in front of the model
+    /// matrix, which is enough because skinning happens in model space, so the mesh, the rig and the
+    /// animation are all corrected together.
+    ///
+    /// **Keyed by object identity rather than by traversal order.** `MTKMesh.newMeshes` walks the
+    /// asset the same way this does, so zipping would work today — and would break silently the day
+    /// it does not, by putting one mesh's transform on another's geometry.
+    static func nodeTransforms(in asset: MDLAsset) -> [ObjectIdentifier: matrix_float4x4] {
+        var result: [ObjectIdentifier: matrix_float4x4] = [:]
+        func descend(_ object: MDLObject, _ parent: matrix_float4x4) {
+            let world = object.transform.map { parent * $0.matrix } ?? parent
+            if let mesh = object as? MDLMesh { result[ObjectIdentifier(mesh)] = world }
+            for child in object.children.objects { descend(child, world) }
+        }
+        for index in 0..<asset.count { descend(asset.object(at: index), matrix_identity_float4x4) }
+        return result
     }
 
     /// One material per submesh, in the submeshes' own order.
@@ -108,10 +139,22 @@ public nonisolated struct LoadedMesh {
     /// as untextured geometry with its surfaces thrown away on import.
     public let materials: [Material]
 
-    public init(mesh: MTKMesh, bounds: BoundingBox, materials: [Material] = []) {
+    /// Where this mesh sits in the file's own node hierarchy, composed from the root.
+    ///
+    /// **Apply it in front of the model matrix: `model * nodeTransform`.** It is usually the identity
+    /// for a hand-written mesh and almost never for an exported one — a character out of an FBX
+    /// pipeline has its geometry in centimetres under a parent scaled by 0.01. ``bounds`` is in the
+    /// mesh's own space, so it needs the same treatment before it means anything in the world.
+    public let nodeTransform: matrix_float4x4
+
+    public init(mesh: MTKMesh,
+                bounds: BoundingBox,
+                materials: [Material] = [],
+                nodeTransform: matrix_float4x4 = matrix_identity_float4x4) {
         self.mesh = mesh
         self.bounds = bounds
         self.materials = materials
+        self.nodeTransform = nodeTransform
     }
 
     /// The material for a submesh, or a default if the file named none.
@@ -138,8 +181,11 @@ public nonisolated struct SceneObject {
     public var transform: matrix_float4x4 { volume.transform }
     public var worldBounds: BoundingBox { volume.worldBounds }
 
+    /// **The mesh's node transform is composed in**, so a placement means the same thing whether the
+    /// geometry came from a hand-written OBJ at the origin or from an exported character in
+    /// centimetres under a scaled parent.
     public init(loaded: LoadedMesh, transform: matrix_float4x4) {
         self.mesh = loaded.mesh
-        self.volume = Volume(local: loaded.bounds, transform: transform)
+        self.volume = Volume(local: loaded.bounds, transform: transform * loaded.nodeTransform)
     }
 }
