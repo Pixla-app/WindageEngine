@@ -686,6 +686,62 @@ and those drift apart. It is a bitmap, not signed distance fields — SDF is the
 eventually and a materially bigger piece of work, so this rasterises generously and scales *down*,
 which is the direction that stays sharp.
 
+## A microfacet specular, in the sample (2026-09-10)
+
+The sample shades with Cook-Torrance and a GGX distribution now — Smith height-correlated visibility,
+Schlick Fresnel, and Karis's analytic fit of the split-sum environment BRDF standing in for a lookup
+table. It replaced Lambert plus a Blinn-Phong lobe, which was written to prove that a material's
+roughness arrived and did something, and had become the weakest part of the picture once there was an
+HDR target to put a real highlight in.
+
+### It is in the sample, and that is the split working
+
+The engine owns when things happen, the depth convention and the tone map. **What a surface *is* — its
+BRDF, its lighting model, how many lights it takes — is a game's**, and no two games will agree.
+
+**If a second consumer writes this same function, that is the moment to extract it.** Which is the
+shadow-pass lesson applied before the fact rather than after: the rule is not "wait for a third", it
+is "one copy is a game's business and two copies are a defect".
+
+### What an OBJ cannot say, measured
+
+**Model I/O's OBJ reader returns roughness 0.9 and metallic 0.0 whatever the file contains.** Five
+materials were tried: `Ns 12`, `Ns 200`, `Pr 0.25`, `Pm 1.0`, and both PBR extensions together. The
+roughness semantic never moved and the extensions were read and discarded.
+
+What does arrive is `Ns`, as `specularExponent`. So that is where an OBJ's roughness comes from, via
+`α = sqrt(2 / (Ns + 2))` and perceptual roughness `sqrt(α)` — an approximation between two lobes that
+are not the same shape, and one every renderer that reads OBJ makes some version of.
+
+**`specularExponent` is a reliable tell for a Blinn-Phong material**, because a USD
+`UsdPreviewSurface` carries real roughness and metallic and no exponent at all. Its presence means
+"the roughness beside this is invented".
+
+### Five things worth knowing about the lobe
+
+- **Metal with no environment is black.** A metal surface has no diffuse; its entire appearance is
+  what it reflects. With only a sun in the scene it is black but for one highlight — so the sample
+  reflects a two-colour sky gradient, which costs a `mix` and is the difference between metal reading
+  as metal and reading as a bug. **The figure is metal deliberately**: a dielectric surface looks much
+  the same under either lobe, and would have left `metallic` untested.
+- **`alpha` is roughness squared.** Roughness is authored perceptually so a slider steps evenly; the
+  distribution wants the physical quantity, and using the perceptual value bunches the useful range
+  into the first third.
+- **Fold `1 / (4 NdotL NdotV)` into the visibility term.** Separately, both it and the geometry term
+  vanish at grazing angles, and the division is a ratio of two vanishing numbers — a rim of fireflies
+  along every silhouette. Combined, the zeros cancel algebraically and never reach the hardware.
+- **Clamp roughness away from zero.** A perfectly smooth surface is a delta function: infinitely
+  small, infinitely bright, and on screen one crawling pixel.
+- **`kD = 1 − F`.** What is not reflected is available to scatter. Skipping it makes a shiny surface
+  brighter than the light falling on it — the usual way a first PBR shader breaks energy conservation.
+
+### Still missing
+
+**A real prefiltered environment map.** The analytic sky is enough for metal to read as metal and not
+enough for a metal object to reflect its surroundings. That is the next honest step for materials, and
+it is a bigger piece of work: a cube map, a prefilter pass over its mip chain, and somewhere for a
+level to say what its sky is.
+
 ## Tone mapping (2026-09-10)
 
 **Shading does not stop at 1.** A sunlit surface with a specular highlight on it is genuinely

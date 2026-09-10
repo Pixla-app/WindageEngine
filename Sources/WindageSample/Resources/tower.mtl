@@ -8,6 +8,7 @@
 newmtl stone
 Kd 1 1 1
 Ks 0 0 0
-Ns 12
+# cut stone. Ns 6 becomes roughness 0.71 — see Material.roughness(fromSpecularExponent:).
+Ns 6
 map_Kd stone.png
 bump stone_normal.png

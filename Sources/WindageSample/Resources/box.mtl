@@ -8,6 +8,7 @@
 newmtl crate
 Kd 1 1 1
 Ks 0 0 0
-Ns 12
+# planed timber: smoother than stone, far from polished. Ns 24 becomes roughness 0.53 — see Material.roughness(fromSpecularExponent:).
+Ns 24
 map_Kd crate.png
 bump crate_normal.png

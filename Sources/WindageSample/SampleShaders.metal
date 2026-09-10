@@ -170,6 +170,82 @@ vertex float4 sampleSkinnedShadowVertex(SkinnedVertexIn in [[stage_in]],
     return lightViewProjection * (uniforms.model * (skin * float4(in.position, 1.0)));
 }
 
+// MARK: - Shading
+//
+// A Cook-Torrance microfacet specular with a GGX distribution — the model every renderer of the last
+// decade uses, because it is what makes metal look like metal instead of like plastic with a bright
+// spot on it.
+//
+// **It lives in the sample, not the engine.** The engine owns when things happen, the depth
+// convention and the tone map; what a surface *is* — its BRDF, its lighting model, how many lights
+// it takes — is a game's, and no two of them will agree. If a second consumer writes this same
+// function, that is the moment to extract it, and not before.
+
+/// GGX / Trowbridge-Reitz: how much of a rough surface's microfacets face halfway between the light
+/// and the eye.
+///
+/// **`alpha` is roughness squared**, and that squaring is not decorative — roughness is authored
+/// *perceptually*, so that dragging a slider from 0.3 to 0.4 looks like an even step. The
+/// distribution wants the physical quantity, and using the perceptual value directly makes every
+/// slider bunch all its useful range into the first third.
+static float distributionGGX(float NdotH, float alpha)
+{
+    const float a2 = alpha * alpha;
+    const float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / max(M_PI_F * d * d, 1e-7);
+}
+
+/// Smith's height-correlated visibility, with the BRDF's own `1 / (4 NdotL NdotV)` folded in.
+///
+/// **Folded in on purpose.** Written separately, the geometry term and that denominator both go to
+/// zero at grazing angles and the division is a ratio of two vanishing numbers — which is a bright
+/// rim of fireflies along every silhouette. Combined, the zeros cancel algebraically and never reach
+/// the hardware.
+static float visibilitySmithGGX(float NdotV, float NdotL, float alpha)
+{
+    const float a2 = alpha * alpha;
+    const float v = NdotL * sqrt(NdotV * NdotV * (1.0 - a2) + a2);
+    const float l = NdotV * sqrt(NdotL * NdotL * (1.0 - a2) + a2);
+    return 0.5 / max(v + l, 1e-5);
+}
+
+/// Schlick's Fresnel: everything is a mirror at a grazing angle.
+///
+/// This is what puts a bright edge on every surface as it turns away, and it is most of why a
+/// physically based image reads as "real" rather than as "shiny".
+static float3 fresnelSchlick(float3 f0, float cosTheta)
+{
+    return f0 + (1.0 - f0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+/// Karis's analytic fit of the split-sum environment BRDF.
+///
+/// **Stands in for a lookup table.** The real thing is a precomputed 2D texture; this is four
+/// constants and a couple of multiplies, close enough that the difference is invisible, and it means
+/// the sample needs no baked asset to light a metal surface correctly.
+static float3 environmentBRDF(float3 f0, float roughness, float NdotV)
+{
+    const float4 c0 = float4(-1.0, -0.0275, -0.572, 0.022);
+    const float4 c1 = float4(1.0, 0.0425, 1.04, -0.04);
+    const float4 r = roughness * c0 + c1;
+    const float a004 = min(r.x * r.x, exp2(-9.28 * NdotV)) * r.x + r.y;
+    const float2 ab = float2(-1.04, 1.04) * a004 + r.zw;
+    return f0 * ab.x + ab.y;
+}
+
+/// The sample's sky, as radiance arriving from a direction.
+///
+/// **The cheapest thing that is not nothing.** A metal surface has no diffuse at all — its colour
+/// lives entirely in what it reflects — so with only a sun in the scene, every metal object is black
+/// except for one small highlight. A real engine reflects an environment map; this reflects a
+/// two-colour gradient, which is enough for metal to read as metal and costs a `mix`.
+static float3 skyRadiance(float3 direction)
+{
+    const float3 up = float3(0.55, 0.70, 0.95);
+    const float3 down = float3(0.28, 0.27, 0.24);
+    return mix(down, up, saturate(direction.y * 0.5 + 0.5));
+}
+
 /// One cascade's lookup. Lifted out of `sunVisibility` so that blending across a split samples the
 /// two cascades through identical code rather than a copy that can drift.
 static float sampleCascade(constant ShadowFrame &frame,
@@ -273,8 +349,12 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                 * uniforms.materialBaseColor
                 * float4(uniforms.albedo, 1.0);
 
-    const float metallic = uniforms.materialParams.x;
+    const float metallic = saturate(uniforms.materialParams.x);
+    // **Clamped away from zero.** A perfectly smooth surface is a delta function: the highlight is
+    // infinitely small and infinitely bright, which on screen is a single flickering pixel that
+    // crawls as the camera moves. Every renderer floors it somewhere.
     const float roughness = clamp(uniforms.materialParams.y, 0.045, 1.0);
+    const float alpha = roughness * roughness;
 
     // **Shading normal from the map, geometric normal kept for the shadow lookup.** Perturbing the
     // normal used to bias a shadow sample moves the sample off the surface it belongs to, and the
@@ -282,35 +362,50 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
     const float3 geometric = normalize(in.normal);
     const float3 n = applyNormalMap(normalMap.sample(surfaceSampler, in.uv).xyz,
                                     geometric, in.tangent, in.handedness);
-    float lambert = max(dot(n, normalize(uniforms.sunDirection)), 0.0);
 
-    // **Only the direct term is shadowed.** Ambient is light arriving from everywhere; multiplying
-    // it by the sun's visibility would make shadowed faces black, which is the single most common
-    // way a first shadow implementation ends up looking wrong.
-    float visibility = dot(geometric, normalize(uniforms.sunDirection)) > 0.0
+    const float3 v = normalize(frame.cameraPosition - in.worldPosition);
+    const float3 l = normalize(uniforms.sunDirection);
+    const float3 h = normalize(v + l);
+
+    const float NdotV = saturate(dot(n, v)) + 1e-5;
+    const float NdotL = saturate(dot(n, l));
+    const float NdotH = saturate(dot(n, h));
+    const float VdotH = saturate(dot(v, h));
+
+    // **Dielectrics reflect about 4% head-on; metals reflect their own colour.** That single number
+    // is most of what "metallic" means — a metal has no diffuse, because the light that would have
+    // scattered is absorbed instead.
+    const float3 f0 = mix(float3(0.04), base.rgb, metallic);
+    const float3 diffuseColour = base.rgb * (1.0 - metallic);
+
+    float visibility = dot(geometric, l) > 0.0
         ? sunVisibility(frame, in.worldPosition, shadowMap, shadowSampler)
         : 1.0;
 
-    // Sky bounce from above, so a face turned away from the sun is dim rather than black. Without
-    // it a low-poly scene reads as silhouettes, which looks like broken lighting.
-    float sky = 0.35 + 0.30 * n.y;
+    // Radiance, not a colour: the sun is far brighter than white, which is what the HDR target and
+    // the tone map exist for.
+    const float3 sunRadiance = float3(1.0, 0.97, 0.92) * 2.6;
+    const float3 incoming = sunRadiance * NdotL * visibility;
 
-    // Metal has no diffuse — its colour lives in the reflection instead. Half a line, and it is the
-    // difference between a metallic material meaning something and being a number nothing reads.
-    float3 diffuse = base.rgb * (1.0 - metallic) * (lambert * visibility * 1.05 + sky * 0.55);
+    const float3 fresnel = fresnelSchlick(f0, VdotH);
+    const float3 specular = fresnel
+                          * distributionGGX(NdotH, alpha)
+                          * visibilitySmithGGX(NdotV, NdotL, alpha);
 
-    // **Blinn-Phong, and deliberately not a PBR lobe.** A real specular BRDF needs a distribution
-    // term, a geometry term and Fresnel; this is a sample whose job is to show that the material's
-    // roughness arrives and does something. An impressive shader here would teach the reader about
-    // the shader.
-    const float3 view = normalize(frame.cameraPosition - in.worldPosition);
-    // Not `half` — that is a type in Metal Shading Language, and the error it produces is about a
-    // declaration specifier rather than about the name.
-    const float3 halfway = normalize(view + normalize(uniforms.sunDirection));
-    const float shininess = 2.0 / (roughness * roughness * roughness * roughness) - 2.0;
-    const float3 tint = mix(float3(0.04), base.rgb, metallic);
-    float3 specular = tint * pow(max(dot(n, halfway), 0.0), shininess)
-                    * ((shininess + 8.0) / 25.0) * lambert * visibility;
+    // **What is not reflected is what is available to scatter.** Skipping this makes a shiny surface
+    // brighter than the light falling on it, which is the most common way a first PBR shader breaks
+    // energy conservation. The metal term is already in `diffuseColour`, which is zero for metal.
+    const float3 kD = 1.0 - fresnel;
+    const float3 direct = (kD * diffuseColour / M_PI_F + specular) * incoming;
 
-    return float4(diffuse + specular, base.a);
+    // The sky, as an environment: irradiance for the diffuse, a reflection for the specular.
+    // **Roughness blurs the reflection towards the average**, which is what a prefiltered
+    // environment map does properly and what this approximates with one `mix`.
+    const float3 ambientDiffuse = diffuseColour * skyRadiance(n) * 0.55;
+    const float3 reflected = reflect(-v, n);
+    const float3 prefiltered = mix(skyRadiance(reflected), skyRadiance(float3(0, 1, 0)) * 0.6,
+                                   roughness);
+    const float3 ambientSpecular = prefiltered * environmentBRDF(f0, roughness, NdotV);
+
+    return float4(direct + ambientDiffuse + ambientSpecular, base.a);
 }

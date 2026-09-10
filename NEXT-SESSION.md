@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-256 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+259 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,33 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — a microfacet specular (0.4.0)
+
+**The sample shades with GGX now** — Cook-Torrance, Smith height-correlated visibility, Schlick
+Fresnel, Karis's analytic environment BRDF, and a two-colour analytic sky standing in for an
+environment map. It replaced Lambert plus Blinn-Phong, which had become the weakest part of the
+picture once there was an HDR target to put a real highlight in.
+
+**Behaviour change**: an OBJ material's roughness now comes from its specular exponent.
+
+- **Model I/O's OBJ reader hard-codes roughness to 0.9 and metallic to 0.0.** Five materials measured:
+  `Ns 12`, `Ns 200`, `Pr 0.25`, `Pm 1.0`, and both extensions together — the roughness semantic never
+  moved. `Ns` arrives as `specularExponent` and is the only shininess an OBJ carries through.
+- **`Material.specularExponent` is the tell for a Blinn-Phong material**: a USD `UsdPreviewSurface`
+  carries real roughness and metallic and no exponent at all.
+- **The BRDF is in the sample, not the engine**, because what a surface *is* is a game's. **If a
+  second consumer writes it, that is the moment to extract it** — the shadow-pass lesson applied
+  before the fact rather than after.
+- **The figure is metal deliberately.** A dielectric surface looks much the same under either lobe;
+  metal does not, and USD is the only format here that can say "metal" at all.
+
+### Five things worth knowing
+
+Metal with no environment is black. `alpha` is roughness squared and the squaring is not decorative.
+Fold `1/(4 NdotL NdotV)` into the visibility term or grazing angles fill with fireflies. Clamp
+roughness away from zero or a smooth surface is one crawling pixel. And `kD = 1 − F`, or a shiny
+surface is brighter than the light falling on it.
 
 ## Done 2026-09-10 — tone mapping (0.3.0)
 
@@ -374,14 +401,14 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
+1. **A prefiltered environment map.** The analytic sky is enough for metal to read as metal and not
+   enough for a metal object to reflect its surroundings — which is the whole appeal of metal. A cube
+   map, a prefilter pass over its mip chain, and somewhere for a level to say what its sky is. The
+   biggest remaining gap in how the sample looks, and settled shape.
+
+2. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
    `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as
    scalars. A metallic-roughness *map* is the same wiring again and needs an asset that has one.
-
-2. **The specular is Blinn-Phong, and now that there is an HDR target it is the weakest part of the
-   shading.** A real microfacet lobe — GGX, a geometry term, Fresnel — is settled shape and is what
-   makes metal look like metal rather than like plastic with a bright spot. It belongs in the
-   sample's shader rather than the engine, since shading is a game's.
 
 3. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
    README says why. A fixed exposure per level would be a cheap middle step and is a level-format

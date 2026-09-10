@@ -12,6 +12,60 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.4.0] — 2026-09-10
+
+**A microfacet specular, and the material data to drive it.** The sample's shading was Lambert plus a
+Blinn-Phong lobe; it is Cook-Torrance with a GGX distribution now, which is what makes metal look
+like metal rather than like plastic with a bright spot on it.
+
+**Behaviour change**: an OBJ material's `roughness` is now derived from its specular exponent instead
+of being Model I/O's invented 0.9.
+
+### Fixed
+
+- **`Material` derives roughness from `specularExponent` when a file supplies one.** Measured across
+  five materials: Model I/O's OBJ reader returns roughness 0.9 and metallic 0.0 **whatever the file
+  says** — `Ns`, and the `Pr`/`Pm` PBR extensions alike. The specular exponent is the only shininess
+  an OBJ carries through, and it does arrive.
+
+### Added
+
+- **`Material.specularExponent`** and **`Material.roughness(fromSpecularExponent:)`**. Its presence is
+  a reliable tell for a Blinn-Phong material: a USD `UsdPreviewSurface` carries real roughness and
+  metallic and no exponent at all.
+- **The sample shades with GGX** — Smith height-correlated visibility, Schlick Fresnel, Karis's
+  analytic environment BRDF, and a two-colour analytic sky standing in for an environment map. Its
+  figure is metal, deliberately.
+
+### Where the BRDF lives, and why it is not here
+
+**In the sample.** The engine owns when things happen, the depth convention and the tone map; what a
+surface *is* — its BRDF, its lighting model, how many lights it takes — is a game's, and no two games
+will agree. **If a second consumer writes this same function, that is the moment to extract it** —
+which is the lesson the shadow pass taught, applied forward rather than after the fact.
+
+### Five things worth knowing
+
+- **Metal with no environment is black.** A metal surface has no diffuse at all; its entire appearance
+  is what it reflects. With only a sun in the scene it is black except for one small highlight, so
+  something has to stand in for an environment — here, a two-colour sky gradient and a `mix`.
+- **`alpha` is roughness squared, and the squaring is not decorative.** Roughness is authored
+  *perceptually* so a slider steps evenly; the distribution wants the physical quantity, and feeding
+  it the perceptual value bunches all the useful range into the first third.
+- **Fold `1 / (4 NdotL NdotV)` into the visibility term.** Written separately, both it and the
+  geometry term vanish at grazing angles and the division is a ratio of two vanishing numbers — a
+  bright rim of fireflies along every silhouette. Combined, the zeros cancel algebraically.
+- **Roughness has to be clamped away from zero.** A perfectly smooth surface is a delta function:
+  infinitely small, infinitely bright, and on screen a single crawling pixel.
+- **`kD = 1 − F`.** What is not reflected is what is available to scatter. Skipping it makes a shiny
+  surface brighter than the light falling on it, which is the usual way a first PBR shader breaks
+  energy conservation.
+
+### Still missing
+
+A real prefiltered environment map. The analytic sky is enough for metal to read as metal and is not
+enough for a metal object to reflect its surroundings.
+
 ## [0.3.0] — 2026-09-10
 
 **The scene stops being written straight to the screen.** Shading does not stop at 1 — the sample's

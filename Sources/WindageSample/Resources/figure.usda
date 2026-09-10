@@ -120,8 +120,8 @@ def SkelRoot "Figure"
             uniform token info:id = "UsdPreviewSurface"
             color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
             normal3f inputs:normal.connect = </Figure/Skin/Bump.outputs:rgb>
-            float inputs:metallic = 0
-            float inputs:roughness = 0.75
+            float inputs:metallic = 0.9
+            float inputs:roughness = 0.45
             token outputs:surface
         }
 

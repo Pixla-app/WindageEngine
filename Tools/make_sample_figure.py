@@ -382,6 +382,12 @@ def write(path):
 
     # **A UsdPreviewSurface, because that is what a bought asset carries.** The sample could assign
     # this texture in code; reading it out of the file is what exercises the loader.
+    #
+    # **The figure is metal, and deliberately.** A wooden mannequin would be the obvious choice and it
+    # would leave `metallic` untested: a dielectric surface looks much the same under a Lambert lobe
+    # and a microfacet one. Metal does not — it has no diffuse at all, so its entire appearance is the
+    # reflection, and if the environment term is missing it is simply black. USD is also the only
+    # format here that can say "metal": Model I/O reads no metalness from an OBJ at all.
     out.append(MATERIAL)
 
     with open(path, "w") as handle:
@@ -400,8 +406,8 @@ MATERIAL = """
             uniform token info:id = "UsdPreviewSurface"
             color3f inputs:diffuseColor.connect = </Figure/Skin/Albedo.outputs:rgb>
             normal3f inputs:normal.connect = </Figure/Skin/Bump.outputs:rgb>
-            float inputs:metallic = 0
-            float inputs:roughness = 0.75
+            float inputs:metallic = 0.9
+            float inputs:roughness = 0.45
             token outputs:surface
         }
 

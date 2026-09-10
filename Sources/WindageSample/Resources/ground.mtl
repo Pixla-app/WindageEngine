@@ -8,6 +8,7 @@
 newmtl ground
 Kd 1 1 1
 Ks 0 0 0
-Ns 12
+# dry earth, about as rough as a surface gets. Ns 3 becomes roughness 0.80 — see Material.roughness(fromSpecularExponent:).
+Ns 3
 map_Kd ground.png
 bump ground_normal.png

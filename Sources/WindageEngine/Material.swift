@@ -79,6 +79,10 @@ public nonisolated struct Material: Sendable, Equatable {
 
     public var textures: [TextureSlot: TextureSource]
 
+    /// The Blinn-Phong exponent, where the file gave one. **Present means the material came from a
+    /// format that speaks in exponents rather than in roughness** — see ``init(_:name:)``.
+    public var specularExponent: Float?
+
     /// **Defaults chosen so that a material nobody filled in still draws.** White, dielectric and
     /// fairly rough is a plausible painted surface; zeroes would be a black hole and 0 roughness a
     /// mirror, and both read as a bug in the renderer rather than a missing material.
@@ -87,13 +91,15 @@ public nonisolated struct Material: Sendable, Equatable {
                 metallic: Float = 0,
                 roughness: Float = 0.65,
                 emissive: SIMD3<Float> = .zero,
-                textures: [TextureSlot: TextureSource] = [:]) {
+                textures: [TextureSlot: TextureSource] = [:],
+                specularExponent: Float? = nil) {
         self.name = name
         self.baseColor = baseColor
         self.metallic = metallic
         self.roughness = roughness
         self.emissive = emissive
         self.textures = textures
+        self.specularExponent = specularExponent
     }
 
     public subscript(slot: TextureSlot) -> TextureSource? {
@@ -164,6 +170,32 @@ nonisolated extension Material {
         if let opacity = material.property(with: .opacity), opacity.type == .float {
             baseColor.w = opacity.floatValue
         }
+
+        // **An OBJ's roughness has to come from `Ns`, because Model I/O's roughness field is a
+        // constant.** Measured across five materials: whatever `Ns` says, whatever `Pr` and `Pm` say,
+        // the roughness semantic comes back 0.9 and metallic 0.0. The PBR extensions are read and
+        // discarded; the specular exponent is the only thing an OBJ can actually say about how shiny
+        // a surface is, and it does arrive.
+        //
+        // **`specularExponent` is the tell for an OBJ-style material**, and a reliable one: a USD
+        // `UsdPreviewSurface` carries real roughness and metallic and no exponent at all. So its
+        // presence means "this is a Blinn-Phong material and the roughness beside it is invented".
+        if let exponent = material.property(with: .specularExponent), exponent.type == .float,
+           exponent.floatValue > 0 {
+            specularExponent = exponent.floatValue
+            roughness = Material.roughness(fromSpecularExponent: exponent.floatValue)
+        }
+    }
+
+    /// The usual conversion from a Blinn-Phong specular exponent to a perceptual roughness.
+    ///
+    /// `α = sqrt(2 / (Ns + 2))` is the standard equivalence between a Blinn-Phong lobe and a GGX one,
+    /// and perceptual roughness is `sqrt(α)` — so `Ns` of 12 is roughness 0.62, 200 is 0.32, and 1 is
+    /// 0.90. **An approximation between two things that are not the same shape**, but every renderer
+    /// that reads OBJ makes some version of it, and the alternative is treating every OBJ surface as
+    /// equally rough.
+    public static func roughness(fromSpecularExponent exponent: Float) -> Float {
+        min(max(pow(2 / (max(exponent, 0) + 2), 0.25), 0), 1)
     }
 }
 

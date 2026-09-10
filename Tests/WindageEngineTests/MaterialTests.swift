@@ -78,6 +78,52 @@ struct MaterialTests {
         }
     }
 
+    /// **Model I/O's OBJ reader hard-codes roughness.** Measured across five materials: whatever
+    /// `Ns` says, and whatever the `Pr`/`Pm` PBR extensions say, the roughness semantic comes back
+    /// 0.9 and metallic 0.0. The specular exponent is the only thing an OBJ can actually say about
+    /// shininess and it does arrive — so it is what roughness comes from.
+    @Test("An OBJ's roughness comes from its specular exponent")
+    func objRoughnessComesFromTheExponent() throws {
+        let url = try #require(Bundle.module.url(forResource: "box-exponent", withExtension: "obj"))
+        let asset = MDLAsset(url: url)
+        var found: MDLMaterial?
+        func descend(_ object: MDLObject) {
+            if let mesh = object as? MDLMesh {
+                for case let submesh as MDLSubmesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
+                    if found == nil { found = submesh.material }
+                }
+            }
+            for child in object.children.objects { descend(child) }
+        }
+        for index in 0..<asset.count { descend(asset.object(at: index)) }
+
+        let material = Material(try #require(found))
+        #expect(material.specularExponent == 200)
+        #expect(abs(material.roughness - 0.315) < 1e-3,
+                "roughness is still Model I/O's invented 0.9")
+    }
+
+    /// A USD `UsdPreviewSurface` carries real roughness and metallic and **no** exponent, which is
+    /// what makes the exponent a reliable tell for a Blinn-Phong material.
+    @Test("A USD material keeps its own roughness")
+    func usdRoughnessIsNotOverridden() throws {
+        let material = try loadMaterial()
+        #expect(material.specularExponent == nil)
+        #expect(abs(material.roughness - 0.65) < 1e-5)
+        #expect(abs(material.metallic - 0.1) < 1e-5)
+    }
+
+    @Test("The exponent conversion covers the useful range")
+    func exponentConversionIsSane() {
+        #expect(abs(Material.roughness(fromSpecularExponent: 1) - 0.9036) < 1e-3)
+        #expect(abs(Material.roughness(fromSpecularExponent: 12) - 0.6156) < 1e-3)
+        #expect(abs(Material.roughness(fromSpecularExponent: 200) - 0.3151) < 1e-3)
+        // Never outside 0…1, whatever a file claims.
+        #expect(Material.roughness(fromSpecularExponent: 0) <= 1)
+        #expect(Material.roughness(fromSpecularExponent: -5) <= 1)
+        #expect(Material.roughness(fromSpecularExponent: 1e9) >= 0)
+    }
+
     /// A materials array shorter than the submeshes indexing it is an out-of-bounds crash at draw
     /// time, in a loop with nothing to do with loading. Padding happens at load, once.
     @Test("The materials list is padded to the submesh count")
