@@ -15,7 +15,7 @@ import simd
 /// **Radiance, not colour.** The sun is thousands of times brighter than the sky around it, and these
 /// numbers say so; that is what the HDR target and ``ToneMapping`` exist for. Values here are linear
 /// and unbounded.
-public nonisolated struct ProceduralSky: Sendable, Equatable {
+public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
 
     /// Straight up.
     public var zenith: SIMD3<Float>
@@ -32,19 +32,56 @@ public nonisolated struct ProceduralSky: Sendable, Equatable {
     /// Towards the sun, normalised.
     public var sunDirection: SIMD3<Float>
 
-    /// The sun's own radiance. **Large on purpose** — a value of 1 makes a sun the same brightness as
-    /// a white wall, and its reflection in polished metal then reads as a smudge rather than a sun.
+    /// The sun's own radiance — how bright the disc *is*, looked at.
+    ///
+    /// **Very large on purpose, and not the same quantity as the light a surface receives.** Radiance
+    /// is per unit solid angle, and the sun subtends almost none of the sky; multiply by how much it
+    /// does subtend and you get ``sunIrradiance``, which is what a directional light in a shader
+    /// actually wants. Use this one as a light intensity and the scene is roughly a hundred times too
+    /// bright — the two differ by the solid angle, and the solid angle of a small disc is a very
+    /// small number.
     public var sunRadiance: SIMD3<Float>
 
     /// Angular radius of the sun's disc, in radians. The real one is about 0.00465; a wider disc
     /// gives a softer reflection and is usually what a stylised game wants.
     public var sunAngularRadius: Float
 
+    /// The sun's elevation above the horizon, in degrees.
+    ///
+    /// **Angles, not a vector, because a person writes this.** A level file saying `pitch 34, yaw 295`
+    /// is something you can picture and adjust; the same thing as `(-0.75, 0.56, 0.35)` is three
+    /// numbers that must stay normalised and that nobody can read.
+    public var sunPitchDegrees: Float {
+        get { radians_to_degrees(asin(simd_clamp(sunDirection.y, -1, 1))) }
+        set { setSun(pitchDegrees: newValue, yawDegrees: sunYawDegrees) }
+    }
+
+    /// The compass direction of the sun, in degrees, measured the same way a level's yaws are.
+    public var sunYawDegrees: Float {
+        get { radians_to_degrees(atan2(sunDirection.x, sunDirection.z)) }
+        set { setSun(pitchDegrees: sunPitchDegrees, yawDegrees: newValue) }
+    }
+
+    private mutating func setSun(pitchDegrees: Float, yawDegrees: Float) {
+        sunDirection = ProceduralSky.direction(pitchDegrees: pitchDegrees, yawDegrees: yawDegrees)
+    }
+
+    /// The convention two angles turn into, shared by whatever reads a level and whatever lights it.
+    ///
+    /// **It used to live in a game's source**, which was fine while one game read the sun out of a
+    /// level file. The moment the sky itself is *in* the file, the two have to agree, and the place
+    /// they can only agree is here.
+    public static func direction(pitchDegrees: Float, yawDegrees: Float) -> SIMD3<Float> {
+        let pitch = radians_from_degrees(pitchDegrees)
+        let yaw = radians_from_degrees(yawDegrees)
+        return simd_normalize(SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)))
+    }
+
     public init(zenith: SIMD3<Float> = SIMD3(0.28, 0.45, 0.85),
                 horizon: SIMD3<Float> = SIMD3(0.62, 0.72, 0.88),
                 ground: SIMD3<Float> = SIMD3(0.22, 0.21, 0.18),
                 sunDirection: SIMD3<Float> = normalize(SIMD3(0.4, 0.7, 0.6)),
-                sunRadiance: SIMD3<Float> = SIMD3(28, 26, 22),
+                sunRadiance: SIMD3<Float> = SIMD3(330, 310, 270),
                 sunAngularRadius: Float = 0.05) {
         self.zenith = zenith
         self.horizon = horizon
@@ -52,6 +89,78 @@ public nonisolated struct ProceduralSky: Sendable, Equatable {
         self.sunDirection = normalize(sunDirection)
         self.sunRadiance = sunRadiance
         self.sunAngularRadius = sunAngularRadius
+    }
+
+    /// The same, with the sun given as the two angles a level file writes.
+    public init(zenith: SIMD3<Float> = SIMD3(0.28, 0.45, 0.85),
+                horizon: SIMD3<Float> = SIMD3(0.62, 0.72, 0.88),
+                ground: SIMD3<Float> = SIMD3(0.22, 0.21, 0.18),
+                sunPitchDegrees: Float,
+                sunYawDegrees: Float,
+                sunRadiance: SIMD3<Float> = SIMD3(330, 310, 270),
+                sunAngularRadius: Float = 0.05) {
+        self.init(zenith: zenith, horizon: horizon, ground: ground,
+                  sunDirection: ProceduralSky.direction(pitchDegrees: sunPitchDegrees,
+                                                        yawDegrees: sunYawDegrees),
+                  sunRadiance: sunRadiance, sunAngularRadius: sunAngularRadius)
+    }
+
+    // MARK: - Codable
+    //
+    // **Written as angles and colour triples, and every key optional.** A level file is edited by
+    // hand as often as by a tool, so a sky that only says `sunPitch` and takes the rest as read is a
+    // legal and useful thing to write. Requiring all seven fields would make the simplest edit the
+    // longest one.
+
+    private enum CodingKeys: String, CodingKey {
+        case zenith, horizon, ground, sunPitch, sunYaw, sunRadiance, sunAngularRadius
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = ProceduralSky()
+        func colour(_ key: CodingKeys, _ or: SIMD3<Float>) throws -> SIMD3<Float> {
+            guard let values = try container.decodeIfPresent([Float].self, forKey: key) else { return or }
+            guard values.count == 3 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: key, in: container,
+                    debugDescription: "a colour needs three components, found \(values.count)")
+            }
+            return SIMD3(values[0], values[1], values[2])
+        }
+        self.init(
+            zenith: try colour(.zenith, fallback.zenith),
+            horizon: try colour(.horizon, fallback.horizon),
+            ground: try colour(.ground, fallback.ground),
+            sunPitchDegrees: try container.decodeIfPresent(Float.self, forKey: .sunPitch)
+                ?? fallback.sunPitchDegrees,
+            sunYawDegrees: try container.decodeIfPresent(Float.self, forKey: .sunYaw)
+                ?? fallback.sunYawDegrees,
+            sunRadiance: try colour(.sunRadiance, fallback.sunRadiance),
+            sunAngularRadius: try container.decodeIfPresent(Float.self, forKey: .sunAngularRadius)
+                ?? fallback.sunAngularRadius)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode([zenith.x, zenith.y, zenith.z], forKey: .zenith)
+        try container.encode([horizon.x, horizon.y, horizon.z], forKey: .horizon)
+        try container.encode([ground.x, ground.y, ground.z], forKey: .ground)
+        try container.encode(sunPitchDegrees, forKey: .sunPitch)
+        try container.encode(sunYawDegrees, forKey: .sunYaw)
+        try container.encode([sunRadiance.x, sunRadiance.y, sunRadiance.z], forKey: .sunRadiance)
+        try container.encode(sunAngularRadius, forKey: .sunAngularRadius)
+    }
+
+    /// The light a surface facing the sun receives: ``sunRadiance`` times the solid angle the disc
+    /// subtends.
+    ///
+    /// **This is what a directional light's intensity should be**, and deriving it rather than
+    /// storing it separately is what keeps the sun you *see* and the sun that *lights* the scene from
+    /// being two numbers that disagree. It also makes a physically true thing fall out for free: a
+    /// wider sun is both softer and stronger, because it is more sky.
+    public var sunIrradiance: SIMD3<Float> {
+        sunRadiance * (2 * .pi * (1 - cos(sunAngularRadius)))
     }
 
     /// Radiance arriving from `direction`, which need not be normalised.

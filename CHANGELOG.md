@@ -12,6 +12,59 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.5.0] — 2026-09-10
+
+**A level says what sky it is under.** It said where the sun was — two entries in `settings` — and
+everything else about the light was hard-coded in the game, so two levels could differ in the sun's
+angle and in nothing else.
+
+**Behaviour change**: `ProceduralSky`'s default `sunRadiance` is now a physically coherent figure
+rather than the hand-picked one it started with. See below.
+
+### Added
+
+- **`Level.sky`** — an optional `ProceduralSky`, encoded as a named block rather than more scalars.
+  A sky is three colours, two angles and a sun size; flattened into `[String: Double]` that is
+  fifteen keys with no structure and nothing to stop `skyZenithB` being set and `skyZenithG`
+  forgotten.
+- **`Level.resolvedSky`** — the sky to light a level with, whatever the file did or did not say.
+- **`ProceduralSky` is `Codable`**, written as **angles and colour triples with every key optional**.
+  A level file is edited by hand as often as by a tool, so a sky naming only `sunPitch` has to be
+  legal — otherwise the simplest edit is the longest one.
+- **`ProceduralSky.sunIrradiance`**, **`.sunPitchDegrees`**, **`.sunYawDegrees`**,
+  **`ProceduralSky.direction(pitchDegrees:yawDegrees:)`**, and **`radians_to_degrees`**.
+
+### Radiance is not irradiance, and they differ by about 130×
+
+**The one that would have been a silent disaster.** `sunRadiance` is how bright the disc *is*, looked
+at. What a surface receives is that times the solid angle the disc subtends — and a 0.05 radian disc
+subtends 0.0079 steradians. Use the radiance as a directional light's intensity and the scene is a
+hundred and thirty times too bright.
+
+Deriving one from the other is what stops the sun you *see* and the sun that *lights the scene* being
+two numbers that can disagree, and it makes a physically true thing fall out for nothing: **a wider
+sun is both softer and stronger**, because it is more sky.
+
+The default `sunRadiance` moved from 28 to 330 as a consequence — the old figure was chosen to look
+right in a reflection, before anything derived a light from it.
+
+### Migration, in the engine rather than in each game
+
+Levels already exist on disk saying `sunPitch` and `sunYaw` in `settings` — including any a player
+edited and saved, which live in Application Support and cannot be rewritten from here. `resolvedSky`
+reads them when there is no `sky` block. Doing it in `Level` is the difference between one migration
+and one per consumer.
+
+### Two things found doing it
+
+- **Overcast is dimmer, not just a dimmer sun.** The first attempt kept a bright sky and only dimmed
+  the sun, which lit everything flatly and washed the stone out to near-white. An overcast scene is
+  darker *and* flatter.
+- **Adding a stored property to `Level` segfaulted a test in another target.** Not a crash in the new
+  code: `WindageSampleCore` was still linked against the old struct layout, so a decoded `Level` read
+  a garbage array. `swift test` reported a `signal code 11` with no summary and the crash log pointed
+  at an unrelated assertion. **Delete the build directory when a shared type gains a field.**
+
 ## [0.4.1] — 2026-09-10
 
 **Image-based lighting.** A surface takes light from its whole environment, and how it takes it

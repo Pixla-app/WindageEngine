@@ -45,7 +45,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-09
 
-277 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+284 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -55,6 +55,38 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, **`Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`**, and **`Material`, `TextureSlot` and
 `TextureStore`**.
+
+## Done 2026-09-10 — a level says what sky it is under (0.5.0)
+
+**It said where the sun was and nothing else about the light.** `Level.sky` is a `ProceduralSky` now,
+written as its own block — three colours, two angles and a sun size — so the two sample levels are a
+clear afternoon and a low overcast one rather than the same scene with the sun moved.
+
+- **A named block, not more `settings` scalars.** Fifteen keys with no structure and nothing to stop
+  `skyZenithB` being set while `skyZenithG` is forgotten.
+- **Angles, not a vector**, because a person edits the file. The pitch/yaw convention moved into the
+  engine at the same time: once the sky is *in* the file, whatever reads it and whatever lights with
+  it have to agree, and the only place they can is there.
+- **Every key optional**, so a sky naming only `sunPitch` is legal.
+- **`resolvedSky` migrates the old `settings` keys**, because levels a player saved live in
+  Application Support and cannot be rewritten from here. In `Level` rather than in a game: one
+  migration instead of one per consumer.
+
+### Radiance is not irradiance — they differ by about 130×
+
+`sunRadiance` is how bright the disc *is*; what a surface receives is that times the solid angle it
+subtends, and a 0.05 rad disc subtends 0.0079 sr. `sunIrradiance` derives it, which stops the sun you
+see and the sun that lights the scene from drifting apart — and makes a wider sun both softer *and*
+stronger, which is physically true and now free. The default radiance moved 28 → 330 as a result.
+
+### Two things found doing it
+
+- **Overcast is dimmer, not just a dimmer sun.** Keeping a bright sky and dimming only the sun lit
+  everything flatly and washed the stone to near-white.
+- **Adding a stored property to `Level` segfaulted a test in another target.** `WindageSampleCore`
+  was still linked against the old layout, so a decoded `Level` read a garbage array. `swift test`
+  gave `signal code 11`, no summary, and a crash log pointing at an unrelated assertion. **Delete the
+  build directory when a shared type gains a field.**
 
 ## Done 2026-09-10 — image-based lighting (0.4.1)
 
@@ -425,12 +457,7 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-1. **The sky is a `ProceduralSky` chosen in code, not something a level says.** Each level names a
-   sun pitch and yaw and the environment is rebuilt from those — but its colours, its ground bounce
-   and its sun size are hard-coded in the sample. They belong in the level file, beside `sunYaw`,
-   which is a small `Level` change and would let two levels look genuinely different.
-
-2. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
+1. **Metallic, roughness, occlusion and emissive maps still have no consumer.** The slots exist and
    `TextureStore` resolves them; the sample binds base colour and normal and reads the other three as
    scalars. A metallic-roughness *map* is the same wiring again and needs an asset that has one.
 

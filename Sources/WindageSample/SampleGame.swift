@@ -110,6 +110,9 @@ final class SampleGame: GameLoop {
         /// **Packed into a `float4` rather than left as two loose floats.** Both sides have to agree
         /// on the padding between a `float3` and whatever follows, and a `float4` has no argument.
         var materialParams: SIMD4<Float>
+        /// The level's sun, in radiance. **`w` unused** — a `float4` so neither side has to reason
+        /// about the padding after a `float3`.
+        var sunColour: SIMD4<Float>
 
         init(viewProjection: matrix_float4x4,
              model: matrix_float4x4,
@@ -117,7 +120,8 @@ final class SampleGame: GameLoop {
              albedo: SIMD3<Float>,
              sunDirection: SIMD3<Float>,
              material: Material,
-             specularLOD: Float) {
+             specularLOD: Float,
+             sunColour: SIMD3<Float>) {
             self.viewProjection = viewProjection
             self.model = model
             self.normalMatrix = normalMatrix
@@ -125,6 +129,7 @@ final class SampleGame: GameLoop {
             self.sunDirection = sunDirection
             self.materialBaseColor = material.baseColor
             self.materialParams = SIMD4(material.metallic, material.roughness, specularLOD, 0)
+            self.sunColour = SIMD4(sunColour, 0)
         }
     }
 
@@ -692,8 +697,7 @@ final class SampleGame: GameLoop {
     /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
     private func rebuildEnvironment() {
         let started = CFAbsoluteTimeGetCurrent()
-        let sky = ProceduralSky(sunDirection: sunDirection)
-        guard let built = EnvironmentMap(device: engine.device, sky: sky) else {
+        guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
             print("WindageSample: no environment — metal will have nothing to reflect")
             return
         }
@@ -758,11 +762,17 @@ final class SampleGame: GameLoop {
         SIMD3(repeating: 1)
     }
 
-    private var sunDirection: SIMD3<Float> {
-        let pitch = radians_from_degrees(Float(level.settings["sunPitch"] ?? 45))
-        let yaw = radians_from_degrees(Float(level.settings["sunYaw"] ?? 135))
-        return simd_normalize(SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)))
-    }
+    /// **From the level's own sky.** This used to compute a direction from two `settings` keys, which
+    /// meant the sun and the sky it belongs to were two separate facts that could disagree — and one
+    /// of them was not in the file at all.
+    private var sunDirection: SIMD3<Float> { level.resolvedSky.sunDirection }
+
+    /// The light the sun actually delivers — its radiance times the solid angle its disc subtends,
+    /// which is a very small number and is why the two are not interchangeable.
+    ///
+    /// **An overcast level says so by having a dim sun and a bright sky**, which is a thing a level
+    /// can now express and previously could not.
+    private var sunIrradiance: SIMD3<Float> { level.resolvedSky.sunIrradiance }
 
     // MARK: - Levels
 
@@ -1134,7 +1144,8 @@ final class SampleGame: GameLoop {
                                     albedo: albedo,
                                     sunDirection: sunDirection,
                                     material: drawable.mesh.material(forSubmesh: 0),
-                                    specularLOD: environmentLOD)
+                                    specularLOD: environmentLOD,
+                                    sunColour: sunIrradiance)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
@@ -1148,7 +1159,8 @@ final class SampleGame: GameLoop {
                                     albedo: SIMD3(repeating: 1),
                                     sunDirection: sunDirection,
                                     material: figureMesh?.material(forSubmesh: 0) ?? Material(),
-                                    specularLOD: environmentLOD)
+                                    specularLOD: environmentLOD,
+                                    sunColour: sunIrradiance)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, figure: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 

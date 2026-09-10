@@ -793,6 +793,63 @@ things an eye finds wrong with a render.
 **Irradiance is not radiance.** The cube holds light integrated over the hemisphere; Lambert's BRDF is
 `albedo / π`, and skipping the division makes every ambient-lit surface π times too bright.
 
+## A level says what sky it is under (2026-09-10)
+
+A level said where the sun was — `sunPitch` and `sunYaw` in `settings` — and everything else about
+the light was hard-coded in the game. So two levels could differ in the sun's angle and in nothing
+else: not the colour of the sky, not how much light came from it, not whether it was overcast.
+
+`Level.sky` is a `ProceduralSky` now, written as its own block.
+
+### A named thing, not more scalars
+
+`settings` is `[String: Double]` on purpose and should stay that way. A sky is three colours, two
+angles and a sun size; flattened into scalars that is fifteen keys with no structure, no way to say a
+colour is a colour, and nothing to stop `skyZenithB` being set while `skyZenithG` is forgotten.
+
+**Angles rather than a vector, because a person writes this.** `sunPitch 34, sunYaw 295` is something
+you can picture and adjust; `(-0.75, 0.56, 0.35)` is three numbers that have to stay normalised and
+that nobody can read. The conversion moved into the engine at the same time — it lived in a game's
+source while one game read a sun out of a level, and the moment the sky itself is *in* the file, the
+thing that reads it and the thing that lights with it have to agree.
+
+**Every key optional.** A level file is edited by hand as often as by a tool, so a sky naming only
+`sunPitch` is legal and useful. Requiring all seven fields makes the simplest edit the longest one.
+
+### Radiance is not irradiance, and the two differ by about 130×
+
+**The one that would have been a silent disaster.** `sunRadiance` is how bright the sun's disc *is*,
+looked at — a large number, because a sun reflected in polished metal has to read as a sun. What a
+surface *receives* is that radiance times the solid angle the disc subtends, and a 0.05 radian disc
+subtends 0.0079 steradians. Use one as the other and the scene is a hundred and thirty times too
+bright.
+
+`sunIrradiance` derives it. That is what stops the sun you see and the sun that lights the scene from
+being two numbers that can drift apart, and it makes a physically true thing fall out for nothing:
+**a wider sun is both softer and stronger**, because it is more sky.
+
+> The default `sunRadiance` moved from 28 to 330 as a consequence. The old figure was picked to look
+> right in a reflection, at a time when nothing derived a light from it.
+
+### The migration is in the engine, not in each game
+
+Levels already exist on disk saying `sunPitch` and `sunYaw` in `settings` — including any a player
+edited and saved, which live in Application Support and cannot be rewritten from here. Those two keys
+still mean exactly what they meant, so `resolvedSky` reads them when there is no `sky` block. Doing
+that in `Level` is the difference between one migration and one per consumer.
+
+### Two things found doing it
+
+- **Overcast is dimmer, not just a dimmer sun.** The first attempt at the ruins' sky kept the bright
+  blue-sky values and only dimmed the sun; it lit everything flatly and washed the stone out to
+  near-white. An overcast scene is darker *and* flatter, and the sky is most of both.
+- **Adding a stored property to `Level` segfaulted a test in a different target.** Not a fault in the
+  new code: `WindageSampleCore` was still linked against the old struct layout, so a decoded `Level`
+  read a garbage array and `isEmpty` crashed. `swift test` reported `signal code 11` with no summary,
+  and the crash log pointed at an assertion that had nothing to do with the change. **Delete the
+  build directory when a type shared across targets gains a field** — the same family as the note
+  about moving a package invalidating its cache.
+
 ## Tone mapping (2026-09-10)
 
 **Shading does not stop at 1.** A sunlit surface with a specular highlight on it is genuinely

@@ -17,7 +17,8 @@ struct Uniforms {
     float3   albedo;          // the game's own tint: objective state, editor selection
     float3   sunDirection;
     float4   materialBaseColor;
-    float4   materialParams;  // x metallic, y roughness
+    float4   materialParams;  // x metallic, y roughness, z highest specular mip
+    float4   sunColour;       // the level's sun, in radiance; w unused
 };
 
 constant int kCascadeCount = 4;
@@ -406,10 +407,10 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
         ? sunVisibility(frame, in.worldPosition, shadowMap, shadowSampler)
         : 1.0;
 
-    // Radiance, not a colour: the sun is far brighter than white, which is what the HDR target and
-    // the tone map exist for.
-    const float3 sunRadiance = float3(1.0, 0.97, 0.92) * 2.6;
-    const float3 incoming = sunRadiance * NdotL * visibility;
+    // **The level's sun, not a constant.** Radiance rather than a colour — far brighter than white,
+    // which is what the HDR target and the tone map exist for. An overcast level says so by having a
+    // dim sun and a bright sky, and that is now something a level file can express.
+    const float3 incoming = uniforms.sunColour.rgb * NdotL * visibility;
 
     const float3 fresnel = fresnelSchlick(f0, VdotH);
     const float3 specular = fresnel

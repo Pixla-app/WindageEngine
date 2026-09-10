@@ -161,4 +161,80 @@ struct LevelAnchorTests {
         let placement = Level.Placement(mesh: "unknown", position: SIMD3(3, 0, 0), anchor: .beddedFootprint)
         #expect(level.worldPosition(of: placement, on: slope) == SIMD3(3, -3, 0))
     }
+
+    // MARK: - The sky the level is under
+
+    /// **The round trip has to be stable, not exact.** A sky is stored as two angles and rebuilt as a
+    /// direction, which is lossy on the first hop by construction — what matters is that saving a
+    /// loaded level and loading it again gives the same thing, because that is what the editor does
+    /// every time somebody presses save.
+    @Test("A sky survives being saved and loaded")
+    func skyRoundTrips() throws {
+        let original = Level(name: "SKY",
+                             sky: ProceduralSky(zenith: SIMD3(0.1, 0.2, 0.3),
+                                                horizon: SIMD3(0.4, 0.5, 0.6),
+                                                ground: SIMD3(0.05, 0.04, 0.03),
+                                                sunPitchDegrees: 22, sunYawDegrees: 137,
+                                                sunRadiance: SIMD3(300, 200, 100),
+                                                sunAngularRadius: 0.08))
+        let once = try Level.decode(from: original.encoded())
+        let twice = try Level.decode(from: once.encoded())
+        #expect(once == twice, "a level does not survive a second save")
+
+        let sky = try #require(once.sky)
+        #expect(sky.zenith == SIMD3(0.1, 0.2, 0.3))
+        #expect(sky.sunRadiance == SIMD3(300, 200, 100))
+        #expect(abs(sky.sunPitchDegrees - 22) < 1e-3)
+        #expect(abs(sky.sunYawDegrees - 137) < 1e-3)
+        #expect(abs(sky.sunAngularRadius - 0.08) < 1e-6)
+    }
+
+    /// **A level file is edited by hand as often as by a tool**, so a sky that names one field and
+    /// takes the rest as read has to be legal — otherwise the simplest edit is the longest one.
+    @Test("A sky may name only the fields it cares about")
+    func partialSkyDecodes() throws {
+        let json = """
+        {"formatVersion": 1, "name": "PARTIAL", "settings": {}, "placements": [], "markers": [],
+         "sky": {"sunPitch": 5}}
+        """
+        let level = try Level.decode(from: Data(json.utf8))
+        let sky = try #require(level.sky)
+        #expect(abs(sky.sunPitchDegrees - 5) < 1e-3)
+        #expect(sky.zenith == ProceduralSky().zenith, "an unnamed field did not fall back")
+    }
+
+    @Test("A colour that is not three numbers is refused")
+    func malformedColourIsRejected() {
+        let json = """
+        {"formatVersion": 1, "name": "BAD", "settings": {}, "placements": [], "markers": [],
+         "sky": {"zenith": [0.5, 0.5]}}
+        """
+        #expect(throws: (any Error).self) { try Level.decode(from: Data(json.utf8)) }
+    }
+
+    /// A wider sun is both softer *and* stronger, because it is more sky. Deriving the irradiance
+    /// rather than storing it is what makes that fall out instead of being two numbers to keep in
+    /// step.
+    @Test("Irradiance follows from the sun's radiance and its size")
+    func irradianceFollowsTheDisc() {
+        let small = ProceduralSky(sunRadiance: SIMD3(repeating: 100), sunAngularRadius: 0.05)
+        let wide = ProceduralSky(sunRadiance: SIMD3(repeating: 100), sunAngularRadius: 0.10)
+        #expect(wide.sunIrradiance.x > small.sunIrradiance.x * 3.5)
+        // And it is genuinely a small number: radiance used as an intensity is ~100x too bright.
+        #expect(small.sunIrradiance.x < 1)
+    }
+
+    @Test("Sun angles survive the trip through a direction")
+    func sunAnglesRoundTrip() {
+        for (pitch, yaw) in [(Float(0), Float(0)), (34, 295), (11, -120), (75, 180)] {
+            var sky = ProceduralSky()
+            sky.sunPitchDegrees = pitch
+            sky.sunYawDegrees = yaw
+            #expect(abs(sky.sunPitchDegrees - pitch) < 1e-2, "pitch \(pitch)")
+            let recovered = sky.sunYawDegrees
+            // Yaw comes back wrapped to -180…180, which is the same direction.
+            let difference = abs((recovered - yaw).truncatingRemainder(dividingBy: 360))
+            #expect(min(difference, 360 - difference) < 1e-2, "yaw \(yaw) came back \(recovered)")
+        }
+    }
 }

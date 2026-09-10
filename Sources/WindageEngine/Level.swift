@@ -58,18 +58,50 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     /// game. Anything that is not a number belongs in ``markers`` or in the game's own files.
     public var settings: [String: Double]
 
+    /// The sky this level is under, and therefore what everything in it is lit by.
+    ///
+    /// **A named thing rather than more entries in ``settings``.** A sky is three colours, two angles
+    /// and a sun size; flattened into a scalar dictionary that is fifteen keys with no structure, no
+    /// way to say a colour is a colour, and nothing to stop `skyZenithB` being set and `skyZenithG`
+    /// forgotten. It was in the game's source until 2026-09-10, which meant two levels could differ
+    /// in where the sun was and not in what the sky looked like.
+    ///
+    /// Optional, because a level that says nothing about its sky gets a plausible one.
+    public var sky: ProceduralSky?
+
     public var placements: [Placement]
     public var markers: [Marker]
 
     public init(name: String,
                 settings: [String: Double] = [:],
+                sky: ProceduralSky? = nil,
                 placements: [Placement] = [],
                 markers: [Marker] = []) {
         self.formatVersion = Level.currentVersion
         self.name = name
         self.settings = settings
+        self.sky = sky
         self.placements = placements
         self.markers = markers
+    }
+
+    /// The sky to light this level with, whatever the file did or did not say.
+    ///
+    /// ### The migration, and why it is here rather than in a game
+    ///
+    /// **Levels already exist on disk that say `sunPitch` and `sunYaw` in ``settings``** — including
+    /// any a player edited and saved, which live in Application Support and are not something this
+    /// repository can rewrite. Those two keys are how the sun was expressed before there was a sky,
+    /// so a file with them and no `sky` block still means something, and it means it exactly.
+    ///
+    /// Reading them here rather than in a game is the difference between one migration and one per
+    /// consumer.
+    public var resolvedSky: ProceduralSky {
+        if let sky { return sky }
+        guard let pitch = settings["sunPitch"], let yaw = settings["sunYaw"] else {
+            return ProceduralSky()
+        }
+        return ProceduralSky(sunPitchDegrees: Float(pitch), sunYawDegrees: Float(yaw))
     }
 
     /// How a placement meets the ground.

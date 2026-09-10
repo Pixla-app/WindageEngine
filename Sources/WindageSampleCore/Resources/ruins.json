@@ -541,8 +541,30 @@
       "yaw" : 4.4
     }
   ],
-  "settings" : {
-    "sunPitch" : 26,
-    "sunYaw" : 285
+  "settings" : {},
+  "sky" : {
+    "ground" : [
+      0.1,
+      0.09,
+      0.07
+    ],
+    "horizon" : [
+      0.3,
+      0.28,
+      0.26
+    ],
+    "sunAngularRadius" : 0.1,
+    "sunPitch" : 11,
+    "sunRadiance" : [
+      38,
+      24,
+      13
+    ],
+    "sunYaw" : 240,
+    "zenith" : [
+      0.15,
+      0.17,
+      0.21
+    ]
   }
 }

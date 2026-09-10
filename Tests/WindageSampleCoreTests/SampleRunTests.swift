@@ -232,7 +232,33 @@ struct SecondLevelTests {
                 "a run sized from one level must visibly not fit the other")
         #expect(first.markers(ofKind: "spawn").first?.position
                 != second.markers(ofKind: "spawn").first?.position)
-        #expect(first.settings["sunYaw"] != second.settings["sunYaw"])
+        // **The skies, not two entries in `settings`.** They differ in more than the sun's angle
+        // now — one is a bright afternoon and the other a low, dim, overcast one — and a level that
+        // could only say where the sun was could not have expressed that.
+        #expect(first.resolvedSky.sunYawDegrees != second.resolvedSky.sunYawDegrees)
+        #expect(first.resolvedSky.zenith != second.resolvedSky.zenith,
+                "both levels are under the same sky, so nothing tests that a level owns one")
+        #expect(first.resolvedSky.sunIrradiance.x > second.resolvedSky.sunIrradiance.x * 2,
+                "the overcast level's sun is not meaningfully dimmer than the clear one's")
+    }
+
+    /// **A level written before there was a sky still means what it said.** Any level a player edited
+    /// and saved lives in Application Support and cannot be rewritten from here, so the two settings
+    /// keys that used to carry the sun have to keep working.
+    @Test("A level with the old sun settings and no sky still gets that sun")
+    func legacySunSettingsStillWork() {
+        let legacy = Level(name: "OLD", settings: ["sunPitch": 20, "sunYaw": 100])
+        #expect(legacy.sky == nil)
+        #expect(abs(legacy.resolvedSky.sunPitchDegrees - 20) < 1e-3)
+        #expect(abs(legacy.resolvedSky.sunYawDegrees - 100) < 1e-3)
+    }
+
+    /// And a level that says nothing at all still gets a sky rather than a black void.
+    @Test("A level with no sky and no settings still gets one")
+    func noSkyStillLights() {
+        let bare = Level(name: "BARE")
+        #expect(bare.resolvedSky.sunIrradiance.x > 0)
+        #expect(bare.resolvedSky.zenith == ProceduralSky().zenith)
     }
 
     /// **The one that actually bit.** Meshes were loaded once at startup from the first level's list,

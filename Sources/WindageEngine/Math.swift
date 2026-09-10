@@ -102,6 +102,13 @@ public nonisolated func radians_from_degrees(_ degrees: Float) -> Float {
     return (degrees / 180) * .pi
 }
 
+/// The way back. **Needed the moment angles are something a file stores** rather than something a
+/// game computes once — a level writes degrees, and whatever reads it has to be able to write them
+/// out again unchanged.
+public nonisolated func radians_to_degrees(_ radians: Float) -> Float {
+    return (radians / .pi) * 180
+}
+
 /// The transform that keeps a normal perpendicular to its surface: the inverse transpose of the
 /// upper-left 3×3.
 ///
