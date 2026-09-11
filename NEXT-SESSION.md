@@ -57,7 +57,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-469 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+477 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -70,6 +70,18 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the landing dip (0.6.12)
+
+**A landing shows now.** `CharacterController` kicks a critically damped spring by the impact: the eye
+drops (`landingDrop`, in `eye`) and the view nods (`landingCameraDip`, view only, like the slide's).
+Scaled from 3 to 12 m/s — a jump dips a third, a 3.6 m fall 16 cm and 3.4°. Down in 70 ms, back in
+0.4 s, no overshoot.
+
+**A test found the Euler-integrated spring 20% short**; it is stepped by its exact solution now, and
+the curve is the same at 60 and 240 Hz. **Driven in the sample**: the drop off the steps logs 7.0 m/s
+and a 7 cm, 1.5° dip, as the tuning predicts; a frame paused mid-dip shows the horizon 1.5° higher
+than the settled one.
 
 ## Done 2026-09-10 — controller rebinding (0.6.11)
 
@@ -877,22 +889,23 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A camera dip on landing.** The controller reports how hard a landing was and nothing shows it
-   but the sound. A short dip of the view, scaled by impact speed, applied to the view and never to
-   the aim — the same rule as the slide's. **Proved in the sample by** the scripted drop off the steps
-   logging the dip's depth, and a screenshot mid-dip.
-
-2. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
+1. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
    kept together by a test. Move the brazier in the in-game editor and the lamp stays where it was.
    A placement should be able to carry its light, offset from it, placed through the transform
    hierarchy. **Proved in the sample by** moving a brazier in the editor and the pool of light going
    with it.
 
-3. **Aim and look for a controller: sensitivity per device.** The settings have one look sensitivity,
-   and a mouse and a stick want very different ones — a value that is right for one is unusable on
-   the other, so a player who uses both has to choose which to break. Separate mouse and stick
-   sensitivities, and invert per device. **Proved in the sample by** a scripted stick turn and a mouse
-   turn giving the rates each setting says.
+2. **Separate mouse and stick sensitivity.** The settings have one look sensitivity multiplying
+   both, and a mouse and a stick want very different ones — a player who uses both has to choose
+   which to break. Separate sensitivities, and invert per device. **Proved in the sample by** a
+   scripted stick turn and a mouse turn giving the rates each setting says.
+
+3. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
+   however fast the feet are going. The controller has a stride phase now, and a small bob locked to
+   it — down on each footfall, a little sideways between them — is what makes a walk read as one.
+   **An off switch in the settings from the start**, because bob is a known cause of motion sickness.
+   **Proved in the sample by** the scripted walk logging the bob's height walking, sprinting and
+   crouched, and logging none with the setting off.
 
 ## Parked — not next, and why
 

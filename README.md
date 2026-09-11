@@ -989,6 +989,17 @@ footsteps per tread still found two**. The footprint's leading edge reaches each
 is refused, so it is the ground-following in the vertical step that lifts the body, and the step-up
 was never running on stairs at all. The rule is in both places now.
 
+### And a landing you can feel (2026-09-11)
+
+The controller turns a landing's impact into a critically damped spring: the eye drops as the legs
+take the weight — `landingDrop`, part of `eye` — and the view nods with it — `landingCameraDip`, for
+the view only, by the slide's rule. Scaled between 3 and 12 m/s, so a jump dips a third and a 3.6 m fall
+dips the whole 16 cm and 3.4°.
+
+**Stepped by the spring's exact solution.** The first version integrated it with semi-implicit Euler
+and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
+form, and using it makes the curve the same at any step size.
+
 ### What is underfoot
 
 `groundSolid` is the index of the box the feet are on, or nil for terrain. It is what makes a stone

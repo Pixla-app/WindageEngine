@@ -1870,7 +1870,7 @@ final class SampleGame: GameLoop {
     private var stepsPlayed = 0
 
     /// What the scripted walk reports for the segment in progress: footsteps, and landings.
-    private var tally = (steps: 0, surfaces: Set<String>(), landings: [String]())
+    private var tally = (steps: 0, surfaces: Set<String>(), landings: [String](), deepestDip: Float(0))
 
     /// Plays whatever the body just did.
     ///
@@ -1978,9 +1978,14 @@ final class SampleGame: GameLoop {
                     var heard = tally.steps == 1 ? "1 footstep" : "\(tally.steps) footsteps"
                     if !tally.surfaces.isEmpty { heard += " on " + tally.surfaces.sorted().joined(separator: " and ") }
                     if !tally.landings.isEmpty { heard += ", landed at " + tally.landings.joined(separator: ", ") }
+                    if tally.deepestDip > 0 {
+                        heard += String(format: ", eye dipped %.0f cm and the view %.1f°",
+                                        tally.deepestDip * body.tuning.landingDropMax * 100,
+                                        tally.deepestDip * body.tuning.landingDipMax * 180 / .pi)
+                    }
                     print("WindageSample:     \(heard)")
                 }
-                tally = (0, [], [])
+                tally = (0, [], [], 0)
             }
         }
     }
@@ -2107,6 +2112,7 @@ final class SampleGame: GameLoop {
                           in: surroundings)
                 camera.position = body.eye
                 playFootfalls()
+                tally.deepestDip = max(tally.deepestDip, body.landingCompression)
                 // **Dust on a landing that was a fall**, not on every step down a stair: 4 m/s is a
                 // drop of about 40 cm at this gravity, which is where a landing starts to be felt.
                 if wasAirborne && body.isGrounded && fallSpeed > 4 {
@@ -2187,7 +2193,9 @@ final class SampleGame: GameLoop {
     /// follows.
     private func displayCamera(_ interpolation: Float) -> Camera {
         var view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
-        view.pitch += body.slideCameraDip
+        // Both kicks are the view's, and both are the body's to report: the slide's, and the head
+        // nodding with the legs on a landing. The landing's *drop* is already in `body.eye`.
+        view.pitch += body.slideCameraDip + body.landingCameraDip
         return view
     }
 

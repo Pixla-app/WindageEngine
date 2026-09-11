@@ -169,6 +169,29 @@ public nonisolated struct CharacterController: Sendable {
         /// to have taken a step.
         public var firstStepPhase: Float = 0.6
 
+        /// How far the eye drops, in metres, and how far the view tips down, in radians, on the
+        /// hardest landing — scaled down for softer ones.
+        ///
+        /// **Both, because they say different things.** The drop is the legs taking the weight: the
+        /// eye really is lower for a moment, and it moves with the body. The tip is the head nodding
+        /// with it, and like the slide's it is for the **view only** — see ``landingCameraDip``. A
+        /// drop alone reads as the floor sinking; a tip alone reads as the camera being nudged.
+        public var landingDropMax: Float = 0.16
+        public var landingDipMax: Float = 0.06
+
+        /// Landing speeds, metres per second, below which there is no dip and above which it is full.
+        ///
+        /// **A jump's own landing is 6.3 m/s**, so it dips about a third: enough to feel the ground
+        /// arrive, not enough to make hopping about a camera shake. The hardest, 12, is a fall of 3.6 m.
+        public var landingSoftImpact: Float = 3
+        public var landingHardImpact: Float = 12
+
+        /// How quickly the knees give and recover, radians per second — a critically damped spring.
+        /// At 14 the eye is at its lowest 70 ms after touching down and back within about 0.4 s:
+        /// **down fast enough to be the impact, up slowly enough to be the legs.** Critically damped so
+        /// it never overshoots, which would read as a bounce.
+        public var landingSpring: Float = 14
+
         public init() {}
 
         /// Metres per footfall at a speed.
@@ -255,7 +278,7 @@ public nonisolated struct CharacterController: Sendable {
     }
 
     /// Where the eye is: the feet, the posture, and whatever the eye has not yet settled.
-    public var eye: SIMD3<Float> { feet + SIMD3(0, height + settling, 0) }
+    public var eye: SIMD3<Float> { feet + SIMD3(0, height + settling - landingDrop, 0) }
 
     /// The body's box at the feet's current position.
     public var bounds: BoundingBox { body(at: feet, eyeHeight: height) }
@@ -273,6 +296,19 @@ public nonisolated struct CharacterController: Sendable {
         let t = slideProgress
         return -tuning.slideDipRadians * (1 - t) * (1 - t) * (1 + 3 * t)
     }
+
+    /// How compressed the legs are from the last landing, 0 (standing) to about 1 (the hardest).
+    public private(set) var landingCompression: Float = 0
+    private var compressionRate: Float = 0
+
+    /// How far the eye is below where it would stand, in metres, from the last landing. Part of
+    /// ``eye`` — the body really is lower.
+    public var landingDrop: Float { landingCompression * tuning.landingDropMax }
+
+    /// A pitch kick for the *displayed* camera from the last landing, in radians, nose down. **Applied
+    /// to the view, never to the aim**, by the same rule as ``slideCameraDip``: a player who fired on
+    /// landing would otherwise shoot the ground.
+    public var landingCameraDip: Float { -landingCompression * tuning.landingDipMax }
 
     // MARK: - One step
 
@@ -370,6 +406,18 @@ public nonisolated struct CharacterController: Sendable {
         // The eye catches up with the ground. Framed as a fraction per second, so the rate means the
         // same thing whatever the step is.
         settling *= 1 - min(1, tuning.settleRate * dt)
+
+        // The knees: a critically damped spring, kicked by a landing and left to recover.
+        //
+        // **Stepped by its exact solution, not integrated.** The first version used semi-implicit
+        // Euler — stable, and 20% shy of the depth it was kicked to at 120 Hz, which a test caught.
+        // A critically damped spring has a closed form, so there is no reason to approximate one:
+        // this lands on the same curve at any step size.
+        let omega = tuning.landingSpring
+        let decay = exp(-omega * dt)
+        let x0 = landingCompression, v0 = compressionRate
+        landingCompression = max(0, (x0 + (v0 + omega * x0) * dt) * decay)
+        compressionRate = (v0 - omega * (v0 + omega * x0) * dt) * decay
         if simd_length_squared(direction) > 0 { lastDirection = direction }
     }
 
@@ -498,6 +546,12 @@ public nonisolated struct CharacterController: Sendable {
                 // **Speed at the moment of contact**, before it is zeroed — the number a landing's
                 // loudness, a camera dip or fall damage all want.
                 events.append(.landed(impactSpeed: -verticalVelocity))
+                // **A kick, not a position**: the spring's velocity is what the landing sets, so the
+                // eye travels down to its lowest rather than teleporting there. For a critically
+                // damped spring from rest, an initial rate of ω·e·s peaks at exactly s.
+                let span = max(tuning.landingHardImpact - tuning.landingSoftImpact, 1e-3)
+                let strength = simd_clamp((-verticalVelocity - tuning.landingSoftImpact) / span, 0, 1)
+                compressionRate += strength * tuning.landingSpring * Float(M_E)
                 next = support
                 verticalVelocity = 0
                 isGrounded = true

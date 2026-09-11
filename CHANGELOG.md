@@ -12,6 +12,42 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.12] — 2026-09-11
+
+**The landing dip.** A hard landing now shows as well as sounds: the eye drops as the legs take the
+weight and the view nods down with it, then both recover.
+
+### Added
+
+- **`CharacterController.landingCompression`**, **`landingDrop`** (metres, part of `eye`) and
+  **`landingCameraDip`** (radians, for the view only).
+- **`Tuning.landingDropMax`, `landingDipMax`, `landingSoftImpact`, `landingHardImpact`,
+  `landingSpring`.**
+
+### Decisions
+
+- **Both a drop and a tip.** The drop is the body — the eye really is lower for a moment, and moves
+  with it. The tip is the head nodding, and like the slide's it goes on the view and never on the aim,
+  or a player who fired on landing would shoot the ground. A drop alone reads as the floor sinking; a
+  tip alone as the camera being nudged.
+- **Scaled by impact between 3 and 12 m/s.** A jump's own landing, 6.3 m/s, dips about a third; the
+  hardest, a 3.6 m fall, dips 16 cm and 3.4°. A fall shorter than a step is a step down and does not dip.
+- **A critically damped spring, kicked rather than set.** The landing sets the spring's velocity, so
+  the eye travels down to its lowest in about 70 ms instead of teleporting there, and recovers in about
+  0.4 s without overshooting — an overshoot reads as a bounce.
+
+### Found by the tests
+
+**The first spring was integrated with semi-implicit Euler, and at 120 Hz it reached 20% less than it
+was kicked to.** A critically damped spring has a closed form, so it is stepped by its exact solution
+now — the same curve at 60 Hz and 240 Hz, which a test holds.
+
+### Verified in the running sample
+
+The scripted drop off the 1.2 m steps logs a landing at 7.0 m/s and **a dip of 7 cm and 1.5°** — what
+the tuning says for that impact. Paused 74 ms after touching down and compared with the same spot
+settled, the horizon sits about 1.5° higher on screen.
+
 ## [0.6.11] — 2026-09-10
 
 **Controller rebinding.** Jump, crouch, sprint and brace can be moved to any face button, shoulder or

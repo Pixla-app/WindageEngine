@@ -625,3 +625,127 @@ struct CharacterEventTests {
         #expect(c.events.isEmpty)
     }
 }
+
+// MARK: - The landing dip
+
+@Suite("Character controller — the landing dip")
+struct CharacterLandingDipTests {
+
+    /// Drops from a height and records the compression every step from the landing on.
+    private func drop(from height: Float) -> (curve: [Float], impact: Float, controller: CharacterController) {
+        var c = CharacterController(feet: SIMD3(0, height, 0))
+        var curve: [Float] = []
+        var impact: Float = 0
+        var landed = false
+        for _ in 0..<(120 * 3) {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            for case .landed(let speed) in c.events { impact = speed; landed = true }
+            if landed { curve.append(c.landingCompression) }
+        }
+        return (curve, impact, c)
+    }
+
+    @Test("A fall dips as far as its impact says, and no further")
+    func depthFollowsImpact() {
+        let result = drop(from: 1.8)
+        let tuning = CharacterController.Tuning()
+        let expected = (result.impact - tuning.landingSoftImpact)
+            / (tuning.landingHardImpact - tuning.landingSoftImpact)
+        let peak = result.curve.max() ?? 0
+        #expect(abs(peak - expected) < expected * 0.12, "peaked at \(peak) against \(expected)")
+    }
+
+    /// **Down fast enough to be the impact, up slowly enough to be the legs.**
+    @Test("It bottoms out quickly and recovers within half a second, without bouncing")
+    func shape() {
+        let curve = drop(from: 1.8).curve
+        let peakStep = curve.firstIndex(of: curve.max() ?? 0) ?? 0
+        let peakSeconds = Float(peakStep) * step
+        #expect(peakSeconds > 0.04 && peakSeconds < 0.11, "lowest at \(peakSeconds) s")
+        #expect(curve[Int(0.5 / step)] < 0.03, "still \(curve[Int(0.5 / step)]) compressed at 0.5 s")
+        #expect(curve.allSatisfy { $0 >= 0 }, "the legs overshot and lifted the eye")
+        // Critically damped: after the lowest point, it only ever comes back up.
+        #expect(zip(curve[peakStep...], curve[(peakStep + 1)...]).allSatisfy { $0 >= $1 - 1e-6 })
+    }
+
+    @Test("A harder landing dips deeper, up to a limit")
+    func harderIsDeeper() {
+        let low = drop(from: 0.8).curve.max() ?? 0
+        let high = drop(from: 2.5).curve.max() ?? 0
+        let extreme = drop(from: 30).curve.max() ?? 0
+        #expect(high > low)
+        #expect(extreme < 1.12, "the hardest landing compressed \(extreme)")
+    }
+
+    /// A fall shorter than a step is a step down, not a landing, so the soft case is a small hop.
+    @Test("A landing too soft to feel does not dip")
+    func softIsFlat() {
+        var tuning = CharacterController.Tuning()
+        tuning.jumpSpeed = 2.5                       // lands at 2.5 m/s, under the soft threshold
+        var c = CharacterController(feet: .zero, tuning: tuning)
+        var landed = false
+        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+        for _ in 0..<120 {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            if c.events.contains(where: { if case .landed = $0 { true } else { false } }) { landed = true }
+            #expect(c.landingCompression == 0)
+        }
+        #expect(landed)
+    }
+
+    /// The exact step lands on the same curve however long the step is.
+    @Test("The dip is the same at 60 Hz and 240 Hz")
+    func stepSizeIndependent() {
+        func peak(hz: Float) -> Float {
+            let dt = 1 / hz
+            var c = CharacterController(feet: SIMD3(0, 1.8, 0))
+            var deepest: Float = 0
+            for _ in 0..<Int(hz * 2) {
+                c.step(yaw: 0, input: MovementInput(), deltaTime: dt, in: flat)
+                deepest = max(deepest, c.landingCompression)
+            }
+            return deepest
+        }
+        // Not identical — the landing speed itself depends on where the step boundaries fall.
+        #expect(abs(peak(hz: 60) - peak(hz: 240)) < 0.06, "\(peak(hz: 60)) against \(peak(hz: 240))")
+    }
+
+    /// The legs take the weight — the eye really is lower — while the feet stay on the ground.
+    @Test("The eye drops and the feet do not")
+    func eyeNotFeet() {
+        var c = CharacterController(feet: SIMD3(0, 1.8, 0))
+        var deepest: Float = 0
+        for _ in 0..<(120 * 2) {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            if c.isGrounded {
+                #expect(c.feet.y == 0)
+                deepest = max(deepest, c.tuning.eyeHeight - (c.eye.y - c.feet.y))
+            }
+        }
+        #expect(deepest > 0.05, "the eye dropped only \(deepest) m")
+        #expect(abs(deepest - (drop(from: 1.8).curve.max() ?? 0) * c.tuning.landingDropMax) < 0.01)
+    }
+
+    @Test("The view tips down with the drop, and comes back")
+    func viewTips() {
+        var c = CharacterController(feet: SIMD3(0, 1.8, 0))
+        var lowest: Float = 0
+        for _ in 0..<(120 * 2) {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            lowest = min(lowest, c.landingCameraDip)
+        }
+        #expect(lowest < -0.02)
+        #expect(abs(c.landingCameraDip) < 1e-3)
+    }
+
+    @Test("Stepping down a stair does not dip")
+    func stairsDoNotDip() {
+        let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 0.3, 3))
+        var c = CharacterController(feet: SIMD3(0, 0.3, 0))
+        for _ in 0..<(120 * 2) {
+            c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step,
+                   in: CharacterController.Surroundings(solids: [platform]))
+            #expect(c.landingCompression == 0)
+        }
+    }
+}
