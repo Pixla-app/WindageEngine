@@ -12,6 +12,61 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.6] — 2026-09-10
+
+**A body with feet.** `CharacterController` walks, stands on things, steps up, falls off, jumps,
+crouches and slides. The sample walks on it instead of pinning the camera to one height.
+
+### Added
+
+- **`CharacterController`**, with `Surroundings` (terrain plus solid boxes) and `Tuning`.
+- **`InputState.isJumpHeld`** — Space, or Cross on a pad.
+
+### Changed
+
+- **`Camera`'s documentation**: it is an eye, not a body. `advance(_:deltaTime:)` still flies, which
+  is right for a photo mode or an editor; a game with feet moves a `CharacterController` instead.
+  No code change.
+
+### Extracted, then finished
+
+The walking half is not new. A game on this engine has shipped it for a while — movement along the
+ground plane rather than the look direction, a crouch that costs speed, a slide that carries a
+sprint into it, an eye that settles over rough ground — and its numbers came across tuned, with their
+reasons. **What it lacked was anything to stand on but a height function**, so it had no gravity, no
+step height and no obstacles. The sample's crates and steps are what showed the seam: the ground is a
+question the controller asks, which is `Surroundings`.
+
+### Decisions
+
+- **The body is a box.** Against a world of axis-aligned boxes that is exact — no contact normals,
+  nothing to resolve. A capsule glances off corners where a box catches; moving one axis at a time
+  takes most of that back.
+- **The feet move at once; the eye follows.** Collision is resolved against the feet, exactly. Every
+  change in the height under a grounded player — a step, a kerb, the next bump of a terrain — is eased
+  into the eye over a moment. That is what makes stairs read as stairs. A fall is never eased.
+- **Step height 0.45 m, jump about a metre.** A stair and a low plinth are walked up; a crate is not,
+  and cannot be jumped onto. A crate you could walk onto would not be cover.
+- **Gravity 20 m/s², about twice real.** At 9.8 a fall reads as floating: a first-person camera has
+  no body in view to give the drop a scale.
+- **Coyote time and a jump buffer**, a tenth of a second each, so a jump on the last frame of a ledge
+  or just before landing is not eaten.
+- **No jump out of a slide.** A slide is committed, and a jump from sprint speed is exactly the
+  movement tech its tuning forbids.
+
+### What the sample found
+
+**A blocked step stopped the player where the last whole step ended.** The first in-app run had the
+player halt 4 cm short of a crate at a walk; the arithmetic says 15 cm at a sprint, a gap visible when
+you turn to look. A blocked axis now moves to the face. The test for it fails without the fix.
+
+### Verified in the running sample
+
+The sample gained `WINDAGE_SAMPLE_WALK`, a short scripted walk that replays keys and logs where the
+feet end each segment. On the ruins: up four 30 cm steps to **1.20 m**; off the end, in the air, down
+to **0.00**; a jump peaking at **0.97 m**; stopped at the crate's face, **z −12.95** against a face at
+−13.25 less the 0.3 m radius, at a walk and at a sprint; a jump into the crate does not get onto it.
+
 ## [0.6.5] — 2026-09-10
 
 **Things that hang off other things.** `TransformHierarchy` is parenting — one transform expressed

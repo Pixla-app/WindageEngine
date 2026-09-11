@@ -218,6 +218,17 @@ public final class InputState {
         sprintingFromKeyboard || steadyingFromPad
     }
 
+    /// Jump: **Space**, or Cross on a pad. **Held state, not a press** — a controller that jumps
+    /// finds the press itself, because it also has to remember one that arrived a moment before
+    /// landing, and only it knows when that was.
+    ///
+    /// Read separately from `MovementInput.vertical`, which the same keys also drive for a title that
+    /// flies: `C` pulls that axis down, so holding Space and C together reads as zero there and would
+    /// swallow a jump taken from a crouch.
+    public var isJumpHeld: Bool {
+        pressedKeys.contains(Key.space) || (gamepad?.buttonA.isPressed ?? false)
+    }
+
     private var steadyingFromPad = false
     private var crouchButtonWasPressed = false
 
@@ -232,10 +243,10 @@ public final class InputState {
     /// **The worry that made it held does not survive contact with the cost.** A latched posture
     /// that is only steadier would indeed get switched on once and never off — but crouching costs
     /// 55% of your speed and the whole sprint, so what stops it being the default is the trade, not
-    /// the button. See `Footing.crouchedEyeHeight`.
+    /// the button. See `CharacterController.Tuning.crouchedEyeHeight`.
     ///
     /// The same keys previously drove `MovementInput.vertical` for the free-flying camera. That axis
-    /// is still there for a title that flies; nothing in a game with feet reads it.
+    /// is still there for a title that flies; a game with feet reads ``isJumpHeld`` instead.
     public private(set) var isCrouching = false
 
     /// Whether the player is **braced** — resting the weapon on something rather than holding it up.

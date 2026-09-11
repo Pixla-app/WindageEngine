@@ -33,10 +33,11 @@ public nonisolated struct MovementInput: Equatable, Sendable {
 
 /// A first-person camera, in metres.
 ///
-/// **Free-flying for now.** There is no player rig, no gravity and no collision — this exists so
-/// there is something to look at the world with while the renderer is built. When a player
-/// character arrives, the horizontal-movement rule changes (walking moves along the ground plane,
-/// not along the look direction) and this becomes the eye attached to that character.
+/// **An eye, not a body.** ``advance(_:deltaTime:)`` flies — along the look direction, through
+/// anything — which is right for an editor, a photo mode or a title that genuinely flies. A game
+/// with feet moves a ``CharacterController`` instead and puts this camera at its ``CharacterController/eye``:
+/// walking is along the ground plane, not the look direction, and that difference is the reason the
+/// two are separate types.
 ///
 /// Orientation is yaw and pitch, with no roll. Quaternions would buy nothing here: pitch is clamped
 /// short of vertical, so the degenerate case they exist to avoid is unreachable, and Euler angles

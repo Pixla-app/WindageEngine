@@ -632,6 +632,78 @@
         "objective"
       ],
       "yaw" : 4.4
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        -0.7,
+        4
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        -0.4,
+        3
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        -0.1,
+        2
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        0.2,
+        1
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        0.2,
+        0
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        4.5,
+        0.2,
+        -1
+      ],
+      "tags" : [
+        "solid"
+      ]
     }
   ],
   "settings" : {},

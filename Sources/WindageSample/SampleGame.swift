@@ -98,6 +98,66 @@ final class SampleGame: GameLoop {
         let position: SIMD3<Float>
     }
 
+    /// See `scriptedWalk`.
+    private struct ScriptedWalk {
+        struct Keys {
+            var movement = MovementInput()
+            var jump = false
+            var crouch = false
+        }
+        private let segments: [(label: String, keys: Keys, seconds: Float)]
+        private var index = 0
+        private var elapsed: Float = 0
+        private var peak: Float = -.greatestFiniteMagnitude
+
+        init?(_ script: String?) {
+            guard let script, !script.isEmpty else { return nil }
+            var parsed: [(String, Keys, Float)] = []
+            for token in script.split(whereSeparator: \.isWhitespace) {
+                let parts = token.split(separator: ":")
+                guard parts.count == 2, let seconds = Float(parts[1]) else {
+                    print("WindageSample: WINDAGE_SAMPLE_WALK wants keys:seconds — ignoring '\(token)'")
+                    continue
+                }
+                var keys = Keys()
+                for key in parts[0].split(separator: "+") {
+                    switch key {
+                    case "w": keys.movement.forward += 1
+                    case "s": keys.movement.forward -= 1
+                    case "d": keys.movement.strafe += 1
+                    case "a": keys.movement.strafe -= 1
+                    case "shift": keys.movement.sprint = true
+                    case "space": keys.jump = true
+                    case "c": keys.crouch = true
+                    case "wait": break
+                    default: print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(key)'")
+                    }
+                }
+                parsed.append((String(token), keys, seconds))
+            }
+            guard !parsed.isEmpty else { return nil }
+            segments = parsed
+        }
+
+        /// The keys held right now, or nil once the script has run out — at which point the keyboard
+        /// has the player back.
+        var keys: Keys? { index < segments.count ? segments[index].keys : nil }
+
+        mutating func advance(by seconds: Float, body: CharacterController) {
+            guard index < segments.count else { return }
+            elapsed += seconds
+            peak = max(peak, body.feet.y)
+            guard elapsed >= segments[index].seconds else { return }
+            let f = body.feet
+            print(String(format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@",
+                         segments[index].label, f.x, f.y, f.z, peak,
+                         body.isGrounded ? "on the ground" : "in the air"))
+            index += 1
+            elapsed = 0
+            peak = -.greatestFiniteMagnitude
+        }
+    }
+
     /// One lamp as the shader reads it: **`w` carries the range**, so a `float3` and a scalar pack
     /// into one `float4` and there is no padding for the two sides to disagree about.
     private struct PackedLight {
@@ -333,9 +393,21 @@ final class SampleGame: GameLoop {
     /// - `WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch` — stand there instead of at the spawn. Angles in
     ///   degrees, because they are numbers a person types.
     ///
-    /// **`y` becomes the eye height rather than a one-off position**, because the walk clamps the
-    /// camera to the ground every step: set as a position it would be true for one frame and then
-    /// quietly gone, which is worse than not being settable at all.
+    /// **Placing the camera this way makes it fly.** A screenshot position is a viewpoint, not
+    /// somewhere to stand: with a body under it, gravity would have pulled a raised camera to the
+    /// ground before the first frame was drawn, and the picture would be of the floor.
+    /// A walk read from `WINDAGE_SAMPLE_WALK`, played back in place of the keyboard.
+    ///
+    /// **The same argument as the two overrides above, for movement.** A character controller is
+    /// judged by walking it somewhere, and "I walked up the steps and it felt right" is not
+    /// something anybody else can repeat. A script is: the same keys for the same seconds from the
+    /// same spawn reach the same place, and the log says where that was.
+    ///
+    /// `WINDAGE_SAMPLE_WALK="d:0.75 w:1.6 w+space:0.1"` — segments of keys and seconds, keys joined
+    /// with `+` from `w a s d shift space c`, or `wait` for none. Each segment's end is printed with where the feet are,
+    /// the highest they got during it, and whether they are on the ground.
+    private var scriptedWalk = ScriptedWalk(ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_WALK"])
+
     private static var startingLevel: Int {
         guard let value = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_LEVEL"],
               let index = Int(value) else { return 0 }
@@ -356,9 +428,16 @@ final class SampleGame: GameLoop {
     private var levelURL: URL { SampleLevel.writableURL(levelIndex) }
     private var levelPath: String
 
-    /// How far the eye is above this sample's flat ground. **A property rather than a literal in the
-    /// step** so `WINDAGE_SAMPLE_CAMERA` can raise it — see `startingCamera`.
-    private let eyeHeight: Float
+    /// The player's body. **The camera sits at its eye and no longer moves the player itself** —
+    /// `Camera.advance` flies along the look direction, which is right for a photo mode and wrong
+    /// for somebody with feet.
+    private var body: CharacterController
+    /// What the body stands on and walks into. **Rebuilt with the level**, from the same `solid` tag
+    /// the level file already carried — in edit mode that is every change.
+    private var surroundings = CharacterController.Surroundings()
+    /// Whether the camera flies instead of walking. Set by `WINDAGE_SAMPLE_CAMERA`; see
+    /// `startingCamera` for why a screenshot position cannot be somewhere to stand.
+    private let isPhotoMode: Bool
     private var meshes: [String: LoadedMesh] = [:]
     /// Resolved from the level — anchors against this game's ground, which is simply y = 0.
     /// **Rebuilt whenever the level changes**, because in edit mode it changes constantly.
@@ -477,7 +556,10 @@ final class SampleGame: GameLoop {
         // **A viewpoint the environment can override**, so a screenshot is reproducible. See
         // `startingCamera`.
         if let placed = SampleGame.startingCamera { camera = placed }
-        self.eyeHeight = camera.position.y
+        self.isPhotoMode = SampleGame.startingCamera != nil
+        // Feet on the spawn marker. The camera starts at their eye unless a photo put it elsewhere.
+        self.body = CharacterController(feet: spawn?.position ?? SIMD3(0, 0, 12))
+        if !isPhotoMode { camera.position = body.eye }
         self.camera = camera
         self.previousCamera = camera
 
@@ -1056,6 +1138,12 @@ final class SampleGame: GameLoop {
             // run — is worse than not having it, because the file says something untrue.
             if placement.tags.contains("solid") { solidVolumes.append(volume) }
         }
+        // **Axis-aligned world boxes, which overstate a turned crate's corners.** A crate at 45° is
+        // stood beside a hand's width further off than its faces are. That is the conservative way to
+        // be wrong for a thing you walk into — a player catching on air near a corner is a smaller
+        // fault than a player standing inside a crate.
+        surroundings = CharacterController.Surroundings(groundHeight: { _, _ in 0 },
+                                                        solids: solidVolumes.map(\.worldBounds))
         rebuildFigures()
         rebuildLanterns()
         rebuildLights()
@@ -1189,7 +1277,10 @@ final class SampleGame: GameLoop {
 
         // Spawn where *this* level says, not where the last one did.
         let spawn = level.markers(ofKind: "spawn").first
-        camera.position = (spawn?.position ?? SIMD3(0, 0, 12)) + SIMD3(0, 1.7, 0)
+        // A fresh body, not the old one moved: last level's fall, crouch or slide has no business
+        // arriving in this one.
+        body = CharacterController(feet: spawn?.position ?? SIMD3(0, 0, 12))
+        camera.position = body.eye
         camera.yaw = spawn?.yaw ?? 0
         camera.pitch = radians_from_degrees(Float(spawn?.values["pitch"] ?? 0))
         previousCamera = camera
@@ -1369,7 +1460,11 @@ final class SampleGame: GameLoop {
     /// game's source.
     func beginFrame() {
         input.pollFrame()
-        camera.look(mouseDelta: input.consumePendingLook())
+        let look = input.consumePendingLook()
+        // **A scripted walk holds its heading.** Otherwise whatever the mouse is doing over the
+        // window steers it, and the same script ends somewhere different each time — which was the
+        // first thing it did.
+        if scriptedWalk?.keys == nil { camera.look(mouseDelta: look) }
     }
 
     func step(deltaTime: Float) {
@@ -1416,12 +1511,28 @@ final class SampleGame: GameLoop {
         // In edit mode the movement keys are the editor's, so the camera holds still. So is a
         // finished run: walking around after the clock stops reads as the game not having noticed.
         if !isEditing && !run.isOver && run.mode != .paused {
-            let before = camera.position
-            camera.advance(input.movement, deltaTime: deltaTime)
-            // Stay on the ground. The sample has no terrain and no gravity — that is a game's job,
-            // and pretending otherwise here would put a physics engine in a walkthrough.
-            camera.position.y = eyeHeight
-            camera.position = resolved(from: before, to: camera.position)
+            if isPhotoMode {
+                camera.advance(input.movement, deltaTime: deltaTime)
+            } else {
+                var movement = input.movement
+                var jump = input.isJumpHeld
+                var crouching = input.isCrouching
+                if let keys = scriptedWalk?.keys {
+                    movement = keys.movement
+                    jump = keys.jump
+                    crouching = keys.crouch
+                }
+                // **Yaw from the camera, and nothing else.** Pitch never reaches the body: looking at
+                // your feet does not slow the walk, and looking at the sky does not lift you off it.
+                body.step(yaw: camera.yaw,
+                          input: movement,
+                          jump: jump,
+                          crouching: crouching,
+                          deltaTime: deltaTime,
+                          in: surroundings)
+                camera.position = body.eye
+                scriptedWalk?.advance(by: deltaTime, body: body)
+            }
         }
     }
 
@@ -1461,33 +1572,6 @@ final class SampleGame: GameLoop {
         placeLanterns()
     }
 
-    /// Where a step actually ends, given that solid things are solid.
-    ///
-    /// **Each axis retried on its own**, so walking into a wall at an angle slides along it rather
-    /// than sticking. Refusing the whole move is what makes a wall feel like glue, and is also the
-    /// only way out of a corner.
-    private func resolved(from start: SIMD3<Float>, to end: SIMD3<Float>) -> SIMD3<Float> {
-        guard blocked(end) else { return end }
-        let alongX = SIMD3(end.x, end.y, start.z)
-        if !blocked(alongX) { return alongX }
-        let alongZ = SIMD3(start.x, end.y, end.z)
-        if !blocked(alongZ) { return alongZ }
-        return start
-    }
-
-    /// The player is a cylinder, approximated by testing a short segment through where they stand.
-    private static let playerRadius: Float = 0.4
-
-    private func blocked(_ position: SIMD3<Float>) -> Bool {
-        let r = SampleGame.playerRadius
-        // Four probes around the player's waist. A single point walks through a wall corner-first.
-        for offset in [SIMD3<Float>(r, 0, 0), SIMD3(-r, 0, 0), SIMD3(0, 0, r), SIMD3(0, 0, -r)] {
-            let point = position + offset - SIMD3(0, 0.9, 0)
-            if solidVolumes.contains(where: { $0.worldBounds.contains(point) }) { return true }
-        }
-        return false
-    }
-
     func viewportChanged(width: Int, height: Int) {
         aspectRatio = Float(width) / Float(max(height, 1))
         viewportSize = SIMD2(Float(width), Float(height))
@@ -1515,11 +1599,22 @@ final class SampleGame: GameLoop {
 
     private var visibleDrawableCount: Int { min(drawables.count, SampleGame.maxDrawables) }
 
+    /// The camera as drawn: between the last two steps, plus the slide's dip.
+    ///
+    /// **The dip goes on the view and never on `camera`**, which is the aim. Folded into the aim, a
+    /// slide would leave the player looking somewhere new every time — the same rule a scope's sway
+    /// follows.
+    private func displayCamera(_ interpolation: Float) -> Camera {
+        var view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
+        view.pitch += body.slideCameraDip
+        return view
+    }
+
     /// **Written before the shadow pass, not during the main one.** The shadow pass reads the same
     /// `model` matrix the main pass will; writing them in `encode` would record shadows from last
     /// frame's positions, which reads as shadows lagging behind their casters.
     private func writeUniforms(frameSlot: Int, interpolation: Float) {
-        let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
+        let view = displayCamera(interpolation)
         writeClusters(frameSlot: frameSlot, camera: view)
         let projection = matrix_perspective_right_hand_reverse_z(
             fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
@@ -1717,7 +1812,7 @@ final class SampleGame: GameLoop {
         writeUniforms(frameSlot: frameSlot, interpolation: interpolation)
         guard let shadowMap else { return }
 
-        let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
+        let view = displayCamera(interpolation)
         let matrices = shadowMap.updateMatrices(frameSlot: frameSlot, camera: view,
                                                 sunDirection: sunDirection)
 
@@ -2001,8 +2096,8 @@ final class SampleGame: GameLoop {
             // a controller to press WASD is a small lie the game is in a position to avoid, and the
             // engine already reports which it has.
             let moving = input.isGamepadConnected
-                ? "left stick move · right stick look"
-                : "WASD move · mouse look · click to capture · esc release"
+                ? "left stick move · right stick look · cross jump · circle crouch"
+                : "WASD move · shift sprint · space jump · c crouch · mouse look · click to capture"
             _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
                          pointSize: hint, color: white)
             _ = hud.text("p pause · r restart · n next level · m tone map · tab to edit the level",

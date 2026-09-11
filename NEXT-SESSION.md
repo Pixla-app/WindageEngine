@@ -13,8 +13,12 @@ what changed recently and what is next.
 **Run it:** `swift run WindageSample` · **Test it:** `swift test`
 
 **Reproduce a screenshot:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_CAMERA=-4,20,4,0,-62 swift run
-WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degrees. `y` is the eye
-height, because the walk clamps to the ground every step.
+WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degrees. **A camera placed
+this way flies** — a screenshot position is a viewpoint, not somewhere to stand, and gravity would
+pull it to the floor before the first frame.
+
+**Walk it without a keyboard:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
+swift run WindageSample` — keys and seconds, and the log says where the feet ended each segment.
 
 ---
 
@@ -49,7 +53,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-363 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+392 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -59,8 +63,31 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, `Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
-`ClusterGrid` and `ClusteredLights`, **`TransformHierarchy`**, and — for the lamps that cast —
+`ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, **`CharacterController`**, and — for the
+lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — a body with feet (0.6.6)
+
+**`CharacterController`**: walking, standing on things, a 0.45 m step, gravity, a jump of about a
+metre, crouch and slide. The sample walks on it; it used to pin the camera to one height.
+
+**The walking, crouch and slide half was extracted from a working game** with its tuning and reasons
+intact. What that game did not have — gravity, steps, obstacles — is what the sample's crates and a
+new set of stone steps in the ruins needed, and the seam turned out to be the ground: `Surroundings`
+is terrain plus solid boxes, asked by the controller rather than owned by the game. That game still has
+its own copy; replacing it is its own work.
+
+**The body is a box** (exact against box solids), **the feet move at once and the eye eases after
+them** (stairs read as stairs; a fall is never eased), **no jump out of a slide**, and a tenth of a
+second of coyote time and jump buffer each.
+
+**The sample found one bug**: a blocked step stopped the player where the last whole step ended, 4 cm
+short of a crate at a walk and 15 cm at a sprint. A blocked axis now moves to the face; the test for it
+fails without the fix.
+
+**Driven in the running sample**, with the new `WINDAGE_SAMPLE_WALK`: up four steps to 1.20 m, off the
+end to 0.00, a jump peaking at 0.97 m, and stopped exactly at a crate's face walking and sprinting.
 
 ## Done 2026-09-10 — things that hang off other things (0.6.5)
 
@@ -747,20 +774,19 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Character controller.** Gravity, standing on things rather than a fixed eye height, a step
-   height so a low ledge is walked up and a crate is not, and crouch. Today the sample pins the
-   camera to one height every step and the only collision is sideways. The engine already has
-   `SprintLatch`, `InputState`'s crouch handling and `Volume`, so this is the body that uses
-   them. **Proved in the sample by** walking up onto a crate and dropping off it. The README names
-   this as part of the bar for somebody else being able to use the engine.
-
-2. **Particles.** A pool, an emitter, camera-facing quads, and a deterministic spread so the same
+1. **Particles.** A pool, an emitter, camera-facing quads, and a deterministic spread so the same
    seed gives the same burst. **Proved in the sample by** sparks rising off the braziers and the
    lanterns, and a burst when a crate is collected.
 
-3. **Input rebinding and settings that persist.** Keys a player can change, and settings —
+2. **Input rebinding and settings that persist.** Keys a player can change, and settings —
    bindings, mouse sensitivity, tone map, volume — saved and loaded through `SaveStore`. **Proved in
    the sample by** rebinding a key, quitting, and finding it still rebound.
+
+3. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
+   with how hard it was; the sample plays them through `AudioEngine`, which is already positional.
+   A body that walks silently reads as a camera on a rail. **Proved in the sample by** walking,
+   sprinting and dropping off the steps and hearing the difference, and by the stride count in a
+   scripted walk.
 
 ## Parked — not next, and why
 
@@ -771,6 +797,10 @@ below, never in this list.
 - **Soft shadows (PCSS or variance maps).** Fixed-radius filtering everywhere today. Nothing in the
   sample looks wrong for want of it.
 - **LOD and instancing.** Needed once a scene is larger than the sample's. Nothing in it is yet.
+- **Standing up under something low.** The controller lets a crouched player stand up into a
+  ceiling. Nothing in either level has an overhang to find it; it is a few lines when one does.
+- **Standing on something that moves.** A deck or a lift. The engine's reference-frame probe is the
+  shape of it; nothing in the sample moves yet.
 
 ## Standing reminders
 

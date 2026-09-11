@@ -143,7 +143,8 @@ asset-orientation correction for Z-up centimetre exports** · **materials and te
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
-or off another thing** · **cascaded shadows, arithmetic and pass** · **an HDR
+or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** ·
+**cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
 shadow cubes** ·
@@ -165,7 +166,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | ~~**Normal maps**~~ | **Done 2026-09-10.** `MeshLoader` generates a tangent basis on request; the sample is normal mapped throughout. See below. |
 | ~~**Post-processing**~~ | **Tone mapping done 2026-09-10** — an HDR scene target, exposure in stops, and a choice of curve. See below. Bloom and colour grading are a *look* and are not here. |
 | **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
-| **A character controller** | Walking, ground-following, step height, crouch, slide. Written outside already, and every first-person game rewrites it. |
+| ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
 | **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
 | **Input rebinding, settings persistence** | Small, unglamorous, and the difference between a demo and something shippable. |
 
@@ -915,6 +916,77 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## A body with feet (2026-09-10)
+
+`CharacterController` walks across the ground, stands on things, steps up a low ledge, falls off a
+high one, jumps, crouches and slides. The sample walks on it; until now it pinned the camera to one
+height and the only collision was sideways.
+
+### Extracted, then finished
+
+**The walking half came from a working game.** Movement along the ground plane rather than the look
+direction — so aiming at your feet does not slow you and aiming at the sky does not lift you — a
+crouch that is a posture with a cost, a slide that carries a sprint's momentum into it, and an eye
+that settles over rough ground instead of jittering over every bump. Its numbers came across tuned
+in play, and the reasons with them; they are `Tuning`'s defaults.
+
+**What it lacked was anything to stand on but a height function.** Its world was one terrain with
+nothing on it, so it had no gravity, no step height and no obstacles. A second consumer with crates
+and steps is what showed where the seam was: the ground is a question the controller asks —
+`Surroundings`, terrain plus solid boxes — not a function belonging to the game.
+
+The game it came from still has its own copy. Replacing that is the game's work, on its schedule.
+
+### The body is a box
+
+A capsule is the textbook body because it slides round corners by itself. Against a world of
+axis-aligned boxes — which is what `Volume.worldBounds` produces and what every solid in a level is —
+a box is **exact**: two ranges per axis, no contact normals, no penetration to resolve. It catches on a
+corner a capsule would glance off; moving one axis at a time is what takes most of that back, and is
+also what makes a wall hit at an angle something you slide along rather than stick to.
+
+A turned crate's world box is larger than the crate, so the player stands a hand's width off its
+corners. That is the conservative way round for something you walk into.
+
+### The feet move at once; the eye follows
+
+Collision is resolved against the feet, exactly. Every change in the height under a grounded player —
+a step up, a step down, the next bump of a noisy terrain — moves the feet in one step and is eased
+into the eye over a moment. That is the whole of what makes stairs read as stairs rather than as a
+stutter. **A fall is never eased**: a landing is felt.
+
+### The numbers that are new
+
+| | | why |
+|---|---|---|
+| step height | 0.45 m | a stair and a low plinth, not a crate — a crate you could walk onto is not cover |
+| gravity | 20 m/s² | about twice real; at 9.8 a fall floats, because nothing in a first-person view gives the drop a scale |
+| jump | ≈1 m | onto a low wall, not onto a crate |
+| coyote time, jump buffer | 0.1 s each | a jump on the last frame of a ledge, or just before landing, is not eaten |
+
+**No jump out of a slide.** A slide is committed, and a jump from sprint speed is the movement tech
+the slide's own tuning forbids.
+
+### What the sample found
+
+**A blocked step stopped the player wherever the last whole step ended** — 4 cm short of a crate at a
+walk in the first run, and the arithmetic says 15 cm at a sprint, which is a gap you can see when you
+turn to look at the wall. A blocked axis now moves up to the face.
+
+### Driven, not just tested
+
+`WINDAGE_SAMPLE_WALK` replays keys for seconds and logs where the feet end each segment, so the claim
+can be repeated rather than taken on trust:
+
+```
+WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1 space:0.05 wait:1.2" swift run WindageSample
+```
+
+On the ruins: up four 30 cm steps to **1.20 m**, off the end and down to **0.00**, a jump peaking at
+**0.97 m**, and stopped exactly at a crate's face at a walk and at a sprint. A scripted walk ignores
+the mouse, because the first one was steered off course by whatever the mouse was doing over the
+window.
 
 ## Things that hang off other things (2026-09-10)
 
