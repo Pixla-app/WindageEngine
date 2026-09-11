@@ -1046,6 +1046,17 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### An ambience volume (0.11.2)
+
+`AudioEngine.ambienceVolume` scales the loops and nothing else — the output of their own spatialiser,
+which every loop and no one-shot passes through — and `PlayerSettings.ambienceVolume` is the player's
+dial for it, under the master volume. **A player who finds a fire too loud should not lose their own
+footsteps turning it down**, which one volume made them do.
+
+**Measured offline**: half ambience took a loop down 6.0206 dB — 20·log₁₀ ½ — and a one-shot by 0.0.
+With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
+stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
+
 ### Something that turns underfoot (0.11.1)
 
 `Surroundings.turns` says how far each solid turned since the last step, and about which centre. A body

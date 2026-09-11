@@ -12,6 +12,27 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.11.2] — 2026-09-11
+
+**An ambience volume.** The loops and the one-shots shared one volume.
+
+### Added
+
+- **`AudioEngine.ambienceVolume`** — 0…1, the loops' spatialiser's output: every loop, no one-shot.
+- **`PlayerSettings.ambienceVolume`** — 0…1, default 1; a file without it loads at 1.
+
+### Measured
+
+Half ambience: a loop −6.0206 dB, a one-shot 0.0 dB; ambience off is silence. The sample's crackle at
+2 m: −33.10 → −39.12 dBFS, a footstep −29.18 both times.
+
+### In the sample
+
+- **An Ambience row** on the settings screen, under Volume, in tenths.
+- **`WINDAGE_SAMPLE_MEASURE_AUDIO=1`** also prints the crackle and a footstep at full and half ambience.
+
+**Consumers**: `PlayerSettings` gained a stored property — build clean.
+
 ## [0.11.1] — 2026-09-11
 
 **A platform that turns.** Additive: nothing turns until a game says so.

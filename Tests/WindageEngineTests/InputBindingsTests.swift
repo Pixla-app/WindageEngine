@@ -164,6 +164,17 @@ struct PlayerSettingsTests {
         #expect(!s.invertMouse && !s.invertStick)
     }
 
+    @Test("Ambience defaults to full, loads when missing, and clamps")
+    func ambience() throws {
+        #expect(PlayerSettings().ambienceVolume == 1)
+        let older = try decode(PlayerSettings.self, #"{ "volume": 0.5 }"#)
+        #expect(older.ambienceVolume == 1 && older.volume == 0.5)
+        #expect(try decode(PlayerSettings.self, #"{ "ambienceVolume": 3 }"#).ambienceVolume == 1)
+        var s = PlayerSettings()
+        s.ambienceVolume = -1
+        #expect(s.ambienceVolume == 0)
+    }
+
     @Test("Dead zones default to the engine's tuning, load when missing, and clamp to half a stick")
     func deadZones() throws {
         let s = PlayerSettings()

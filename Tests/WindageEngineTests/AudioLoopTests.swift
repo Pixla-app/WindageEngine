@@ -121,4 +121,33 @@ struct AudioLoopTests {
             #expect(right > left * 1.5, "no left–right cue at \(metres) m: left \(left), right \(right)")
         }
     }
+
+    /// **The setting's whole promise**: the loop drops by what it says, and a one-shot does not move.
+    @Test("Half ambience is 6 dB off a loop and nothing off a one-shot")
+    func ambienceScalesLoopsOnly() throws {
+        func loopLevel(_ ambience: Float) throws -> Float {
+            let audio = try engine()
+            audio.ambienceVolume = ambience
+            audio.startLoop("noise", at: ahead(2))
+            _ = try rms(audio, seconds: 0.3)
+            return try rms(audio, seconds: 0.5)
+        }
+        func shotLevel(_ ambience: Float) throws -> Float {
+            let audio = try engine()
+            audio.ambienceVolume = ambience
+            audio.play("noise", at: ahead(8))
+            _ = try rms(audio, seconds: 0.3)
+            return try rms(audio, seconds: 0.5)
+        }
+        let loopDrop = 20 * log10(try loopLevel(0.5) / loopLevel(1))
+        let shotDrop = 20 * log10(try shotLevel(0.5) / shotLevel(1))
+        print("AUDIO half ambience: loop \(loopDrop) dB, one-shot \(shotDrop) dB")
+        #expect(abs(loopDrop + 6.02) < 0.1, "the loop moved \(loopDrop) dB")
+        #expect(abs(shotDrop) < 0.05, "the one-shot moved \(shotDrop) dB")
+        let silent = try engine()
+        silent.ambienceVolume = 0
+        silent.startLoop("noise", at: ahead(2))
+        _ = try rms(silent, seconds: 0.2)
+        #expect(try rms(silent, seconds: 0.3) < 1e-5, "ambience off should be silence")
+    }
 }

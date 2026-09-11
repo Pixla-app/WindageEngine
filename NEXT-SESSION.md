@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-550 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+552 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,19 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — an ambience volume (0.11.2)
+
+**`AudioEngine.ambienceVolume`** (the loops' spatialiser's output — every loop, no one-shot) and
+**`PlayerSettings.ambienceVolume`**. Two tests, one rendering audio offline.
+
+**Measured**: half ambience, a loop −6.0206 dB and a one-shot 0.0 dB; off, silence. The sample's own
+sounds (`WINDAGE_SAMPLE_MEASURE_AUDIO=1`): crackle at 2 m −33.10 → −39.12 dBFS, a walking footstep
+−29.18 → −29.18. **Set on the settings screen** from the keyboard, five presses left to 50%: the file
+saved `ambienceVolume 0.5`, `volume` untouched at 0.8; the row photographed. Not heard.
+
+**Every game checked, clean builds**: none uses `PlayerSettings`; the one using `AudioEngine` has no
+loops, and its one-shots are untouched. All five build and pass.
 
 ## Done 2026-09-11 — a platform that turns (0.11.1)
 
@@ -1226,23 +1239,25 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
-   a player who wants the fire quieter has to turn down their own footsteps with it. An ambience
-   setting that scales the loops and nothing else, on the settings screen. **Proved by** the offline
-   render: the crackle at half ambience measuring 6 dB down while a footstep measures unchanged.
-
-2. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
+1. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
    jump is no higher than from the ground, and stepping off anything moving sideways stops dead in the
    air. The carried motion should become the body's velocity at take-off. **Proved in the sample by** a
    scripted jump from the ruins' lift near its fastest (about 0.54 m/s up) peaking near 1.17 m above the
    deck rather than the ground jump's 0.99 m — the difference computed first, then measured.
 
-3. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
+2. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
    world-aligned box, so a crate at 45° stops a player a hand's width short of its faces and lets them
    stand on air past its corners — the sample says so where it builds its solids. Solids that carry
    their turn, and a body collided against the turned box. **Proved in the sample by** a crate at 45° in
    the courtyard and the scripted walk stopping 0.30 m (the body's radius) from its face, where today it
    stops at the box's corner, computed first.
+
+3. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
+   wait taking 20 s — because macOS throttles a hidden window's display timer and `FixedTimestep`
+   credits at most `maxFrameTime` (0.25 s) of simulation a frame. Right for a game; wrong for a check that
+   has to finish. A frame-time ceiling `FrameRenderer` lets a game set, and the sample lifting it while a
+   script runs. **Proved by** the same scripted walk with the window hidden finishing on wall-clock time,
+   the frame counter showing few frames and 120 steps a second.
 
 ## Parked — not next, and why
 

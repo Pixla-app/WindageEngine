@@ -308,6 +308,18 @@ public final class AudioEngine {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts)
     }
 
+    /// The loops, 0…1 — a brazier's crackle, a generator's hum — and **nothing else**: the player's
+    /// ambience setting.
+    ///
+    /// **On the loops' own spatialiser**, which is why it can be separate at all: every loop and no
+    /// one-shot passes through it. A player who wants the fire quieter should not have to turn down
+    /// their own footsteps with it, which is what one volume made them do. ``masterVolume`` still
+    /// scales everything, this included.
+    public var ambienceVolume: Float {
+        get { nearEnvironment.outputVolume }
+        set { nearEnvironment.outputVolume = min(max(newValue, 0), 1) }
+    }
+
     /// Everything this engine plays, 0…1 — the player's volume setting.
     ///
     /// **On the main mixer, after the spatialiser**, so it scales every voice by the same amount

@@ -310,6 +310,12 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         didSet { volume = PlayerSettings.clamp(volume, 0...1, 0.8) }
     }
 
+    /// The sounds places make — ``AudioEngine/ambienceVolume`` — 0…1, under ``volume``. **Separate
+    /// because a player who finds a fire too loud should not lose their footsteps turning it down.**
+    public var ambienceVolume: Float = 1 {
+        didSet { ambienceVolume = PlayerSettings.clamp(ambienceVolume, 0...1, 1) }
+    }
+
     /// Stops added to the game's own exposure. **The player's dial on top of the game's**, so a level
     /// authored at −0.5 stays −0.5 relative to itself, and a player on a dim screen lifts all of them.
     public var brightness: Float = 0 {
@@ -337,7 +343,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case bindings, padBindings, mouseSensitivity, stickSensitivity, invertMouse, invertStick
-        case moveDeadzone, lookDeadzone, headBob, volume, brightness
+        case moveDeadzone, lookDeadzone, headBob, volume, ambienceVolume, brightness
         /// Read, never written: one sensitivity and one invert for both devices, before 0.8.0.
         case lookSensitivity, invertLook
     }
@@ -367,6 +373,8 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
             ?? StickResponse.lookDeadzone, PlayerSettings.deadzoneRange, StickResponse.lookDeadzone)
         headBob = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .headBob)) ?? 1, 0...1, 1)
         volume = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .volume)) ?? 0.8, 0...1, 0.8)
+        ambienceVolume = PlayerSettings.clamp(
+            (try? c.decodeIfPresent(Float.self, forKey: .ambienceVolume)) ?? 1, 0...1, 1)
         brightness = PlayerSettings.clamp(
             (try? c.decodeIfPresent(Float.self, forKey: .brightness)) ?? 0, PlayerSettings.brightnessRange, 0)
     }
@@ -383,6 +391,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         try c.encode(lookDeadzone, forKey: .lookDeadzone)
         try c.encode(headBob, forKey: .headBob)
         try c.encode(volume, forKey: .volume)
+        try c.encode(ambienceVolume, forKey: .ambienceVolume)
         try c.encode(brightness, forKey: .brightness)
     }
 }

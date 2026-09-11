@@ -227,7 +227,7 @@ final class SampleGame: GameLoop {
             case mouseSensitivity, invertMouse
             /// The stick's own look settings — shown only while a pad is connected, beside its buttons.
             case stickSensitivity, invertStick, moveDeadzone, lookDeadzone
-            case headBob, volume, brightness, reset
+            case headBob, volume, ambienceVolume, brightness, reset
         }
 
         /// **Rebuilt every frame from whether a pad is connected**, so picking one up mid-screen adds
@@ -236,7 +236,7 @@ final class SampleGame: GameLoop {
             InputBindings.Action.allCases.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
                 + (pad ? PadBindings.actions.map { .pad($0) }
                     + [.stickSensitivity, .invertStick, .moveDeadzone, .lookDeadzone] : [])
-                + [.headBob, .volume, .brightness, .reset]
+                + [.headBob, .volume, .ambienceVolume, .brightness, .reset]
         }
 
         var rows = SettingsMenu.rows(withPad: false)
@@ -607,37 +607,46 @@ final class SampleGame: GameLoop {
     /// See `WINDAGE_SAMPLE_MEASURE_AUDIO` in main.swift. **The sample's own crackle, through the
     /// engine's own loop path**, with the listener facing it so both ears hear it alike.
     static func measureCrackle() {
-        guard let audio = AudioEngine(offlineSampleRate: 44_100), audio.load("crackle", bundle: .module) else {
+        guard let audio = AudioEngine(offlineSampleRate: 44_100), audio.load("crackle", bundle: .module),
+              audio.load("step_stone_0", bundle: .module) else {
             print("WindageSample: could not make an offline audio engine")
             return
         }
         audio.updateListener(position: .zero, forward: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
-        guard let loop = audio.startLoop("crackle", at: SIMD3(0, 0, -1)) else { return }
-        func level() -> Float {
-            _ = audio.renderOffline(seconds: 0.1)
-            let all = (audio.renderOffline(seconds: 6) ?? []).flatMap { $0 }   // two whole loops
+        func rms(_ seconds: Double) -> Float {
+            let all = (audio.renderOffline(seconds: seconds) ?? []).flatMap { $0 }
             return (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
         }
-        var reference: Float = 0
-        for metres: Float in [1, 2, 4, 8, 20] {
-            audio.moveLoop(loop, to: SIMD3(0, 0, -metres))
-            let rms = level()
-            if metres == 2 { reference = rms }
-            let db = 20 * log10(max(rms, 1e-9))
-            print(String(format: "WindageSample: crackle at %4.0f m — RMS %.4f (%.1f dBFS)%@", metres, rms, db,
-                         reference > 0 ? String(format: ", %.3f of its level at 2 m", rms / reference) : ""))
+        func dB(_ level: Float) -> Float { 20 * log10(max(level, 1e-9)) }
+        /// The crackle at a distance: settled, then two whole loops.
+        func crackle(at metres: Float) -> Float {
+            guard let loop = audio.startLoop("crackle", at: SIMD3(0, 0, -metres)) else { return 0 }
+            _ = rms(0.3)
+            let level = rms(6)
+            audio.stopLoop(loop)
+            _ = rms(0.2)
+            return level
         }
-        // **Something to hear it against.** A level in dBFS means little alone; a footstep — played the
-        // way the game plays one, to the player, at the volume a walk gives it — says whether a fire
-        // two metres off sits under the feet or over them.
-        audio.stopLoop(loop)
-        _ = audio.renderOffline(seconds: 0.2)
-        if audio.load("step_stone_0", bundle: .module) {
+        /// A footstep the way the game plays one — to the player, at a walk's volume — over its length.
+        func footstep() -> Float {
             audio.play("step_stone_0", volume: 0.55)
-            let all = (audio.renderOffline(seconds: 0.14) ?? []).flatMap { $0 }
-            let rms = (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
-            print(String(format: "WindageSample: a walking footstep on stone, for comparison — RMS %.4f (%.1f dBFS) over its 0.14 s",
-                         rms, 20 * log10(max(rms, 1e-9))))
+            let level = rms(0.14)
+            _ = rms(0.3)
+            return level
+        }
+
+        let reference = crackle(at: 2)
+        for metres: Float in [1, 2, 4, 8, 20] {
+            let level = crackle(at: metres)
+            print(String(format: "WindageSample: crackle at %4.0f m — RMS %.4f (%.1f dBFS), %.3f of its level at 2 m",
+                         metres, level, dB(level), level / max(reference, 1e-9)))
+        }
+        // **The ambience setting, measured the same way**: the fire at 2 m should fall 6 dB at half, and a
+        // footstep — which is not ambience — should not move.
+        for ambience: Float in [1, 0.5] {
+            audio.ambienceVolume = ambience
+            print(String(format: "WindageSample: ambience %3.0f%% — crackle at 2 m %.2f dBFS, a walking footstep %.2f dBFS",
+                         ambience * 100, dB(crackle(at: 2)), dB(footstep())))
         }
     }
 
@@ -1983,6 +1992,7 @@ final class SampleGame: GameLoop {
             case .lookDeadzone: ("Look stick dead zone", "\(Int((settings.lookDeadzone * 100).rounded()))%")
             case .headBob: ("Head bob", settings.headBob == 0 ? "off" : "\(Int((settings.headBob * 100).rounded()))%")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
+            case .ambienceVolume: ("Ambience", "\(Int((settings.ambienceVolume * 100).rounded()))%")
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
             case .reset: ("Reset to defaults", "")
             }
@@ -2103,7 +2113,7 @@ final class SampleGame: GameLoop {
                 current.capturing = current.row
                 current.message = nil
             case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .moveDeadzone, .lookDeadzone,
-                 .headBob, .volume, .brightness:
+                 .headBob, .volume, .ambienceVolume, .brightness:
                 adjust(current.row, by: 1)
             case .reset:
                 settings = PlayerSettings()
@@ -2166,6 +2176,7 @@ final class SampleGame: GameLoop {
             let next = settings.headBob + 0.25 * step
             settings.headBob = next > 1.001 ? 0 : (next < -0.001 ? 1 : (next * 4).rounded() / 4)
         case .volume: settings.volume = Self.tenths(settings.volume + 0.1 * step)
+        case .ambienceVolume: settings.ambienceVolume = Self.tenths(settings.ambienceVolume + 0.1 * step)
         case .brightness: settings.brightness += 0.25 * step
         case .bind, .pad, .reset: return
         }
@@ -2190,6 +2201,7 @@ final class SampleGame: GameLoop {
         input.moveDeadzone = settings.moveDeadzone
         input.lookDeadzone = settings.lookDeadzone
         audio?.masterVolume = settings.volume
+        audio?.ambienceVolume = settings.ambienceVolume
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
     }
 
