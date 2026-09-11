@@ -49,8 +49,13 @@ What that means for the next session, concretely:
   happens to want this week.
 - **`WindageSample` is the proving ground.** A capability is not finished until the sample uses it
   through the public API. That is what has caught every real bug so far.
-- **A game adopts afterwards.** If a game already has its own version of something the engine now
-  owns, replacing it is that game's work, on that game's schedule — not a prerequisite here.
+- **A game that an engine change reaches is brought up to date in the same pass** (2026-09-11,
+  replacing "on that game's schedule", which is how one fell fourteen versions behind). If a change
+  breaks a game's build, changes what it draws or how it behaves, or makes a copy it holds wrong, the
+  pass is not done until that game builds, passes its own tests and has been run and looked at — in
+  **its** repository, through **its** handoff, never from here. Swapping a game's *working* copy of
+  something for the engine's, for tidiness, is still that game's call. Check every game that depends
+  on the engine, not only the one in mind.
 - **A second sample arrives only when a capability needs a shape the courtyard cannot express.**
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
@@ -84,8 +89,34 @@ rotation. Minor version, because a bedded placement can now sit at a different h
 
 > **For the game this was extracted from:** its installation bedding and its collision masks use the
 > same backwards turn, while its renderer draws with the standard one. Its parity test against the
-> engine will now disagree, and that disagreement is the bug. That is the game's fix, on its schedule —
-> this repository does not touch it.
+> engine will now disagree, and that disagreement is the bug. **Fixed in that game the same day**, in
+> its own repository — see below.
+
+## Done 2026-09-11 — every game built against 0.7.1, and what that found about the engine
+
+**The five games depending on this engine were rebuilt, tested and — the one with a window — run.**
+Four built and passed untouched. **The fifth had fallen from 0.1.0 to 0.7.1 without a rebuild, and
+came back three ways broken.** All three are about this engine's surface, which is why they are here
+without the game's name:
+
+- **A public type name is a namespace shared with every consumer.** 0.1.0 shipped `Material`. The game
+  had a C struct called `Material` in its shader-types module, and a Swift file importing both no
+  longer compiles. A game's own *Swift* types shadow the engine's quietly (it has its own
+  `ShadowMap` and `ParticleRenderer`, and those still compile) — **it is a second imported module that
+  makes the name ambiguous**, and a game's shader-types module is always one. Worth remembering
+  before the next generic name goes public.
+- **The 0.3.0 break fails as noise, not as an error.** A scene pipeline still declaring
+  `colorPixelFormat` inside the HDR scene pass is not refused by Metal 4 — pipelines and passes are
+  decoupled — so the game rendered magenta and blue static with nothing logged. The CHANGELOG said
+  "breaking" and was right; the symptom is what a consumer needs told. **And a game that already tone
+  maps in its own shader wants `ToneMapping.off`**, or the picture goes through two curves.
+- **The 0.7.0 bedding fix reached the game's copies of the turn**, as the note above predicted: its
+  bedding and collision were mirror images of what it drew. Fixing them also exposed a separate bug
+  of the game's own (corners rejected before the mask was read), because its tests finally looked.
+
+**Two scaffolded rigs had stale handoffs**: one still claimed a probe that graduated three days
+earlier, one still held a `LightSet` that the engine had extracted *and corrected* — deleted there
+now, with a test pinning the correction.
 
 **0.7.1 — `Placement.light`, `resolvedLights(on:)`, `carriedLights(on:)`.** The ruins' braziers carry
 their flames; free lights with no cone are gone from the level, and a test keeps them gone. **Driven in
@@ -952,3 +983,5 @@ below, never in this list.
 - **Nothing enters this package speculatively.** Working, tested code proves the seam, or it stays
   where it is.
 - **No game's name appears in this repository.** Describe the shape, not the product.
+- **An engine change that reaches a game is followed into that game in the same pass** — built,
+  tested, run and recorded in its own repository. See "Start here".

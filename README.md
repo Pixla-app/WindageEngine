@@ -1593,6 +1593,14 @@ bind or keep resident.
 **The scene target cannot be memoryless**, unlike the depth buffer beside it: the tone map pass reads
 it after the scene pass has ended, so it has to survive into main memory.
 
+> **Upgrading past 0.3.0: a pipeline with the wrong format renders static, not an error.** Metal 4
+> builds pipelines apart from passes, so a scene pipeline still declaring `colorPixelFormat` is
+> accepted and writes eight-bit pixels into a sixteen-bit-float target — magenta and blue noise,
+> nothing logged. Measured on a real consumer, 2026-09-11. Any pipeline drawn in `encode` wants
+> `sceneColorPixelFormat`; any drawn in `encodeHUD` wants `colorPixelFormat`; anything drawn into a
+> target of the game's own wants that target's format. **And a game that tone maps in its own shader
+> sets `toneMapping = .off`**, which is a pass-through — otherwise its picture meets a second curve.
+
 ### Curves
 
 | | |
