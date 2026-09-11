@@ -587,15 +587,28 @@ public nonisolated struct CharacterController: Sendable {
         // --- Pushed by whatever moved into the body — anything that moved or turned but is not
         // underfoot. Before the body's own walking, like the carry, and making no footsteps.
         pinnedBy = nil
-        let unpushed = SIMD2(feet.x, feet.z)
-        push(in: world)
-        // **A push is kept on leaving, as a carry is** (0.14.0): shoved off an edge, a body flies on
-        // at the push's speed rather than dropping straight down — measured before, pushed off a ledge
-        // at 1.5 m/s it landed at the x it left from. Across only: a push that climbs a step has not
-        // thrown anyone upward.
-        if isGrounded && dt > 0 {
-            groundVelocity.x += (feet.x - unpushed.x) / dt
-            groundVelocity.z += (feet.z - unpushed.y) / dt
+        let pushedBy = push(in: world)
+        // **A push is kept, as a carry is.** On the ground, on leaving (0.14.0): shoved off an edge a body
+        // flies on rather than dropping straight down. In the air, at once (0.14.3): shoved mid-jump, it
+        // goes on at the pusher's speed after the pusher stops — measured before, it came down exactly
+        // where the pusher left it, 0.29 s of flight still to go. Across only: a push that climbs a step
+        // has not thrown anyone upward.
+        //
+        // **The pusher's speed, not how far the body was moved this step.** At first contact that
+        // depends on how big the gap was when the step began: measured at five gaps a fifth of a step
+        // apart, a 1.5 m/s push read as 0.24 and 0.30 m/s wrong at two of them. On the ground a push
+        // settles and the two agree; a body in the air is usually pushed once, and flies ahead of it.
+        if dt > 0, pushedBy != .zero {
+            let speed = pushedBy / dt
+            if isGrounded {
+                groundVelocity.x += speed.x
+                groundVelocity.z += speed.y
+            } else {
+                // Up to the pusher's speed along the push, never down: a body already going faster that
+                // way has been caught up with, not thrown.
+                let along = simd_normalize(speed), short = simd_length(speed) - simd_dot(airVelocity, along)
+                if short > 0 { airVelocity += along * short }
+            }
         }
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
@@ -850,9 +863,13 @@ public nonisolated struct CharacterController: Sendable {
     /// **Not the solid underfoot**, which carries the body instead. **Not one low enough to step
     /// onto**, from the ground: that is stood on, the way walking into it would be, by the
     /// ground-following that comes after.
-    private mutating func push(in world: Surroundings) {
+    ///
+    /// Returns how far, across, the solids that actually moved the body went this step — the push the
+    /// body keeps. A solid that pinned it without moving it is not in it.
+    private mutating func push(in world: Surroundings) -> SIMD2<Float> {
         let underfoot = isGrounded ? groundSolid : nil
         let t = CharacterController.contactTolerance
+        var pushedBy = SIMD2<Float>.zero
         for index in world.solids.indices where index != underfoot {
             let going = displacement(of: index, at: feet, in: world)
             guard going != .zero, obstructing(at: feet, in: world).contains(index) else { continue }
@@ -871,9 +888,11 @@ public nonisolated struct CharacterController: Sendable {
                 let shove = across * max(0, clear.leaving)
                 move(along: SIMD3(shove.x, 0, 0), in: world, sliding: false, ignoring: index)
                 move(along: SIMD3(0, 0, shove.y), in: world, sliding: false, ignoring: index)
+                if simd_dot(SIMD2(feet.x, feet.z) - from, across) > 0 { pushedBy += across }
             }
             if obstructing(at: feet, in: world).contains(index) { pinnedBy = index }
         }
+        return pushedBy
     }
 
     /// How far the part of a solid at `position` went this step: its motion, then its turn about its

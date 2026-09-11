@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-591 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+594 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,18 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a push in mid-air is kept (0.15.0)
+
+**Air push → `airVelocity`**, up to the pusher's speed along the push. **And the kept speed is the
+pusher's** everywhere, not the step's displacement: at first contact that read a 1.5 m/s push 0.24 and
+0.30 m/s wrong at two of five gaps (measured). 0.14.0's numbers unchanged (a settled push agrees). Three
+tests, each failing without its part.
+
+**In the ruins**, jumping as the piston arrives: before, the player came down **on top of the piston**
+(z −1.315, 2.05 m up); after, thrown clear to the ground at z −2.177. **My simulation was wrong first** —
+the jump a step early, and no piston to land on (it predicted −2.164 on the ground, and the ground for the
+before case too); fixed, it matched both outcomes to the mm. Frames of both. Eighth walk added; 8 of 8.
 
 ## Done 2026-09-11 — the sample uses `pinnedBy`, and a push bug it found (0.14.2)
 
@@ -1433,14 +1445,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
-   1.5 m/s meeting a body mid-jump shoved it along, stopped, and the body — 0.29 s of flight still to
-   go — came down at x 0.214, exactly where the block left it: stopped dead in the air. Kept, it would
-   land 1.5 × 0.292 = 0.44 m further. A push in the air should add to ``airVelocity`` as one on the
-   ground adds to ``groundVelocity``. **Proved by** that test, and in the ruins by the player jumping in
-   front of the piston as it arrives — landing its speed × the rest of the flight beyond, computed first.
-
-2. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
+1. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
    positions and a few report numbers; the walk report also carries footsteps and their surfaces, and
    the head bob's size — measured once and now unguarded: 0.8.1's bob (2.8 cm up and down at a walk, 4.7
    at a sprint, 1.4 crouched) and 0.11.0's walk down the ruins' stairs (5 footsteps — wood, stone,
@@ -1448,13 +1453,21 @@ below, never in this list.
    them with their numbers. **Proved by** the check passing, and failing with the tread rule's `abs`
    taken out (5 → 3).
 
-3. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
+2. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
    rate, but a game chooses its *step* rate, and the jump is integrated a step at a time. Measured
    2026-09-11: apex **0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240** — the exact
    answer is 0.992 (6.3² / 2·20). A game at 60 jumps 2.6 cm lower than one at 120 and misses a ledge the
    other clears. Gravity is constant, so a step has an exact answer (y += v·dt − ½g·dt², as the landing
    spring was made exact). **Proved by** a test giving 0.992 at all four rates, and the walk check —
    whose recorded 0.97 and 1.90 apexes will move up by the Euler error, each change measured and explained.
+
+3. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
+   every item adds one; a check that is slow is a check that gets skipped. Each walk is its own process
+   and its result is fixed by the step count, not the clock, so they can run at once. **Proved by** the
+   eight finishing in under 25 s with every number the same as run singly — and the deliberate failure
+   (the slider back at z 8) still caught. (Checked on the way and *not* broken, 2026-09-11: a body landing
+   on a slab sliding at 1.5 m/s takes the same 6.33 m/s impact as on still ground and moves with the slab
+   from the next step, relative speed 0.0.)
 
 ## Parked — not next, and why
 

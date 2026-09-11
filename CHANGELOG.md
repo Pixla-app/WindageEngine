@@ -12,6 +12,38 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.15.0] — 2026-09-11
+
+**A push in mid-air is kept.** Measured before: a block at 1.5 m/s shoved a body mid-jump and stopped,
+and the body — 0.29 s of flight still to go — came down exactly where the block left it.
+
+### Changed
+
+- **A push on a body in the air raises its `airVelocity` along the push to the pusher's speed** (never
+  lowers it: a body already going faster that way has been caught up with, not thrown).
+- **What a push leaves a body with is the pusher's speed, on the ground too** — not how far the body was
+  moved that step. At first contact that depends on the gap when the step began: measured at five gaps a
+  fifth of a step apart, a 1.5 m/s push read 0.24 and 0.30 m/s wrong at two of them. Once a push settles
+  the two agree, which is why 0.14.0's ledge and piston numbers did not move.
+
+### Measured
+
+Three tests — flies on after the pusher stops (1.5 m/s × the rest of the flight, to a step), the same
+speed kept at all five gaps, nothing kept through a wall — failing without the air push (checked) and,
+for the gaps, with the displacement rule (checked). **In the ruins**, jumping as the piston arrives:
+
+| | came down | |
+|---|---|---|
+| before | **on the piston**, 2.05 m up, at z −1.315 — shoved, then left hovering until it slid underneath | simulated: the same, to the mm |
+| after | on the ground at z −2.177, thrown clear | simulated −2.177 |
+
+The first simulation had the jump a step early and no piston to land on — so it predicted −2.164 and a
+landing on the ground; with both put right it matches the game to the millimetre.
+
+### In the sample
+
+- **An eighth walk in `Tools/walks.py`**, the air push. All eight hold.
+
 ## [0.14.2] — 2026-09-11
 
 **The sample uses `pinnedBy` — and that found a bug in the push.** By the handoff's own rule 0.13.0 was

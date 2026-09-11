@@ -1057,6 +1057,28 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### A push in mid-air (0.15.0)
+
+0.14.0 kept a push for a body that left the ground afterwards; a body already in the air was moved while
+the pusher overlapped it and then left with whatever it jumped with — measured, shoved mid-jump by a block
+that then stopped, it came down exactly where the block left it. **A push in the air now raises
+`airVelocity` along the push to the pusher's speed.**
+
+**And what is kept is the pusher's speed, not the step's displacement**, on the ground as well. At first
+contact the displacement depends on the gap the step began with, and read a 1.5 m/s push as much as
+0.30 m/s wrong; a body in the air is usually pushed once and then flies ahead, so for it the first contact
+is everything. A settled push gives the same number either way, so 0.14.0's results are unchanged.
+
+**Jumping in front of the ruins' piston**, which stops dead just past the landing's edge:
+
+| | came down |
+|---|---|
+| before | on top of the piston, 2.05 m up — hovering in front of it until it slid underneath |
+| after | on the ground at z −2.177, thrown clear; simulated −2.177 |
+
+The simulation was wrong the first time — a step early on the jump, and no piston to land on — and the
+game's own numbers said so. Put right, it matched both outcomes to the millimetre.
+
 ### A door that turns back (0.14.2)
 
 `pinnedBy` said which solid had the player pinned, and nothing read it — which by this repository's own

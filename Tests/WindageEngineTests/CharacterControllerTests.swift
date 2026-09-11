@@ -1877,3 +1877,63 @@ struct CharacterPushKeptTests {
         #expect(jumped && apex < ordinary + 0.05, "rose to \(apex), an ordinary jump from the ledge reaches \(ordinary)")
     }
 }
+
+// MARK: - A push in the air
+
+@Suite("Character controller — pushed in the air")
+struct CharacterAirPushTests {
+
+    private let r = CharacterController.Tuning().radius
+
+    /// A tall block at 1.5 m/s meets a body mid-jump and stops at `stopFace`. Returns where the body
+    /// was when the block stopped, when that was, where it came down and when, and the speed it kept.
+    private func jumpInFront(startFace: Float = -0.6, stopFace: Float = -0.1, wall: BoundingBox? = nil)
+        -> (atStop: Float, stopStep: Int, landed: Float, landStep: Int, kept: Float) {
+        var face = startFace
+        var c = CharacterController(feet: .zero)
+        var atStop: Float = .nan, stopStep = -1, landStep = -1, kept: Float = 0
+        for i in 0..<240 {
+            let move: Float = face < stopFace ? min(1.5 * step, stopFace - face) : 0
+            if move == 0 && stopStep < 0 { stopStep = i; atStop = c.feet.x }
+            face += move
+            var solids = [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 2.5, 2))]
+            if let wall { solids.append(wall) }
+            var w = CharacterController.Surroundings(solids: solids)
+            w.motion = [SIMD3(move, 0, 0)] + (wall == nil ? [] : [.zero])
+            let was = c.isGrounded
+            c.step(yaw: 0, input: MovementInput(), jump: i == 2, deltaTime: step, in: w)
+            if !c.isGrounded { kept = max(kept, c.airVelocity.x) }
+            if !was && c.isGrounded && landStep < 0 { landStep = i }
+        }
+        return (atStop, stopStep, c.feet.x, landStep, kept)
+    }
+
+    /// **The point of it.** The block stops with 0.29 s of the jump still to go: the body goes on at
+    /// 1.5 m/s for all of it. Before, it came down exactly where the block left it.
+    @Test("Shoved mid-jump, a body flies on at the pusher's speed after the pusher stops")
+    func fliesOn() {
+        let run = jumpInFront()
+        #expect(run.stopStep > 0 && run.landStep > run.stopStep, "the block did not stop mid-flight: \(run)")
+        let flight = Float(run.landStep - run.stopStep) * step
+        let went = run.landed - run.atStop
+        #expect(abs(went - 1.5 * flight) < 1.5 * step + 1e-3, "went \(went) m after the block stopped, 1.5 m/s for \(flight) s is \(1.5 * flight)")
+    }
+
+    /// Where in a step the block first reaches the body changes how far that step moves it — by up to
+    /// a step's travel plus the clearance. The speed kept must not change with it.
+    @Test("The speed kept is the pusher's, wherever in a step it first touches")
+    func sameWhateverTheGap() {
+        for part in stride(from: Float(0), to: 1, by: 0.2) {
+            let run = jumpInFront(startFace: -0.6 - part * 1.5 * step)
+            #expect(abs(run.kept - 1.5) < 1e-4, "starting \(part) of a step later, kept \(run.kept) m/s")
+        }
+    }
+
+    @Test("Shoved into a wall mid-air, a body keeps nothing it could not go")
+    func intoAWall() {
+        // A wall just past where the body stands: the block pins it there, mid-jump, and stops.
+        let wall = BoundingBox(minimum: SIMD3(r + 0.05, 0, -3), maximum: SIMD3(r + 1, 4, 3))
+        let run = jumpInFront(stopFace: 0.1, wall: wall)
+        #expect(run.landed <= r + 0.05 - r + 1e-3, "went through the wall to \(run.landed)")
+    }
+}

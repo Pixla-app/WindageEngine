@@ -238,6 +238,40 @@
           ]
         }
       ]
+    },
+    {
+      "name": "air push",
+      "recorded": "0.15.0 — shoved by the ruins' piston mid-jump, and kept going",
+      "level": 1,
+      "script": "wait:0.5 d:0.75 w:1.1834 d:0.175 wait:1.242 space:0.05 wait:1.5",
+      "expect": [
+        {
+          "after": "d:0.175",
+          "feet": [
+            5.55,
+            1.2,
+            -1.1
+          ]
+        },
+        {
+          "line": "came down at",
+          "pattern": "came down at \\([-0-9.]+, ([-0-9.]+), [-0-9.]+\\)",
+          "value": 0.0
+        },
+        {
+          "line": "came down at",
+          "pattern": "came down at \\([-0-9.]+, [-0-9.]+, ([-0-9.]+)\\)",
+          "value": -2.177
+        },
+        {
+          "after": "wait:1.5",
+          "feet": [
+            5.55,
+            0.0,
+            -2.18
+          ]
+        }
+      ]
     }
   ]
 }
