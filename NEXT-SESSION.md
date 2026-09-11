@@ -79,6 +79,18 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
 
+## Done 2026-09-11 — the walks run four at a time (0.16.1)
+
+**25 s for eleven walks, where one at a time took 122** — and `--serial` still there: **all 60 measured
+values identical either way**. Two things it needed: **saves named after the walk**
+(`WindageSample-check-<walk>`, or a walk launching clears the settings another just set — `SampleRun.store`'s
+lesson again), and **no environment map in a check** (2.6 s of the 3.3 before a walk's first step; that
+also took the serial run to 87 s). Found on the way: `--record` and `--serial` were being read as walk-name
+filters, so `--serial` ran nothing.
+
+**Still fails when it should**: the slider back at 0.13.0's place fails the crate walk on (3.22, 5.28) and
+now the head-bob walk too, whose path it also crosses; a wrong recorded number exits 1.
+
 ## Done 2026-09-11 — the same jump at any step rate (0.16.0)
 
 **A step of flight is stepped by its exact answer** (`y + v·dt − ½g·dt²`), not by the velocity the step
@@ -1471,15 +1483,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
-   every item adds one; a check that is slow is a check that gets skipped. Each walk is its own process
-   and its result is fixed by the step count, not the clock, so they can run at once. **Proved by** the
-   eleven finishing in under 30 s with every number the same as run singly — and the deliberate failure
-   (the slider back at z 8) still caught. (Checked on the way and *not* broken, 2026-09-11: a body landing
-   on a slab sliding at 1.5 m/s takes the same 6.33 m/s impact as on still ground and moves with the slab
-   from the next step, relative speed 0.0.)
-
-2. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
+1. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
    the same way and is unguarded. 0.8.0: at defaults the stick turned the view 91.67° right and 45.84° up,
    the mouse 63.03° and 25.21°, and set on the settings screen (mouse 2.0, stick 0.5 inverted) 45.84°,
    −22.92°, 126.05°, 50.42°. 0.9.0: the stick at 20% drifted 2.26° at the default dead zone and not at all
@@ -1487,16 +1491,23 @@ below, never in this list.
    `pad.lookRight@0.2:1`), read the `look '…' → view turned` lines. **Proved by** the check passing, and
    failing with the mouse's look scale doubled.
 
-3. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
+2. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
    exact; the landing still reports `verticalVelocity` after the step that crossed the ground, which is
    the speed a little *below* it. Measured 2026-09-11, a fall from exactly 1 m (exact impact 6.3246 m/s):
    **6.667 m/s at 30 steps a second**, 6.333 at 60, 120 and 240. A game at 30 lands 5% harder than the
    ground it hit — and the impact drives the landing's loudness, its dust and the camera's dip. Solve the
    crossing within the step (the same quadratic the exact flight uses) and report the speed there.
    **Proved by** 6.3246 at all four rates, and in the sample by the landing dust and dip of the ruins'
-   drop, unchanged at 120 where the error is 1 mm/s. (Checked on the way and left alone: the eye's
-   settling after a step up varies by 2 mm across those rates — an exponential approximated per step, and
-   nobody can see 2 mm.)
+   drop, unchanged at 120 where the error is 1 mm/s.
+
+3. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
+   0.16.0: `settling *= 1 − rate·dt` a step, where the curve is `exp(−rate·dt)`. Measured 2026-09-11,
+   walking up four treads: the eye ends **1.640 m above the feet at 30 steps a second, 1.638 at 60, 1.636
+   at 120 and 240** — 4 mm apart, and at a low enough rate `rate·dt` reaches 1 and the eye snaps instead of
+   settling. Everything else on those stairs already agrees: same distance, 4 footsteps at every rate.
+   **Proved by** the same eye height at all four rates, to a tenth of a millimetre, and the walks'
+   recorded eye heights unchanged at 120. Small in metres; the point is that a game at 30 and a game at
+   120 are the same game.
 
 ## Parked — not next, and why
 

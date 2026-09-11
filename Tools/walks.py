@@ -6,14 +6,18 @@ change to a level can quietly make it false — 0.13.0's slider was put across t
 by, and nothing noticed until it was re-run by hand a version later. So the walks are data
 (Tools/walks.json) and this runs them all.
 
-Each runs as a check (WINDAGE_SAMPLE_CHECK=1): no window, no keyboard, no sound, and its own saves,
-cleared — so it runs while somebody works, and a player's rebinding cannot fail it. The engine keeps time
+Each runs as a check (WINDAGE_SAMPLE_CHECK=<the walk's name>): no window, no keyboard, no sound, and its
+own saves, named after the walk and cleared — so it runs while somebody works, a player's rebinding cannot
+fail it, and walks running at the same time do not clear each other's settings. **Four at a time**, since
+each is a whole game with a Metal device and an environment to build; a walk's result is its step count,
+not the clock, so running them together changes nothing but the wall time. The engine keeps time
 with the window never shown (FrameRenderer.runsWhileHidden, from its first tick), so a walk takes its own
 length and a few seconds to start.
 
     python3 Tools/walks.py            every walk
     python3 Tools/walks.py piston     the walks whose names contain "piston"
     python3 Tools/walks.py --record   every expectation with what the walk gives now
+    python3 Tools/walks.py --serial   one at a time, rather than four at once
 
 **A recorded number is changed deliberately, with its reason in the CHANGELOG** — the world the walk goes
 through changed, and this is what it does now. `--record` is for reading those off; it writes nothing.
@@ -24,6 +28,7 @@ decimals, so a feet expectation allows the tolerance plus half a centimetre of r
 their surfaces must match exactly; the head bob, printed to a millimetre, may differ by one.
 """
 import json, os, pathlib, re, subprocess, sys, threading, time
+from concurrent import futures
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SAMPLE = ROOT / ".build/debug/WindageSample"
@@ -33,8 +38,8 @@ WALK_LINE = re.compile(r"walk '([^']+)' → feet \(([-0-9.]+), ([-0-9.]+), ([-0-
 def run(walk):
     """The sample's log for one walk: launched as a check, stopped half a second after the last segment
     reports — the lines that follow it (footsteps, a gap) arrive in that time."""
-    env = dict(os.environ, WINDAGE_SAMPLE_CHECK="1", WINDAGE_SAMPLE_LEVEL=str(walk["level"]),
-               WINDAGE_SAMPLE_WALK=walk["script"])
+    env = dict(os.environ, WINDAGE_SAMPLE_CHECK=re.sub(r"[^a-z]+", "-", walk["name"]),
+               WINDAGE_SAMPLE_LEVEL=str(walk["level"]), WINDAGE_SAMPLE_WALK=walk["script"])
     tokens = walk["script"].split()
     last, times = f"walk '{tokens[-1]}'", tokens.count(tokens[-1])   # a label can come more than once
     seconds = sum(float(t.split(":")[1]) for t in walk["script"].split()
@@ -106,26 +111,36 @@ def check(walk, lines, tolerance):
 
 def main():
     spec = json.loads((ROOT / "Tools/walks.json").read_text())
-    names = [a for a in sys.argv[1:] if a != "--record"]
+    names = [a for a in sys.argv[1:] if not a.startswith("--")]
     recording = "--record" in sys.argv
     walks = [w for w in spec["walks"] if not names or any(n in w["name"] for n in names)]
     built = subprocess.run(["swift", "build", "--product", "WindageSample"], cwd=ROOT, capture_output=True, text=True)
     if built.returncode != 0:
         print(built.stdout[-2000:], built.stderr[-2000:])
         return 1
-    failed = 0
-    for walk in walks:
+    def walked(walk):
         started = time.time()
-        lines = run(walk)
-        results = check(walk, lines, spec["tolerance"])
+        results = check(walk, run(walk), spec["tolerance"])
+        return walk, results, time.time() - started
+
+    started = time.time()
+    if "--serial" in sys.argv:
+        done = [walked(w) for w in walks]
+    else:
+        # Four: each walk is a whole game, and this machine has other work to do.
+        with futures.ThreadPoolExecutor(max_workers=4) as pool:
+            done = list(pool.map(walked, walks))
+
+    failed = 0
+    for walk, results, took in done:
         bad = [r for r in results if not r[3]]
         failed += bool(bad)
         print(f"{'ok  ' if not bad else 'FAIL'} {walk['name']:<16} {len(results) - len(bad)}/{len(results)}"
-              f"  ({time.time() - started:.1f} s; recorded {walk['recorded']})")
+              f"  ({took:.1f} s; recorded {walk['recorded']})")
         for what, wanted, got, ok in results:
             if not ok or recording:
                 print(f"    {'   ' if ok else '!! '}{what}: recorded {wanted}, now {got}")
-    print(f"{len(walks) - failed} of {len(walks)} walks as recorded")
+    print(f"{len(walks) - failed} of {len(walks)} walks as recorded, in {time.time() - started:.0f} s")
     return 1 if failed else 0
 
 

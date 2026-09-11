@@ -12,6 +12,32 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.16.1] — 2026-09-11
+
+**The walk check runs its walks four at a time: 25 s, where it took 122.** Additive; no engine change.
+
+### In the sample
+
+- **`Tools/walks.py` runs four walks at once** (`--serial` for one at a time). **Every one of its 60
+  measured values is identical either way** — a walk's result is its step count, not the clock.
+- **A check's saves are named after its walk** (`WindageSample-check-<walk>`): one walk sets the head bob
+  on the settings screen, and another launching beside it would have cleared that as it started. The same
+  lesson as `SampleRun.store`, which was one shared static until tests ran in parallel.
+- **A check builds no environment map**: it draws no frame, and prefiltering the sky was 2.6 s of the
+  3.3 s each walk waited before its first step. That halved the serial time too — 122 s to 87.
+- **`--record` and `--serial` are flags, not walk names** — they were being taken as filters, and
+  `--serial` ran nothing at all.
+
+### Measured
+
+| | one at a time | four at a time |
+|---|---|---|
+| eleven walks | 122 s before, 87 s without the environment | **25 s** |
+
+The deliberate failure still fails: the slider back at 0.13.0's place, and the crate walk reports
+(3.22, 5.28) for (3.21, −0.13) — and now the head-bob walk fails too, since that place is across its path
+as well. A wrong recorded number exits 1; a right one, 0.
+
 ## [0.16.0] — 2026-09-11
 
 **A jump rises the same however often a game steps.** The fixed timestep keeps results independent of the

@@ -418,8 +418,18 @@ final class SampleGame: GameLoop {
     /// keyboard, no sound, and **saves of its own, cleared at launch**: a walk presses keys by name, so a
     /// player's rebinding would fail it for nothing to do with the engine, and a walk that collects a
     /// crate would otherwise write their best times.
-    static let isCheck = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"] != nil
-    private static let container = isCheck ? "WindageSample-check" : "WindageSample"
+    ///
+    /// **Anything but `1` names the saves**, `WindageSample-check-<that>` — so walks running at the same
+    /// time do not clear each other's: one of them sets the head bob on the settings screen, and another
+    /// launching beside it would wipe that as it started. The same lesson as `SampleRun.store`, which was
+    /// one shared static until tests ran in parallel.
+    static let checkName = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"]
+    static var isCheck: Bool { checkName != nil }
+    private static let container = switch checkName {
+    case nil: "WindageSample"
+    case "1": "WindageSample-check"
+    case let name?: "WindageSample-check-\(name)"
+    }
     private static let progressStore: SaveStore<SampleRun.Progress> = {
         let store = isCheck ? SaveStore<SampleRun.Progress>(container: container, name: "progress") : SampleRun.sharedStore
         if isCheck { store.clear(); settingsStore.clear() }
@@ -1515,6 +1525,9 @@ final class SampleGame: GameLoop {
     /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
     private func rebuildEnvironment() {
         matterLight = ParticleRenderer.matterLight(under: level.resolvedSky)
+        // **Nothing to reflect in, as a check** — which draws no frame at all — and prefiltering the sky
+        // is the slowest thing at start-up: 2.6 s of the 3.3 a walk waits before its first step.
+        guard !SampleGame.isCheck else { return }
         let started = CFAbsoluteTimeGetCurrent()
         guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
             print("WindageSample: no environment — metal will have nothing to reflect")

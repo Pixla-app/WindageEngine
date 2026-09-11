@@ -1133,7 +1133,13 @@ exactly, the head bob to the millimetre, from the lines the walk report prints u
 walks, 59 expectations, among them every row of 0.8.1's head-bob table and 0.11.0's footsteps down the
 ruins' stairs. Take the tread rule's `abs` out and it fails on 3 footsteps where 5 are recorded. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
 
-**They run as a check — `WINDAGE_SAMPLE_CHECK=1` — so they can run while somebody works**: the window is
+**Four at a time since 0.16.1 — 25 s for eleven walks, where one at a time took 122** — and every value
+identical either way, a walk's result being its step count rather than the clock. Two things made that
+work: each check names its saves after its walk, or one walk launching would clear the settings another
+had just set on the settings screen; and a check prefilters no sky, which it never draws — 2.6 s of the
+3.3 each walk waited to start.
+
+**They run as a check — `WINDAGE_SAMPLE_CHECK=<the walk>` — so they can run while somebody works**: the window is
 never shown, the keyboard never taken, nothing played aloud, and the saves are the check's own, cleared
 at launch. Two things that made it work: the sample runs as an *accessory* app, because a regular one is
 made frontmost when it finishes launching whether or not it asks; and the engine's hidden clock starts
