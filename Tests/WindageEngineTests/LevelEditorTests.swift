@@ -147,6 +147,86 @@ struct LevelEditorTests {
         try? FileManager.default.removeItem(at: url)
     }
 
+    // MARK: - The selection's lamp
+
+    private let lamp = PunctualLight(position: SIMD3(0, 1.5, 0), colour: SIMD3(40, 28, 16), range: 12)
+
+    @Test("A lamp can be given, and taken away, and both undo")
+    func giveAndTakeALamp() {
+        var editor = self.editor()
+        editor.select(0)
+        editor.setLight(lamp)
+        #expect(editor.level.placements[0].light == lamp)
+        #expect(editor.level.placements[1].light == nil, "the lamp went to something not selected")
+        editor.setLight(nil)
+        #expect(editor.level.placements[0].light == nil)
+        editor.undo()
+        #expect(editor.level.placements[0].light == lamp)
+        editor.undo()
+        #expect(editor.level.placements[0].light == nil)
+    }
+
+    /// **The lamp is the placement's**, so the placement's own edits carry it — which is the whole
+    /// reason it is not a free-standing light.
+    @Test("A lamp given in the editor moves, turns and copies with its placement")
+    func lampTravelsWithItsPlacement() {
+        var editor = self.editor()
+        editor.select(0)
+        editor.setLight(PunctualLight(position: SIMD3(0.5, 1.5, 0), colour: SIMD3(1, 1, 1), range: 5))
+        editor.move(by: SIMD3(3, 0, 0))
+        editor.rotate(by: .pi / 2)
+        let ground = Level.Ground(heightAt: { _, _ in 0 })
+        let before = editor.level.carriedLights(on: ground).first { $0.placement == 0 }!.light.position
+        #expect(abs(before.x - 3) < 1e-4 && abs(before.z + 0.5) < 1e-4,
+                "turned a quarter, the lamp's +x offset should point along -z: \(before)")
+        editor.duplicate()
+        #expect(editor.level.carriedLights(on: ground).count == 2, "the copy should carry a lamp too")
+    }
+
+    @Test("Raising a lamp is in metres of the world, whatever the placement's size")
+    func raiseIsInWorldMetres() {
+        var editor = self.editor()
+        editor.select(1)                       // scale 2
+        editor.setLight(lamp)
+        editor.raiseLight(by: 0.5)
+        #expect(abs(editor.level.placements[1].light!.position.y - 1.75) < 1e-5,
+                "a 0.5 m raise on a placement at scale 2 is a 0.25 offset")
+        let ground = Level.Ground(heightAt: { _, _ in 0 })
+        let world = editor.level.carriedLights(on: ground).first { $0.placement == 1 }!.light.position.y
+        #expect(abs(world - 3.5) < 1e-4, "1.75 in the placement's space, doubled, is 3.5 m up")
+    }
+
+    @Test("Brightening keeps the colour's hue, in thirds of a stop, and cannot reach zero")
+    func brightenKeepsHue() {
+        var editor = self.editor()
+        editor.select(0)
+        editor.setLight(lamp)
+        for _ in 0..<3 { editor.brightenLight(by: LevelEditor.lampBrighten) }
+        let c = editor.level.placements[0].light!.colour
+        #expect(abs(c.x - 80) < 1e-2, "three thirds of a stop should double 40 to 80, got \(c.x)")
+        #expect(abs(c.y / c.x - 28.0 / 40) < 1e-5 && abs(c.z / c.x - 16.0 / 40) < 1e-5, "the hue moved")
+        for _ in 0..<200 { editor.brightenLight(by: 1 / LevelEditor.lampBrighten) }
+        #expect(abs(editor.level.placements[0].light!.colour.max() - LevelEditor.lampIntensityRange.lowerBound) < 1e-4)
+    }
+
+    @Test("Lamp edits on a placement without a lamp change nothing and dirty nothing")
+    func noLampNoChange() {
+        var editor = self.editor()
+        editor.select(2)
+        editor.raiseLight(by: 1)
+        editor.brightenLight(by: 2)
+        editor.setLight(nil)
+        #expect(!editor.isDirty && !editor.canUndo)
+    }
+
+    @Test("A placement can be added with its lamp")
+    func addWithALamp() {
+        var editor = self.editor()
+        editor.add(mesh: "brazier", at: SIMD3(1, 0, 1), light: lamp)
+        #expect(editor.selected?.light == lamp)
+        #expect(editor.level.carriedLights(on: Level.Ground(heightAt: { _, _ in 0 })).contains { $0.placement == editor.selection })
+    }
+
     @Test("Adding puts a placement where it was asked for and selects it")
     func adding() {
         var editor = self.editor()

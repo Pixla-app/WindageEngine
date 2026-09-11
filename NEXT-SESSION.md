@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-503 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+509 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,28 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a lamp from the editor (0.8.2)
+
+**`LevelEditor.setLight`, `raiseLight(by:)`, `brightenLight(by:)`**, and `add(mesh:…, light:)`. Raised
+in world metres whatever the placement's scale; brightened in thirds of a stop, never to zero; all
+undoable, and an edit that changes nothing records nothing. Six tests.
+
+**Driven in the running sample**, scripted: walk up, **Tab**, pick a plain crate (#7, scale 2) with
+**Space**, then **l**, **]** ×2, **.** ×3. Logged through `carriedLights(on:)`:
+
+| after | lamp at | intensity |
+|---|---|---|
+| **l** | (−4.00, 3.20, −18.00) | 45.0 |
+| **]** **]** | 3.30, then 3.40 | 45.0 |
+| **.** **.** **.** | 3.40 | 56.7, 71.4, 90.0 |
+
+Every figure is the prediction: the box mesh is 1 m, so the lamp sits at 1.6 in the placement's space,
+3.2 m up at scale 2; three thirds of a stop double 45. **A frame difference** against the same view
+without the lamp shows the new pool of light on the ground under the crate, with the objective crates'
+shadows cut out of it — in daylight the change is subtle to the eye and plain in the difference.
+
+**Every game checked**: none uses `LevelEditor`; all five build and pass against 0.8.2.
 
 ## Done 2026-09-11 — head bob, and a setting for it (0.8.1)
 
@@ -995,24 +1017,26 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
-   but cannot give one: a new brazier dropped in from the editor arrives cold. Adding, removing and
-   nudging a selection's lamp — its height and brightness — from the editor's keys. **Proved in the
-   sample by** a scripted edit that adds a lamp to a crate and the log reporting it in the world.
-
-2. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
+1. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
    constants, and a worn stick drifts past them: the view creeps with nobody touching it, and the only
    cure a player has is a new controller. A dead zone per stick in `PlayerSettings`, on the settings
    screen beside the stick's sensitivity. **Proved in the sample by** the scripted walk holding the
    stick at part deflection (`pad.lookRight@0.1`) — no turn below the setting, a turn that starts from
    zero just above it, and full speed still at full deflection.
 
-3. **What a surface is, from the level file.** A footstep knows which solid it is on
+2. **What a surface is, from the level file.** A footstep knows which solid it is on
    (`groundSolid`) but not what that solid is made of: the sample hard-codes "every solid is stone,
    the rest is dirt", which is true of its two levels only by accident. A `surface` on a placement —
    stone, wood, metal, dirt — read by the level format, so a game picks the sound from the level rather
    than from a guess. **Proved in the sample by** a wooden step in the ruins and the scripted walk
    reporting "footsteps on wood" across it and "on stone" on the steps beside it.
+
+3. **Dropping a new thing in from the editor.** `LevelEditor.add` has existed since the editor did,
+   and nothing in the sample calls it: a level can be rearranged but never added to without editing
+   the file. A key that cycles through the meshes the level already uses and drops one where the
+   crosshair meets the ground — a brazier arriving with its lamp, through `add(…, light:)`. **Proved in
+   the sample by** a scripted edit that adds a brazier and a crate, the log placing each where the
+   crosshair was, and the brazier's lamp lighting the ground around it.
 
 ## Parked — not next, and why
 

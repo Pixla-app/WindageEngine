@@ -1668,10 +1668,40 @@ final class SampleGame: GameLoop {
         case 11: editor.duplicate()                          // b — duplicate
         case 49: pickUnderCrosshair(); return true           // space — pick, for hands already on
                                                              // the keys and for automated checks
+        // The selection's lamp: give or take away, hang it higher or lower, brighter or dimmer.
+        case 37:                                             // l — lamp on / off
+            guard let selected = editor.selected else { return true }
+            editor.setLight(selected.light == nil ? newLamp(for: selected.mesh) : nil)
+            reportLamp()
+        case 30: editor.raiseLight(by: LevelEditor.lampRaise); reportLamp()          // ]
+        case 33: editor.raiseLight(by: -LevelEditor.lampRaise); reportLamp()         // [
+        case 47: editor.brightenLight(by: LevelEditor.lampBrighten); reportLamp()    // .
+        case 43: editor.brightenLight(by: 1 / LevelEditor.lampBrighten); reportLamp() // ,
         default: return false
         }
         rebuild()
         return true
+    }
+
+    /// The lamp the editor gives something that has none: warm, hanging a little above the top of
+    /// the mesh. **Above the mesh, not at its middle** — a lamp inside a crate lights the inside of
+    /// the crate, and its shadow cube sees nothing but walls.
+    private func newLamp(for mesh: String) -> PunctualLight {
+        let top = meshes[mesh]?.bounds.maximum.y ?? 1
+        return PunctualLight(position: SIMD3(0, top + 0.6, 0), colour: SIMD3(1, 0.72, 0.42) * 45, range: 12)
+    }
+
+    /// Says where the selection's lamp is **in the world** — through the level's own resolution, the
+    /// one the renderer lights with — so a scripted edit can be checked against where it should be.
+    private func reportLamp() {
+        guard let index = editor.selection, let placement = editor.selected else { return }
+        guard let lamp = level.carriedLights(on: SampleGame.ground).first(where: { $0.placement == index })?.light else {
+            print("WindageSample: \(placement.mesh) #\(index) has no lamp")
+            return
+        }
+        print(String(format: "WindageSample: lamp on %@ #%d at (%.2f, %.2f, %.2f), intensity %.1f, range %.0f",
+                     placement.mesh, index, lamp.position.x, lamp.position.y, lamp.position.z,
+                     lamp.colour.max(), lamp.range))
     }
 
     /// Steps through the tone map curves, so the difference can be looked at rather than argued
@@ -2800,10 +2830,12 @@ final class SampleGame: GameLoop {
         if isEditing {
             let what = editor.selected.map {
                 "\($0.mesh)  yaw \(Int($0.yaw * 180 / .pi))°  scale \(String(format: "%.2f", $0.scale))"
+                    + ($0.light.map { String(format: "  lamp %.0f", $0.colour.max()) } ?? "")
             }
             _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")",
                          x: margin, y: y + body * 1.4, pointSize: body, color: gold)
-            _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete",
+            _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete"
+                         + " · l lamp · [ ] lamp height · , . lamp brightness",
                          x: margin, y: viewportSize.y - margin - hint * 1.4, pointSize: hint, color: white)
             _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · ⌘⌫ revert to shipped · tab back to walking",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)

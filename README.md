@@ -1833,6 +1833,30 @@ Deliberately absent: gizmos, snapping, multi-select, prefabs, a scene graph. Tho
 correctly before a second game has pushed on them — the same rule the rest of this engine is built
 under.
 
+### The selection's lamp (0.8.2)
+
+`setLight(_:)` gives the selection a lamp, replaces it or takes it away; `raiseLight(by:)` and
+`brightenLight(by:)` set the two things a person adjusts by eye; `add(mesh:at:tags:light:)` drops in
+something already lit. In the sample: **l** lamp on and off, **[ ]** lower and raise it, **, .** dimmer
+and brighter.
+
+- **The lamp is the placement's** (``Level/Placement/light``), so moving, turning, copying and deleting
+  already carried it; what the editor lacked was a way to give one.
+- **Raised in metres of the world**, whatever the placement's scale — the offset scales with the
+  placement, so on a crate at scale 2 the offset moves half as far. A key that moved lamps different
+  amounts on different things would be one nobody could judge.
+- **Brightened in thirds of a stop**, three presses to double: brightness is judged in ratios, and a
+  fixed +5 is a leap on a candle and nothing on a floodlight. Clamped above zero, for the reason scale
+  is — a lamp dimmed to nothing is still there, with no way to see it.
+- **An edit that changes nothing records nothing** — brightening a crate with no lamp is not an undo
+  step and an unsaved change.
+
+**Driven in the running sample**: pick a plain crate at scale 2, **l**, **]** twice, **.** three times.
+The log, read through the level's own resolution, reported the lamp at 3.20 m, then 3.30 and 3.40,
+brightening 45 → 56.7 → 71.4 → 90.0 — each the prediction. A frame difference against the same view
+without it shows the new pool of light on the ground under the crate, with the green crates' shadows
+cut out of it.
+
 > **Three things running the sample found that its own tests could not.** The `"solid"` tag was in
 > the level file and nothing read it, so you walked through every wall — a file saying something
 > untrue is worse than a file not saying it. `BoundingBox` had ray and segment tests but no

@@ -12,6 +12,31 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.8.2] — 2026-09-11
+
+**A lamp from the editor.** A placement could carry a lamp since 0.7.1, and the editor could move one,
+but not give one or take one away: a crate that should be lit had to be lit by editing the file.
+
+### Added
+
+- **`LevelEditor.setLight(_:)`** — give the selection a lamp, replace it, or remove it with `nil`.
+- **`LevelEditor.raiseLight(by:)`** — in metres of the world, whatever the placement's scale.
+- **`LevelEditor.brightenLight(by:)`** — keeps the hue, within `lampIntensityRange` (never zero).
+- **`LevelEditor.lampRaise`** (0.1 m), **`lampBrighten`** (2^⅓, a third of a stop) and
+  **`lampIntensityRange`**.
+- **`add(mesh:at:tags:light:)`** — the existing `add`, with an optional lamp, so a brazier dropped in
+  arrives lit. Source-compatible: the parameter has a default.
+
+All undoable; an edit that changes nothing records nothing.
+
+### In the sample
+
+- **l** lamp on and off, **[ ]** lower and raise it, **, .** dimmer and brighter. A new lamp hangs
+  0.6 m above the top of the mesh, warm, at 45. The editor's line shows `lamp 90`, and the hints list the
+  keys.
+- **Each lamp edit logs where the lamp is in the world**, through `Level.carriedLights(on:)` — the
+  resolution the renderer lights with.
+
 ## [0.8.1] — 2026-09-11
 
 **Head bob, and a setting to turn it down or off.** Walking was flat: the eye glided at a fixed height

@@ -110,11 +110,64 @@ public nonisolated struct LevelEditor {
         selection = level.placements.isEmpty ? nil : min(index, level.placements.count - 1)
     }
 
-    /// Add a placement at a point, and select it.
-    public mutating func add(mesh: String, at position: SIMD3<Float>, tags: [String] = []) {
+    /// Add a placement at a point, and select it — carrying a lamp if it is given one, so a brazier
+    /// dropped into a level arrives lit rather than cold.
+    public mutating func add(mesh: String, at position: SIMD3<Float>, tags: [String] = [],
+                             light: PunctualLight? = nil) {
         record()
-        level.placements.append(Level.Placement(mesh: mesh, position: position, tags: tags))
+        level.placements.append(Level.Placement(mesh: mesh, position: position, tags: tags, light: light))
         selection = level.placements.count - 1
+    }
+
+    // MARK: - The selection's lamp
+    //
+    // **A lamp belongs to a placement** — see ``Level/Placement/light`` — so these edit the selection's
+    // rather than a free-standing light, and moving, turning, copying or deleting the placement already
+    // does the right thing to it. What was missing was a way to give one, take one away, and set the
+    // two things a person adjusts by eye: how high it hangs and how bright it is.
+    //
+    // **An operation that changes nothing records nothing.** Brightening a placement with no lamp
+    // is a no-op, not an undo step and an unsaved change.
+
+    /// How far one press raises or lowers a lamp, in metres.
+    public static let lampRaise: Float = 0.1
+
+    /// How much one press brightens a lamp. **A third of a stop** — 2^⅓, three presses to double —
+    /// because brightness is judged in ratios, like exposure: a fixed step of +5 is a leap on a candle
+    /// and nothing on a floodlight.
+    public static let lampBrighten: Float = pow(2, 1.0 / 3)
+
+    /// The brightest and dimmest a lamp can be set, as radiant intensity. **Not zero**, for the reason
+    /// ``scale(by:)`` is not: a lamp dimmed to nothing is still there, casting nothing, with no way to
+    /// see it to fix it.
+    public static let lampIntensityRange: ClosedRange<Float> = 0.5...5000
+
+    /// Give the selection a lamp, replace the one it has, or take it away with `nil`.
+    ///
+    /// The lamp is in the placement's own space: `position` is an offset from its origin.
+    public mutating func setLight(_ light: PunctualLight?) {
+        guard let selected, selected.light != light else { return }
+        edit { $0.light = light }
+    }
+
+    /// Raise the selection's lamp — or lower it, with a negative distance — in **metres of the
+    /// world**. The lamp's offset scales with its placement, so on a placement at twice the size the
+    /// offset moves half as far; a key that moved it by different amounts on different things would
+    /// be a key nobody could judge.
+    public mutating func raiseLight(by metres: Float) {
+        guard let selected, selected.light != nil, metres != 0 else { return }
+        edit { $0.light!.position.y += metres / max($0.scale, 1e-3) }
+    }
+
+    /// Brighten the selection's lamp by a factor — below 1 dims it — within ``lampIntensityRange``.
+    /// The colour keeps its hue: every channel scales together.
+    public mutating func brightenLight(by factor: Float) {
+        guard let light = selected?.light, factor > 0, factor != 1 else { return }
+        let intensity = max(light.colour.max(), 1e-6)
+        let wanted = min(max(intensity * factor, LevelEditor.lampIntensityRange.lowerBound),
+                         LevelEditor.lampIntensityRange.upperBound)
+        guard wanted != intensity else { return }
+        edit { $0.light!.colour *= wanted / intensity }
     }
 
     private mutating func edit(_ change: (inout Level.Placement) -> Void) {
