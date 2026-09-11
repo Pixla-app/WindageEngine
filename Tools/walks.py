@@ -29,7 +29,8 @@ def run(walk):
     reports — the lines that follow it (footsteps, a gap) arrive in that time."""
     env = dict(os.environ, WINDAGE_SAMPLE_CHECK="1", WINDAGE_SAMPLE_LEVEL=str(walk["level"]),
                WINDAGE_SAMPLE_WALK=walk["script"])
-    last = f"walk '{walk['script'].split()[-1]}'"
+    tokens = walk["script"].split()
+    last, times = f"walk '{tokens[-1]}'", tokens.count(tokens[-1])   # a label can come more than once
     seconds = sum(float(t.split(":")[1]) for t in walk["script"].split()
                   if not t.startswith(("yaw:", "pitch:", "mousex:", "mousey:")))
     process = subprocess.Popen([str(SAMPLE)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -38,7 +39,7 @@ def run(walk):
     reader.start()
     deadline, finished = time.time() + seconds + 30, None
     while time.time() < deadline:
-        if finished is None and any(last in l for l in list(lines)):
+        if finished is None and sum(last in l for l in list(lines)) >= times:
             finished = time.time()
         if finished is not None and time.time() > finished + 0.5:
             break

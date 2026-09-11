@@ -1057,6 +1057,23 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### A door that turns back (0.14.2)
+
+`pinnedBy` said which solid had the player pinned, and nothing read it — which by this repository's own
+rule meant 0.13.0 was not finished. **The courtyard's slider now turns back when it pins someone**, as a
+door does (`SampleLevel.SlideRun`), and a crate is set just past the end of its run, nearer than a body is
+wide, so a player standing there is pinned.
+
+**The first run found a bug, which is the argument for the rule.** Pinned, the player was held 7 mm inside
+the slider's face; the slider turned back, still into them, and the push moved them "along the way it
+went, just clear of it" — out through its far side, 1.8 m, and home behind it. A push is only for a body
+*ahead* of a solid, nearer the face it leads with; one it is leaving is neither pushed nor pinned. A test
+with a full-speed reversal passed on the old code — the slab is out of the body in one step — and only a
+gentle one, as an eased door makes, fails it.
+
+**Walked, computed first:** pinned at the slider's face x −6.5947 (computed −6.595), the feet at −6.3012
+against the stop, 1.2 mm clear of it; the slider turned back at once and the feet stayed put.
+
 ### The walks are a check (0.14.1)
 
 Every feature here was proved by a scripted walk, the day it was measured. After that a walk is a claim
@@ -1069,7 +1086,7 @@ python3 Tools/walks.py
 ```
 
 runs them all and fails on anything more than 2 cm from its record. Six walks, 21 expectations, about a
-minute. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
+minute (seven since 0.14.2). Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
 
 **They run as a check — `WINDAGE_SAMPLE_CHECK=1` — so they can run while somebody works**: the window is
 never shown, the keyboard never taken, nothing played aloud, and the saves are the check's own, cleared

@@ -195,6 +195,49 @@
           ]
         }
       ]
+    },
+    {
+      "name": "pinned",
+      "recorded": "0.14.2 — the slider turns back from a player it pins against its stop",
+      "level": 0,
+      "script": "wait:0.3 yaw:72.53 w:1.1095 yaw:0 w:0.2667 wait:3.0 wait:0.5 wait:1.0 wait:3.0",
+      "expect": [
+        {
+          "after": "w:0.2667",
+          "feet": [
+            -6.34,
+            0.0,
+            8.4
+          ]
+        },
+        {
+          "line": "pinned by the slider",
+          "pattern": "its face at x ([-0-9.]+)",
+          "value": -6.5947
+        },
+        {
+          "line": "pinned by the slider",
+          "pattern": "the feet at x ([-0-9.]+)",
+          "value": -6.3012
+        },
+        {
+          "after": "wait:0.5",
+          "feet": [
+            -6.3,
+            0.0,
+            8.4
+          ]
+        },
+        {
+          "after": "wait:3.0",
+          "occurrence": 2,
+          "feet": [
+            -6.3,
+            0.0,
+            8.4
+          ]
+        }
+      ]
     }
   ]
 }

@@ -158,7 +158,8 @@ struct SampleLevelContentTests {
                 let half = mover.scale / 2
                 let swept = (minX: min(start.x, end.x) - half, maxX: max(start.x, end.x) + half,
                              minZ: min(start.y, end.y) - half, maxZ: max(start.y, end.y) + half)
-                for other in level.placements where other.tags.contains("solid") && other != mover {
+                for other in level.placements where other.tags.contains("solid") && other != mover
+                    && !other.tags.contains("stop") {
                     // How high it reaches, where that is known; anything else counts as tall.
                     let tall: Float? = switch other.mesh {
                     case "box": other.scale
@@ -192,6 +193,27 @@ struct SampleLevelContentTests {
         #expect(found == 2, "\(found) movers; the courtyard's slider and the ruins' piston make two")
     }
 
+    /// **The courtyard's stop pins whoever the slider pushes to it**: clear of the slider's own run — it
+    /// never touches the slider — but nearer the run's end than a body is wide, so a player pushed there
+    /// cannot fit, and the slider must turn back. And off to one side of the run, clear of the push walk
+    /// (z 9, from 0.13.1), so that walk is still pushed the whole way.
+    @Test("The courtyard's stop is nearer the slider's end than a body is wide, and clear of it")
+    func stop() throws {
+        let courtyard = try SampleLevel.bundled(0)
+        let slider = try #require(courtyard.placements.first { $0.tags.contains("slider") })
+        let stop = try #require(courtyard.placements.first { $0.tags.contains("stop") })
+        let endFace = slider.position.x + SampleLevel.slideDistance + slider.scale / 2
+        let stopFace = stop.position.x - stop.scale / 2
+        let body = CharacterController.Tuning().radius * 2
+        #expect(stopFace > endFace, "the slider runs into its stop")
+        #expect(stopFace - endFace < body, "a body fits between the slider's end and the stop: \(stopFace - endFace) m")
+        // Overlapping the slider's width — or it pins nobody — but not the push walk's body at z 9.
+        let sliderZ = (slider.position.z - slider.scale / 2)...(slider.position.z + slider.scale / 2)
+        let stopZ = (stop.position.z - stop.scale / 2)...(stop.position.z + stop.scale / 2)
+        #expect(sliderZ.overlaps(stopZ))
+        #expect(stopZ.upperBound < 9 - body / 2, "the stop reaches the push walk's line")
+    }
+
     /// The ruins' piston stops with its face just past the landing's south edge — so it pushes whoever
     /// stands before it clean off at its full speed, then stops dead.
     @Test("The ruins' piston ends just past the landing's edge")
@@ -202,5 +224,58 @@ struct SampleLevelContentTests {
         let face = piston.position.z + facing.y * SampleLevel.pistonRun - piston.scale / 2
         #expect(abs(facing.y + 1) < 1e-5, "the piston should run along −z")
         #expect(face < -1.5 && face > -1.6, "its face ends at z \(face), the landing's edge is −1.5")
+    }
+}
+
+@Suite("The sample's slider, as something that can be turned back")
+struct SlideRunTests {
+
+    private let step: Float = 1.0 / 120
+
+    /// To a millimetre, not exactly: it and the cycle each sum step lengths in `Float`, one per leg and
+    /// one over the whole cycle, and they drift a fraction of a millisecond apart — 0.39 mm at the
+    /// slider's speed, measured.
+    @Test("Unobstructed, it runs the eased cycle to a millimetre")
+    func matchesTheCycle() {
+        var run = SampleLevel.SlideRun()
+        var clock: Float = 0, worst: Float = 0
+        for _ in 0..<Int(2 * SampleLevel.slideCycle / step) {
+            _ = run.advance(by: step)
+            clock = (clock + step).truncatingRemainder(dividingBy: SampleLevel.slideCycle)
+            worst = max(worst, abs(run.offset - SampleLevel.slideOffset(at: clock)))
+        }
+        #expect(worst < 1e-3, "strayed \(worst) m from the cycle")
+    }
+
+    @Test("Turned back going out, it comes home from there and then runs its cycle again")
+    func turnsBack() {
+        var run = SampleLevel.SlideRun()
+        while run.offset < 3 { _ = run.advance(by: step) }
+        let at = run.offset
+        run.turnBack()
+        #expect(run.leg == .back && run.reversals == 1)
+        // Home in the share of the travel time the way back is: 4 s × at/5.
+        let home = SampleLevel.slideTravel * at / SampleLevel.slideDistance
+        var took: Float = 0, last = at
+        while run.leg == .back {
+            _ = run.advance(by: step)
+            took += step
+            #expect(run.offset <= last + 1e-6, "went out again on the way home")
+            last = run.offset
+        }
+        #expect(run.offset == 0 && abs(took - home) <= step, "home after \(took) s, the way back takes \(home)")
+        // Then waits and goes out as ever.
+        for _ in 0..<Int((SampleLevel.slidePause + 1) / step) { _ = run.advance(by: step) }
+        #expect(run.leg == .out && run.offset > 0)
+    }
+
+    @Test("Coming home or waiting, being told to turn back changes nothing")
+    func onlyGoingOut() {
+        var run = SampleLevel.SlideRun()
+        run.turnBack()
+        #expect(run.leg == .waiting && run.reversals == 0)
+        while run.leg != .back { _ = run.advance(by: step) }
+        run.turnBack()
+        #expect(run.reversals == 0)
     }
 }

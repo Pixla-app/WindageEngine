@@ -54,9 +54,67 @@ public nonisolated enum SampleLevel {
     public static let slideDistance: Float = 5, slideTravel: Float = 4, slidePause: Float = 1.5
     public static var slideCycle: Float { 2 * (slideTravel + slidePause) }
 
-    /// How far along +x from where the level put it a slider stands, `t` seconds into its cycle.
+    /// How far along its facing from where the level put it a slider stands, `t` seconds into an
+    /// unobstructed cycle. What ``SlideRun`` does while nothing is in its way.
     public static func slideOffset(at t: Float) -> Float {
         shuttle(at: t, distance: slideDistance, travel: slideTravel, pause: slidePause)
+    }
+
+    /// **A slider's run, as something that can be turned back** — a door that meets someone reverses.
+    /// Waits, goes out eased, waits, comes back eased, as ``slideOffset(at:)`` does; told it has pinned
+    /// someone (`CharacterController.pinnedBy`), it turns back from wherever it is, easing home over the
+    /// share of the travel time that the way back is of the whole run.
+    public struct SlideRun: Sendable, Equatable {
+        public enum Leg: Sendable, Equatable { case waiting, out, waitingOut, back }
+        public private(set) var leg = Leg.waiting
+        public private(set) var offset: Float = 0
+        /// Seconds into the current leg, and — going back — where it started from and how long it takes.
+        private var t: Float = 0
+        private var from: Float = 0
+        private var duration: Float = SampleLevel.slideTravel
+        /// How many times it has been turned back.
+        public private(set) var reversals = 0
+
+        public init() {}
+
+        /// A step on. Returns how far it moved along its facing.
+        public mutating func advance(by dt: Float) -> Float {
+            let before = offset
+            let pause = SampleLevel.slidePause, travel = SampleLevel.slideTravel, distance = SampleLevel.slideDistance
+            func ease(_ x: Float) -> Float { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
+            t += dt
+            // A leg whose time is up hands what is left of the step to the next one.
+            legs: while true {
+                switch leg {
+                case .waiting:
+                    guard t >= pause else { break legs }
+                    leg = .out; t -= pause
+                case .out:
+                    offset = distance * ease(t / travel)
+                    guard t >= travel else { break legs }
+                    leg = .waitingOut; t -= travel
+                case .waitingOut:
+                    guard t >= pause else { break legs }
+                    leg = .back; t -= pause; from = offset; duration = travel
+                case .back:
+                    offset = from * (1 - ease(t / duration))
+                    guard t >= duration else { break legs }
+                    leg = .waiting; t -= duration; offset = 0
+                }
+            }
+            return offset - before
+        }
+
+        /// It has pinned someone: back the way it came, now. Only going out — a slider coming home is
+        /// moving away from whoever it could pin.
+        public mutating func turnBack() {
+            guard leg == .out, offset > 0 else { return }
+            leg = .back
+            from = offset
+            duration = SampleLevel.slideTravel * offset / SampleLevel.slideDistance
+            t = 0
+            reversals += 1
+        }
     }
 
     /// **The sample's piston** — a `"piston"` tag — which, unlike the slider, **does not ease**: out at

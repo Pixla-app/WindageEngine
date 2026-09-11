@@ -12,6 +12,30 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.14.2] — 2026-09-11
+
+**The sample uses `pinnedBy` — and that found a bug in the push.** By the handoff's own rule 0.13.0 was
+not finished until the sample read `pinnedBy`; the first time it did, the push misbehaved.
+
+### Fixed
+
+- **A solid moving away from a body it is still into no longer drags the body through itself.** A push
+  moved the body along the solid's way "just clear of it" — which, for a door turning back from someone
+  it pinned, is out through its far side. Measured in the sample: pinned against a stop, the player was
+  thrown 1.8 m through the slider when it turned back and carried home behind it. **Only a body ahead of
+  a solid, nearer the face it leads with, is pushed or reported pinned.** One test, failing on the old
+  push by 3.76 m; every earlier push test and walk unchanged. It needs a gentle reversal to show — at full
+  speed the solid is out of the body in one step.
+
+### In the sample
+
+- **The courtyard's slider turns back when it pins the player** (`SampleLevel.SlideRun`, a small state
+  machine that runs the same eased cycle unobstructed, to a millimetre). **A `"stop"` crate** at the end of
+  its run, nearer than a body is wide, and off the push walk's line. Walked, computed first: pinned at the
+  slider's face x −6.5947 (computed −6.595), the feet held at −6.3012 against the stop — 1.2 mm clear of
+  it — and left there as it went home. Frames at the pin and a second after.
+- **`Tools/walks.py` has a seventh walk, the pin**, and waits for a last segment that comes more than once.
+
 ## [0.14.1] — 2026-09-11
 
 **The documented walks run as a check.** 0.13.0's slider was put across the walk 0.12.1 was measured by,

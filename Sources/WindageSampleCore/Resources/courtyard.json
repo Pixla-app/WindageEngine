@@ -481,6 +481,21 @@
         "solid",
         "slider"
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -5.3,
+        0,
+        7.9
+      ],
+      "scale" : 1.4,
+      "surface" : "wood",
+      "tags" : [
+        "solid",
+        "stop"
+      ]
     }
   ],
   "settings" : {},

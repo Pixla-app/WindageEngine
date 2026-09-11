@@ -1565,6 +1565,35 @@ struct CharacterPushedTests {
         #expect(firstPinned.map { abs($0 - closes) <= 2 } ?? false, "first pinned at step \(String(describing: firstPinned)), the gap closes at \(closes)")
     }
 
+    /// **Found by the sample using `pinnedBy`.** A slab pins a body against a wall, a step's travel into
+    /// it, and — as a door does — turns back. It is moving away now; the body must stay where the wall
+    /// held it. Pushed "along the way it went, just clear of it", the body went out through the slab's
+    /// far side and was carried home behind it: measured, 1.8 m through a slider in the sample.
+    @Test("A slab turning back from a body it pinned leaves it there")
+    func turningBackLeavesIt() {
+        var face: Float = -2, speed: Float = 1
+        var c = CharacterController(feet: .zero)
+        let wall = BoundingBox(minimum: SIMD3(1, 0, -3), maximum: SIMD3(2, 3, 3))
+        var pinnedOnce = false, pinnedAfter = 0
+        for _ in 0..<480 {
+            face += speed * step
+            var w = CharacterController.Surroundings(solids: [slab(face: face), wall])
+            w.motion = [SIMD3(speed * step, 0, 0), .zero]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            if c.pinnedBy == 0 {
+                if pinnedOnce { pinnedAfter += 1 }
+                pinnedOnce = true
+                // The door turns back — gently, as an eased one does from rest, so it is still into the
+                // body for a few steps after. At full speed it is out of it in one, and nothing shows.
+                speed = -0.1
+            }
+        }
+        let held = 1 - r - 0.002
+        #expect(pinnedOnce, "never pinned")
+        #expect(abs(c.feet.x - held) < 1e-3, "the body is at \(c.feet.x), the wall held it at \(held)")
+        #expect(pinnedAfter == 0, "still reported pinned \(pinnedAfter) steps after the slab turned away")
+    }
+
     @Test("A slab sliding past, not into, leaves the body where it is")
     func slidingPast() {
         var face: Float = -2

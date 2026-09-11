@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-586 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+591 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,23 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the sample uses `pinnedBy`, and a push bug it found (0.14.2)
+
+**The slider turns back when it pins the player** (`SampleLevel.SlideRun`, three tests; state kept outside
+the rebuild, since collecting a crate rebuilds the level), against a **`"stop"`** crate at (−5.3, 7.9) —
+placed after checking the documented walks: straight across the run's end it would have caught the push
+walk, so it sits on the run's south side, 0.1 m off that walk's line. Content test for it.
+
+**The first run found an engine bug.** Pinned 7 mm into the slider's face, the player was thrown 1.8 m
+through it when it turned back and carried home behind it: the push went "the way it went, just clear" —
+out the far side. **Push, and pin, only a body ahead of a solid** (nearer its leading face). A full-speed
+reversal did not show it (out of the body in one step); a gentle one, as the eased slider makes, fails the
+old code by 3.76 m. Every earlier push test and walk unchanged.
+
+**Walked**: pinned at face −6.5947 (computed −6.595), feet −6.3012 held by the stop, left there as the
+slider went home. **Seventh walk in `Tools/walks.py`** — which also had to learn a last segment label can
+repeat (it stopped at the first `wait:3.0`). 7 of 7 hold.
 
 ## Done 2026-09-11 — the documented walks are a check (0.14.1)
 
@@ -1416,28 +1433,28 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
-   own rule 0.13.0 is not finished — the sample never reads `pinnedBy`, and a capability is proved by
-   the sample using it. A door that meets someone reverses; the slider should, the moment it pins the
-   player against something. **Proved in the courtyard** by a crate set at the far end of the slider's
-   run (the content test's clear-run check then allows that one stop) and a scripted walk standing the
-   player against it, computed first: pinned when the gap closes to the body's width, the slider turning
-   back that step, the player never pushed into the crate.
-
-2. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
+1. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
    1.5 m/s meeting a body mid-jump shoved it along, stopped, and the body — 0.29 s of flight still to
    go — came down at x 0.214, exactly where the block left it: stopped dead in the air. Kept, it would
    land 1.5 × 0.292 = 0.44 m further. A push in the air should add to ``airVelocity`` as one on the
    ground adds to ``groundVelocity``. **Proved by** that test, and in the ruins by the player jumping in
    front of the piston as it arrives — landing its speed × the rest of the flight beyond, computed first.
 
-3. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
+2. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
    positions and a few report numbers; the walk report also carries footsteps and their surfaces, and
    the head bob's size — measured once and now unguarded: 0.8.1's bob (2.8 cm up and down at a walk, 4.7
    at a sprint, 1.4 crouched) and 0.11.0's walk down the ruins' stairs (5 footsteps — wood, stone,
    dirt — where the old tread rule gave 3). Recover those walks' scripts from git (`git log -S`), add
    them with their numbers. **Proved by** the check passing, and failing with the tread rule's `abs`
    taken out (5 → 3).
+
+3. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
+   rate, but a game chooses its *step* rate, and the jump is integrated a step at a time. Measured
+   2026-09-11: apex **0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240** — the exact
+   answer is 0.992 (6.3² / 2·20). A game at 60 jumps 2.6 cm lower than one at 120 and misses a ledge the
+   other clears. Gravity is constant, so a step has an exact answer (y += v·dt − ½g·dt², as the landing
+   spring was made exact). **Proved by** a test giving 0.992 at all four rates, and the walk check —
+   whose recorded 0.97 and 1.90 apexes will move up by the Euler error, each change measured and explained.
 
 ## Parked — not next, and why
 

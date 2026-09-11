@@ -758,24 +758,26 @@ final class SampleGame: GameLoop {
     /// index in `volumes`), which solid if it is one, and where the level put it.
     private var lifts: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
     /// The level's sliders — placements tagged `"slider"` — as the lifts are: drawable, solid, where
-    /// the level put it. They go back and forth along +x (`SampleLevel.slideOffset(at:)`), pushing
+    /// the level put it. They go back and forth along their facing (`SampleLevel.SlideRun`), pushing
     /// whoever stands in the way.
     ///
     /// **And pistons** — `"piston"` — which go the same way but do not ease (`SampleLevel.pistonOffset`).
     /// Both go along their own facing: the placement's yaw turns the way they run.
     private var sliders: [(drawable: Int, solid: Int?, base: matrix_float4x4, facing: SIMD2<Float>, piston: Bool)] = []
-    private var slideClock: Float = 0, slideOffset: Float = 0
+    /// **The sliders' run, which a pinned player turns back** (`SampleLevel.SlideRun`) — kept here rather
+    /// than with the rebuilt list, because collecting a crate rebuilds the level and must not send the
+    /// slider home. A level's sliders move together.
+    private var slideRun = SampleLevel.SlideRun()
     private var pistonClock: Float = 0, pistonOffset: Float = 0
 
     /// Moves every slider and piston a step along its run. **After the lifts**, which set the whole of
     /// `surroundings.motion`; a mover's entries are its own.
     private func advanceSliders(_ dt: Float) {
         guard !sliders.isEmpty else { return }
-        slideClock = (slideClock + dt).truncatingRemainder(dividingBy: SampleLevel.slideCycle)
+        let slideDelta = slideRun.advance(by: dt)
         pistonClock = (pistonClock + dt).truncatingRemainder(dividingBy: SampleLevel.pistonCycle)
-        let slide = SampleLevel.slideOffset(at: slideClock), piston = SampleLevel.pistonOffset(at: pistonClock)
-        placeSliders(slide: slide, slideDelta: slide - slideOffset, piston: piston, pistonDelta: piston - pistonOffset)
-        slideOffset = slide
+        let piston = SampleLevel.pistonOffset(at: pistonClock)
+        placeSliders(slide: slideRun.offset, slideDelta: slideDelta, piston: piston, pistonDelta: piston - pistonOffset)
         pistonOffset = piston
     }
 
@@ -1597,7 +1599,7 @@ final class SampleGame: GameLoop {
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
-        placeSliders(slide: slideOffset, slideDelta: 0, piston: pistonOffset, pistonDelta: 0)
+        placeSliders(slide: slideRun.offset, slideDelta: 0, piston: pistonOffset, pistonDelta: 0)
         placeTurntables(turnedBy: 0)
         rebuildFigures()
         rebuildLanterns()
@@ -2735,6 +2737,17 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                // **A slider that pins the player turns back** — a door that meets someone reverses. The
+                // controller only says which solid has them pinned; what that solid does is this game's.
+                if let pinned = body.pinnedBy,
+                   let slider = sliders.first(where: { !$0.piston && $0.solid == pinned }), slideRun.leg == .out {
+                    slideRun.turnBack()
+                    if scriptedWalk != nil {
+                        let box = volumes[slider.drawable].worldBounds
+                        print(String(format: "WindageSample:     pinned by the slider — its face at x %.4f, the feet at x %.4f — turned it back",
+                                     box.maximum.x, body.feet.x))
+                    }
+                }
                 // A scripted walk says where the feet left the ground and came down, and what they kept —
                 // the flight a push or a moving floor sends them on.
                 if scriptedWalk != nil && !wasAirborne && !body.isGrounded {

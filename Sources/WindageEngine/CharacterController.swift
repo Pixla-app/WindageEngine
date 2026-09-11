@@ -862,6 +862,12 @@ public nonisolated struct CharacterController: Sendable {
             let from = SIMD2(feet.x, feet.z)
             if simd_length_squared(across) > 1e-12,
                let clear = contact(from: from, along: across, with: plan(of: index, in: world), clearance: 2 * t) {
+                // **Only a body ahead of it, in the way it is going** — nearer the face it leads with than
+                // the one it trails. One moving away from a body it is still into, as a door turning back
+                // from someone it pinned is, neither pushes nor pins them: "just clear of it, the way it
+                // went" was out through its far side, and the sample's slider carried a pinned player
+                // 1.8 m through itself and home (0.14.2).
+                guard clear.leaving < -clear.fraction else { continue }
                 let shove = across * max(0, clear.leaving)
                 move(along: SIMD3(shove.x, 0, 0), in: world, sliding: false, ignoring: index)
                 move(along: SIMD3(0, 0, shove.y), in: world, sliding: false, ignoring: index)
