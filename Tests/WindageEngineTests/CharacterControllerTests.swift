@@ -985,3 +985,114 @@ struct CharacterHeadroomTests {
         #expect(!c.isHeldDown && abs(c.eye.y - c.tuning.eyeHeight) < 1e-4)
     }
 }
+
+// MARK: - Something that moves
+
+@Suite("Character controller — standing on something that moves")
+struct CharacterPlatformTests {
+
+    /// A 3 m square slab, its top at `top`, centred at `centre` on the ground plane.
+    private func slab(top: Float, centre: SIMD2<Float> = .zero) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(centre.x - 1.5, top - 0.5, centre.y - 1.5),
+                    maximum: SIMD3(centre.x + 1.5, top, centre.y + 1.5))
+    }
+
+    /// Steps a body on a slab that moves by `velocity` each second, with `others` still around it.
+    /// Returns the slab's final top and centre.
+    @discardableResult
+    private func ride(_ c: inout CharacterController, from top: Float, centre: SIMD2<Float> = .zero,
+                      velocity: SIMD3<Float>, seconds: Float, _ input: MovementInput = MovementInput(),
+                      others: [BoundingBox] = []) -> (top: Float, centre: SIMD2<Float>) {
+        var top = top, centre = centre
+        for _ in 0..<Int((seconds / step).rounded()) {
+            let delta = velocity * step
+            top += delta.y
+            centre += SIMD2(delta.x, delta.z)
+            var world = CharacterController.Surroundings(solids: [slab(top: top, centre: centre)] + others)
+            world.motion = [delta]
+            c.step(yaw: 0, input: input, deltaTime: step, in: world)
+        }
+        return (top, centre)
+    }
+
+    private func standing(on top: Float) -> CharacterController {
+        var c = CharacterController(feet: SIMD3(0, top, 0))
+        let still = CharacterController.Surroundings(solids: [slab(top: top)])
+        for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
+        return c
+    }
+
+    @Test("A lift going up carries the body up with it, exactly")
+    func carriedUp() {
+        var c = standing(on: 0.3)
+        let end = ride(&c, from: 0.3, velocity: SIMD3(0, 1.2, 0), seconds: 1)
+        #expect(abs(c.feet.y - end.top) < 1e-4, "feet at \(c.feet.y), lift top at \(end.top)")
+        #expect(c.isGrounded && c.groundSolid == 0)
+        #expect(abs(c.eye.y - c.feet.y - c.tuning.eyeHeight) < 1e-4, "the eye should ride rigidly, not ease after it")
+    }
+
+    /// Faster than gravity would drop you: without the carry the body would fall behind and land.
+    @Test("A lift going down keeps the body on it — no fall, no landing")
+    func carriedDown() {
+        var c = standing(on: 12)
+        var landings = 0
+        var top: Float = 12
+        for _ in 0..<120 {
+            let delta = SIMD3<Float>(0, -9, 0) * step
+            top += delta.y
+            var world = CharacterController.Surroundings(solids: [slab(top: top)])
+            world.motion = [delta]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
+            landings += c.events.filter { if case .landed = $0 { true } else { false } }.count
+            #expect(c.isGrounded)
+        }
+        #expect(abs(c.feet.y - top) < 1e-4 && landings == 0, "feet \(c.feet.y), top \(top), \(landings) landings")
+    }
+
+    @Test("Riding without walking makes no footsteps and no bob")
+    func ridingIsNotWalking() {
+        var c = standing(on: 0.3)
+        var strides = 0
+        var top: Float = 0.3, centre = SIMD2<Float>(0, 0)
+        for _ in 0..<240 {
+            let delta = SIMD3<Float>(2, 0.5, 0) * step
+            top += delta.y
+            centre += SIMD2(delta.x, delta.z)
+            var world = CharacterController.Surroundings(solids: [slab(top: top, centre: centre)])
+            world.motion = [delta]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
+            strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
+        }
+        #expect(strides == 0 && c.headBob == .zero, "\(strides) footsteps riding a platform standing still")
+        #expect(abs(c.feet.x - centre.x) < 1e-3, "carried across with it")
+    }
+
+    @Test("Walking on a moving platform is walking relative to it")
+    func walkingRelative() {
+        var c = standing(on: 0.3)
+        // The platform slides +x at 1 m/s; the body walks −z at 6 m/s for a quarter second.
+        let end = ride(&c, from: 0.3, velocity: SIMD3(1, 0, 0), seconds: 0.25, MovementInput(forward: 1))
+        #expect(abs(c.feet.x - end.centre.x) < 1e-3, "kept the platform's sideways motion")
+        #expect(abs(c.feet.z + 1.5) < 0.01, "walked its own 1.5 m on top of it: z \(c.feet.z)")
+    }
+
+    /// **The carry goes through collision**: a platform sliding under a wall does not take the body
+    /// through it. The body stays at the wall until the platform leaves it behind.
+    @Test("A platform does not carry the body through a wall")
+    func notThroughWalls() {
+        var c = standing(on: 0.3)
+        let wall = BoundingBox(minimum: SIMD3(1, 0.3, -3), maximum: SIMD3(1.2, 3, 3))   // stands on the slab
+        ride(&c, from: 0.3, velocity: SIMD3(2, 0, 0), seconds: 0.5, others: [wall])
+        #expect(c.feet.x <= 1 - c.tuning.radius + 1e-3, "carried into the wall: x \(c.feet.x)")
+        #expect(c.carried.x < 1e-6, "the carry should read as stopped at the wall: \(c.carried)")
+    }
+
+    @Test("Off the platform, nothing carries")
+    func offIsOff() {
+        var c = CharacterController(feet: SIMD3(5, 0, 0))
+        var world = CharacterController.Surroundings(solids: [slab(top: 1)])
+        world.motion = [SIMD3(0, 0.5, 0)]
+        for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
+        #expect(c.feet == SIMD3(5, 0, 0) && c.carried == .zero)
+    }
+}

@@ -821,6 +821,20 @@
         "solid",
         "lintel"
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step_wood",
+      "position" : [
+        7.5,
+        -0.7,
+        0
+      ],
+      "surface" : "wood",
+      "tags" : [
+        "solid",
+        "lift"
+      ]
     }
   ],
   "settings" : {},

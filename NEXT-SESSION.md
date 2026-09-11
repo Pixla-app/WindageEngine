@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-527 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+535 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,29 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — standing on something that moves (0.10.1)
+
+**`Surroundings.motion`** (per-solid displacement since the last step) and **`carried`**. A body on a
+solid that moved goes with it before walking: rigid vertically, through collision across. Six tests;
+three fail with the carry switched off (the eye 8 cm behind a rising lift, a sliding platform leaving
+the body 4 m behind, walking not relative) — the other three guard what must not break.
+
+**Ridden in the ruins**: a timber lift (`"lift"` tag; motion in `SampleLevel.liftHeight(at:)`) beside
+the wooden landing, rising 0.9 m. Scripted ride, feet against the lift's top:
+
+| | lift top | feet |
+|---|---|---|
+| stepped on at the bottom | 0.30 | 0.30 — one footstep on wood |
+| halfway up | 0.75 | 0.75 |
+| top | 1.20 | 1.20 |
+| back down — through the turn | 0.30 | 0.30, still riding |
+| up again, then walked off onto the landing | 1.20 | 1.20, off it |
+
+No footsteps while riding; the eye held 1.70 throughout. Frames from on the lift at the bottom (the
+landing a raised deck) and at the top (flush with it).
+
+**Every game checked, clean builds**: none uses the controller; all five build and pass.
 
 ## Done 2026-09-11 — standing up under something low (0.10.0)
 
@@ -1122,25 +1145,25 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Standing on something that moves.** The controller stands on boxes that never move: ride a lift
-   and the lift leaves without you, or pushes up through your feet. `groundSolid` already says which
-   box is underfoot; what is missing is carrying the body by that box's motion each step — up, down and
-   across — and not at all once the feet leave it. **Proved in the sample by** a lift in the ruins
-   rising a floor and back, and the scripted walk standing on it logging the feet rising with it to the
-   centimetre and staying on it when it turns round.
-
-2. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
+1. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
    ("loops arrive when a title needs them") — but a looping sound at a place is settled shape, and the
    ruins' braziers are silent fire. A looped, positioned voice carried by a placement the way its lamp
    is, so it moves and copies with it. **Proved in the sample by** rendering the mix offline
    (`AVAudioEngine`'s manual rendering) with the listener at 2, 8 and 20 m from a brazier and measuring
    the crackle's level fall with distance — measured, since this session cannot listen.
 
-3. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
+2. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
    fixed on 2026-09-10 — and **coming down the same four sounds one** (measured: footfalls at the top
    landing, one tread, and the ground). The descent floats. A step *down* a tread is a foot landing too,
    the mirror of `footOnRise`. **Proved in the sample by** the scripted walk down the ruins' stairs
    reporting a footstep per tread, stone on the treads and wood on the landing above.
+
+3. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
+   it spins under you while you stay put. A turning solid should carry the body round its centre and
+   turn the view by the same angle — the settled shape of a based character — with `Surroundings`
+   saying how far each solid turned and about where. **Proved in the sample by** a turntable in the
+   courtyard and the scripted walk standing on it logging the feet circling the centre at the table's
+   rate and the view turning by the table's angle.
 
 ## Parked — not next, and why
 

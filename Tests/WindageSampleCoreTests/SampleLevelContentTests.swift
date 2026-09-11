@@ -60,7 +60,10 @@ struct SampleLevelContentTests {
     func woodenLanding() throws {
         let ruins = try SampleLevel.bundled(1)
         // The lintel is cut from the same stone step, laid across two posts — it is not a tread.
-        let treads = ruins.placements.filter { ($0.mesh == "step" || $0.mesh == "step_wood") && !$0.tags.contains("lintel") }
+        // The lintel and the lift are cut from the same steps — neither is a tread.
+        let treads = ruins.placements.filter {
+            ($0.mesh == "step" || $0.mesh == "step_wood") && !$0.tags.contains("lintel") && !$0.tags.contains("lift")
+        }
         #expect(treads.filter { $0.surface == "wood" }.count == 3)
         #expect(treads.filter { $0.surface == "stone" }.count == 3)
     }
@@ -79,5 +82,35 @@ struct SampleLevelContentTests {
             #expect(lintel.position.y > crouchedTop && lintel.position.y < standingTop,
                     "the lintel's underside at \(lintel.position.y) m should lie between \(crouchedTop) and \(standingTop)")
         }
+    }
+
+    /// **The lift joins the ground to the landing**: at rest its top is a step up from the ground, and
+    /// at the top of its travel it is level with the wooden landing beside it, so a player can step on
+    /// at the bottom and walk off at the top.
+    @Test("The ruins' lift rises from a step up to the landing's level")
+    func liftReachesTheLanding() throws {
+        let ruins = try SampleLevel.bundled(1)
+        let lift = try #require(ruins.placements.first { $0.tags.contains("lift") })
+        let landing = try #require(ruins.placements.first { $0.mesh == "step_wood" && !$0.tags.contains("lift") })
+        let meshHeight: Float = 1                      // step_wood.obj is 1 m tall, standing on y = 0
+        let restTop = lift.position.y + meshHeight
+        #expect(restTop > 0 && restTop <= CharacterController.Tuning().stepHeight, "a step up from the ground: \(restTop)")
+        #expect(abs(restTop + SampleLevel.liftRise - (landing.position.y + meshHeight)) < 1e-4)
+        #expect(lift.tags.contains("solid") && lift.surface == "wood")
+    }
+
+    @Test("The lift's cycle eases from the bottom to the top and back, and joins up")
+    func liftCycle() {
+        let t = SampleLevel.self
+        #expect(t.liftHeight(at: 0) == 0 && t.liftHeight(at: t.liftCycle - 1e-4) < 1e-3)
+        #expect(t.liftHeight(at: t.liftPause + t.liftTravel + 0.1) == t.liftRise)
+        #expect(abs(t.liftHeight(at: t.liftPause + t.liftTravel / 2) - t.liftRise / 2) < 1e-4)
+        var previous: Float = 0, biggest: Float = 0
+        for i in 1...Int(t.liftCycle * 120) {
+            let h = t.liftHeight(at: Float(i) / 120)
+            biggest = max(biggest, abs(h - previous))
+            previous = h
+        }
+        #expect(biggest < 0.01, "a step of the lift jumped \(biggest) m")
     }
 }

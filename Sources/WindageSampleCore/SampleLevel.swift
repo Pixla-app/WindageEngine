@@ -30,6 +30,25 @@ public nonisolated enum SampleLevel {
     /// these**, which `SampleLevelContentTests` checks, so a new material cannot arrive silent.
     public static let footstepSurfaces = ["dirt", "stone", "wood", "metal"]
 
+    /// **The sample's lift, in code rather than in the level file.** How a thing moves is behaviour,
+    /// and the level format has no behaviour in it — it says *what* is where. A `"lift"` tag is the
+    /// game's word, like `"solid"`: this game reads it as "rise 0.9 m, ease in and out over 2.5 s, wait
+    /// 1.5 s, come back". The engine's part is only carrying whoever stands on it.
+    public static let liftRise: Float = 0.9, liftTravel: Float = 2.5, liftPause: Float = 1.5
+    public static var liftCycle: Float { 2 * (liftTravel + liftPause) }
+
+    /// How far above where the level put it a lift stands, `t` seconds into its cycle: waiting at the
+    /// bottom, rising, waiting at the top, coming down. **Eased at both ends** — a lift that starts and
+    /// stops at full speed jolts whoever is on it, and in a first-person view a jolt is the camera.
+    public static func liftHeight(at t: Float) -> Float {
+        let p = liftPause, travel = liftTravel
+        func ease(_ x: Float) -> Float { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
+        if t < p { return 0 }
+        if t < p + travel { return liftRise * ease((t - p) / travel) }
+        if t < 2 * p + travel { return liftRise }
+        return liftRise * (1 - ease((t - 2 * p - travel) / travel))
+    }
+
     public static func fileName(_ index: Int) -> String {
         names[min(max(index, 0), names.count - 1)]
     }

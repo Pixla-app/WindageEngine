@@ -12,6 +12,27 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.10.1] — 2026-09-11
+
+**Standing on something that moves.** Additive: nothing moves until a game says so.
+
+### Added
+
+- **`CharacterController.Surroundings.motion`** — how far each solid moved since the last step, in the
+  order of `solids`. A property rather than an initialiser parameter, so no existing symbol changes.
+- **Carrying**: a body standing on a solid that moved goes with it before walking — rigidly up and
+  down, through collision across. Translation only.
+- **`CharacterController.carried`** — how far the ground carried the body this step.
+
+### In the sample
+
+- **A lift in the ruins** — a timber slab tagged `"lift"` beside the wooden landing, rising 0.9 m with
+  eased ends and pauses (`SampleLevel.liftHeight(at:)`), carrying whoever stands on it up to the
+  landing. Content tests keep it a step up from the ground at rest and level with the landing at the top.
+- **The scripted walk reports the lift's top against the feet**, and whether they are riding it.
+
+**Consumers**: `CharacterController` and `Surroundings` gained stored properties — build clean.
+
 ## [0.10.0] — 2026-09-11
 
 **Standing up under something low.** A minor version because it changes what the controller does

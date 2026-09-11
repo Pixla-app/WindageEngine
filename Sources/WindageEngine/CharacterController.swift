@@ -53,6 +53,21 @@ public nonisolated struct CharacterController: Sendable {
         /// Every box that can be stood on or walked into, in world space.
         public var solids: [BoundingBox]
 
+        /// How far each of ``solids`` moved since the last step, in the same order — a lift, a
+        /// moving walkway, a cart. **Missing entries are still**, so a world with nothing moving
+        /// leaves this empty. The order of ``solids`` must hold from one step to the next: the body
+        /// knows which it stands on by index (``CharacterController/groundSolid``).
+        ///
+        /// **A body standing on a solid that moved goes with it**, before its own walking — so walking
+        /// on a moving platform is walking *relative to it*, and standing still on one makes no
+        /// footsteps. Up and down is rigid: the eye does not ease after a lift the way it eases up a
+        /// stair, because a floor carrying you is not a floor you stepped onto. Across goes through
+        /// the same collision as walking, so a platform does not carry anyone through a wall.
+        ///
+        /// **Translation only.** A platform that turns — a ship's deck — would also turn the body
+        /// about its centre; nothing here does that yet.
+        public var motion: [SIMD3<Float>] = []
+
         public init(groundHeight: @escaping @Sendable (Float, Float) -> Float = { _, _ in 0 },
                     solids: [BoundingBox] = []) {
             self.groundHeight = groundHeight
@@ -315,6 +330,10 @@ public nonisolated struct CharacterController: Sendable {
     /// > again, with nothing to say why. A game can show this ("no room to stand") instead.
     public private(set) var isHeldDown = false
 
+    /// How far whatever is underfoot carried the body this step — see ``Surroundings/motion``. Zero
+    /// on still ground. Less than the platform's own motion when a wall stopped the carry.
+    public private(set) var carried = SIMD3<Float>.zero
+
     /// How far through a slide, 0 at entry to 1 at the end. Zero when not sliding.
     public var slideProgress: Float { slideLeft > 0 ? 1 - slideLeft / tuning.slideSeconds : 0 }
 
@@ -388,6 +407,18 @@ public nonisolated struct CharacterController: Sendable {
                               in world: Surroundings) {
         let dt = max(deltaTime, 0)
         events.removeAll(keepingCapacity: true)
+
+        // --- Carried by whatever is underfoot, if it moved. First, so everything after — walking,
+        // footsteps, the bob — is relative to it.
+        carried = .zero
+        if isGrounded, let solid = groundSolid, world.motion.indices.contains(solid), world.motion[solid] != .zero {
+            let carry = world.motion[solid]
+            let start = feet
+            feet.y += carry.y
+            move(along: SIMD3(carry.x, 0, 0), in: world)
+            move(along: SIMD3(0, 0, carry.z), in: world)
+            carried = feet - start
+        }
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
         let moving = input.forward != 0 || input.strafe != 0

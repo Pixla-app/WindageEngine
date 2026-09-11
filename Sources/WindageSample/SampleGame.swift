@@ -631,6 +631,40 @@ final class SampleGame: GameLoop {
     /// **Both from the same list, on purpose.** Two descriptions of "what is there" drift, and the
     /// day they do you are pointing at something you cannot touch.
     private var volumes: [Volume] = []
+
+    /// The level's lifts — placements tagged `"lift"` — as rebuilt: which drawable each is (the same
+    /// index in `volumes`), which solid if it is one, and where the level put it.
+    private var lifts: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
+    /// Seconds into the lifts' cycle, and how high they stand above where the level put them.
+    private var liftClock: Float = 0
+    private var liftOffset: Float = 0
+
+    /// Moves every lift a step along its cycle, and tells the body how far each solid went.
+    private func advanceLifts(_ dt: Float) {
+        guard !lifts.isEmpty else { return }
+        let cycle = SampleLevel.liftCycle
+        liftClock = (liftClock + dt).truncatingRemainder(dividingBy: cycle)
+        let next = SampleLevel.liftHeight(at: liftClock)
+        placeLifts(offset: next, delta: next - liftOffset)
+        liftOffset = next
+    }
+
+    /// Puts the lifts at `offset` above where the level has them — the drawable, the volume and the
+    /// solid the body stands on — and says each solid moved by `delta`.
+    private func placeLifts(offset: Float, delta: Float) {
+        var motion = [SIMD3<Float>](repeating: .zero, count: surroundings.solids.count)
+        for lift in lifts {
+            var transform = lift.base
+            transform.columns.3.y += offset
+            drawables[lift.drawable].transform = transform
+            volumes[lift.drawable].transform = transform
+            if let solid = lift.solid {
+                surroundings.solids[solid] = volumes[lift.drawable].worldBounds
+                motion[solid] = SIMD3(0, delta, 0)
+            }
+        }
+        surroundings.motion = motion
+    }
     private var solidVolumes: [Volume] = []
     /// Which placement each of `solidVolumes` came from — so the controller's `groundSolid`, an
     /// index into the solids, can be asked what it is made of.
@@ -1292,6 +1326,7 @@ final class SampleGame: GameLoop {
         volumes.removeAll(keepingCapacity: true)
         solidVolumes.removeAll(keepingCapacity: true)
         solidPlacements.removeAll(keepingCapacity: true)
+        lifts.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
         let ground = SampleGame.ground
@@ -1321,6 +1356,10 @@ final class SampleGame: GameLoop {
                 solidVolumes.append(volume)
                 solidPlacements.append(placementIndex)
             }
+            if placement.tags.contains("lift") {
+                lifts.append((drawables.count - 1,
+                              placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
+            }
         }
         // **Axis-aligned world boxes, which overstate a turned crate's corners.** A crate at 45° is
         // stood beside a hand's width further off than its faces are. That is the conservative way to
@@ -1328,6 +1367,9 @@ final class SampleGame: GameLoop {
         // fault than a player standing inside a crate.
         surroundings = CharacterController.Surroundings(groundHeight: { _, _ in 0 },
                                                         solids: solidVolumes.map(\.worldBounds))
+        // A rebuild puts everything back where the level has it; the lifts go back to where they
+        // had got to, without a jump for anyone riding one.
+        placeLifts(offset: liftOffset, delta: 0)
         rebuildFigures()
         rebuildLanterns()
         rebuildLights()
@@ -2199,6 +2241,14 @@ final class SampleGame: GameLoop {
                                         tally.deepestDip * body.tuning.landingDipMax * 180 / .pi)
                     }
                     print("WindageSample:     \(heard)")
+                    if !lifts.isEmpty {
+                        let riding = body.groundSolid.map { solid in
+                            lifts.contains { $0.solid == solid }
+                        } ?? false
+                        let top = lifts.first.flatMap { volumes[$0.drawable].worldBounds.maximum.y } ?? 0
+                        print(String(format: "WindageSample:     lift top %.2f m, feet at %.2f m%@", top, body.feet.y,
+                                     riding ? ", riding it" : ""))
+                    }
                     let bob = bobSeen.high - bobSeen.low
                     print(bob.y.isFinite && simd_max(bob.x, bob.y) > 0.0005
                         ? String(format: "WindageSample:     head bob %.1f cm up and down, %.1f cm side to side",
@@ -2333,6 +2383,7 @@ final class SampleGame: GameLoop {
             } else {
                 // **Yaw from the camera, and nothing else.** Pitch never reaches the body: looking at
                 // your feet does not slow the walk, and looking at the sky does not lift you off it.
+                advanceLifts(deltaTime)
                 let wasAirborne = !body.isGrounded
                 let fallSpeed = -body.verticalVelocity
                 body.step(yaw: camera.yaw,

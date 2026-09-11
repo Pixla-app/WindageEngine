@@ -1046,6 +1046,25 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### And something that moves underfoot (0.10.1)
+
+`Surroundings.motion` says how far each solid moved since the last step, in the order of `solids`; a
+body standing on one that moved **goes with it, first**, before its own walking — so walking on a
+moving platform is walking relative to it, and riding one standing still makes no footsteps and no
+bob. Up and down is rigid (the eye does not ease after a lift the way it eases up a stair); across goes
+through the same collision as walking, so a platform does not carry anyone through a wall. `carried`
+says how far it went. **Translation only** — a turning deck is the next thing.
+
+Measured against switching it off: without the carry a rising lift leaves the eye 8 cm behind (the
+stair-smoothing), a sliding platform goes 4 m out from under a body that stays put, and walking on one
+is not relative to it.
+
+**Ridden in the sample**: a timber lift beside the ruins' landing, rising 0.9 m — from a step up off
+the ground to the landing's level — with eased ends and pauses (the sample's code; the level only tags
+it `"lift"`). The scripted ride logged the feet against the lift's top: 0.30/0.30 at the bottom,
+0.75/0.75 halfway, 1.20/1.20 at the top, back to 0.30 still riding through the turn, up again, and a
+walk off onto the landing at 1.20 — no footsteps the whole ride.
+
 ### And room to stand (0.10.0)
 
 **Letting go of crouch is a request, not a promise of room.** Under a beam the controller keeps the
