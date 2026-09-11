@@ -127,4 +127,14 @@ struct SampleLevelContentTests {
             }
         }
     }
+
+    /// A turntable is walked onto, not climbed: its top under the step height. `turntable.obj` is
+    /// 0.2 m tall, standing on y = 0 (`Tools/make_sample_turntable.py`).
+    @Test("The courtyard's turntable is a step up, solid, and made of stone")
+    func turntable() throws {
+        let courtyard = try SampleLevel.bundled(0)
+        let table = try #require(courtyard.placements.first { $0.tags.contains("turntable") })
+        #expect(table.position.y + 0.2 <= CharacterController.Tuning().stepHeight)
+        #expect(table.tags.contains("solid") && table.surface == "stone")
+    }
 }

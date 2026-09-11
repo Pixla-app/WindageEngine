@@ -40,6 +40,10 @@ public nonisolated enum SampleLevel {
     /// How far above where the level put it a lift stands, `t` seconds into its cycle: waiting at the
     /// bottom, rising, waiting at the top, coming down. **Eased at both ends** — a lift that starts and
     /// stops at full speed jolts whoever is on it, and in a first-person view a jolt is the camera.
+    /// How fast the sample's turntables turn, radians a second — thirty degrees, a full turn in twelve
+    /// seconds: slow enough to stand on and look about, fast enough to see it is turning.
+    public static let turntableRate: Float = .pi / 6
+
     public static func liftHeight(at t: Float) -> Float {
         let p = liftPause, travel = liftTravel
         func ease(_ x: Float) -> Float { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }

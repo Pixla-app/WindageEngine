@@ -1140,3 +1140,77 @@ struct CharacterPlatformTests {
         #expect(c.feet == SIMD3(5, 0, 0) && c.carried == .zero)
     }
 }
+
+// MARK: - Something that turns
+
+@Suite("Character controller — standing on something that turns")
+struct CharacterTurntableTests {
+
+    /// A square table 4 m across, top at 0.2 m, its centre at `centre`. The box stays axis-aligned —
+    /// as a turned solid's world bounds do — which is all the controller ever sees of it.
+    private func table(at centre: SIMD2<Float>) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(centre.x - 2, 0, centre.y - 2), maximum: SIMD3(centre.x + 2, 0.2, centre.y + 2))
+    }
+
+    /// Stands a body on the table at `offset` from its centre, then turns the table at `rate`
+    /// radians a second for `seconds`, the centre sliding by `slide` a second. Returns the body, the
+    /// centre where it ended, and the total turn reported.
+    private func ride(offset: SIMD2<Float>, rate: Float, seconds: Float, slide: SIMD2<Float> = .zero,
+                      _ input: MovementInput = MovementInput()) -> (CharacterController, SIMD2<Float>, Float, Int) {
+        var centre = SIMD2<Float>(1, -3)
+        var c = CharacterController(feet: SIMD3(centre.x + offset.x, 0.2, centre.y + offset.y))
+        let still = CharacterController.Surroundings(solids: [table(at: centre)])
+        for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
+        var total: Float = 0, strides = 0
+        for _ in 0..<Int((seconds / step).rounded()) {
+            let moved = slide * step
+            centre += moved
+            var world = CharacterController.Surroundings(solids: [table(at: centre)])
+            world.motion = [SIMD3(moved.x, 0, moved.y)]
+            world.turns = [.init(about: centre, by: rate * step)]
+            c.step(yaw: 0, input: input, deltaTime: step, in: world)
+            total += c.turned
+            strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
+        }
+        return (c, centre, total, strides)
+    }
+
+    @Test("A quarter turn carries the feet a quarter turn round the centre, at the same radius")
+    func quarterTurn() {
+        let (c, centre, total, strides) = ride(offset: SIMD2(1.2, 0), rate: .pi / 2, seconds: 1)
+        let now = SIMD2(c.feet.x, c.feet.z) - centre
+        let expected = Level.turned(SIMD2(1.2, 0), by: .pi / 2)
+        #expect(simd_distance(now, expected) < 1e-3, "feet at \(now) from the centre, expected \(expected)")
+        #expect(abs(simd_length(now) - 1.2) < 1e-3, "the radius changed: \(simd_length(now))")
+        #expect(abs(total - .pi / 2) < 1e-4, "turned \(total) radians, the table turned π/2")
+        #expect(strides == 0, "\(strides) footsteps standing still on a turning table")
+    }
+
+    @Test("At the centre the feet stay put, and the turn is still reported")
+    func atTheCentre() {
+        let (c, centre, total, _) = ride(offset: .zero, rate: 1, seconds: 0.5)
+        #expect(simd_distance(SIMD2(c.feet.x, c.feet.z), centre) < 1e-4)
+        #expect(abs(total - 0.5) < 1e-4)
+    }
+
+    /// A deck that sails and swings at once: the body keeps its place on it.
+    @Test("A table that slides and turns at once keeps the body where it was on it")
+    func slideAndTurn() {
+        let (c, centre, total, _) = ride(offset: SIMD2(0, 1.5), rate: 0.6, seconds: 1, slide: SIMD2(0.8, -0.4))
+        let now = SIMD2(c.feet.x, c.feet.z) - centre
+        // **Against the turn the table made, not the one reported** — measured against the reported
+        // turn, this passed with the turning carry switched off, because both were zero.
+        let expected = Level.turned(SIMD2(0, 1.5), by: 0.6)
+        #expect(abs(total - 0.6) < 1e-4)
+        #expect(simd_distance(now, expected) < 2e-3, "drifted on the table: \(now) against \(expected)")
+    }
+
+    @Test("Off the table, nothing turns")
+    func offTheTable() {
+        var c = CharacterController(feet: SIMD3(10, 0, 10))
+        var world = CharacterController.Surroundings(solids: [table(at: .zero)])
+        world.turns = [.init(about: .zero, by: 0.1)]
+        for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
+        #expect(c.feet == SIMD3(10, 0, 10) && c.turned == 0)
+    }
+}

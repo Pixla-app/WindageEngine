@@ -724,6 +724,37 @@ final class SampleGame: GameLoop {
     /// The level's lifts — placements tagged `"lift"` — as rebuilt: which drawable each is (the same
     /// index in `volumes`), which solid if it is one, and where the level put it.
     private var lifts: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
+    /// The level's turntables — placements tagged `"turntable"`: drawable, solid, where the level put
+    /// it, and its yaw there. They turn about their own origin, which is their centre.
+    private var turntables: [(drawable: Int, solid: Int?, position: SIMD3<Float>, yaw: Float, scale: Float)] = []
+    /// How far the turntables have turned since the level loaded, radians.
+    private var turntableAngle: Float = 0
+
+    /// Turns every turntable a step, and tells the body how far each solid turned and about where.
+    /// **After the lifts**, which set `surroundings.motion`; a turntable does not move, so it only adds
+    /// to `surroundings.turns`.
+    private func advanceTurntables(_ dt: Float) {
+        guard !turntables.isEmpty else { return }
+        let step = SampleLevel.turntableRate * dt
+        turntableAngle = (turntableAngle + step).truncatingRemainder(dividingBy: 2 * .pi)
+        placeTurntables(turnedBy: step)
+    }
+
+    private func placeTurntables(turnedBy step: Float) {
+        var turns = [CharacterController.Surroundings.Turn](
+            repeating: .init(about: .zero, by: 0), count: surroundings.solids.count)
+        for table in turntables {
+            let transform = Level.transform(yaw: table.yaw + turntableAngle, scale: table.scale, at: table.position)
+            drawables[table.drawable].transform = transform
+            volumes[table.drawable].transform = transform
+            if let solid = table.solid {
+                surroundings.solids[solid] = volumes[table.drawable].worldBounds
+                turns[solid] = .init(about: SIMD2(table.position.x, table.position.z), by: step)
+            }
+        }
+        surroundings.turns = turns
+    }
+
     /// Seconds into the lifts' cycle, and how high they stand above where the level put them.
     private var liftClock: Float = 0
     private var liftOffset: Float = 0
@@ -1416,6 +1447,7 @@ final class SampleGame: GameLoop {
         solidVolumes.removeAll(keepingCapacity: true)
         solidPlacements.removeAll(keepingCapacity: true)
         lifts.removeAll(keepingCapacity: true)
+        turntables.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
         let ground = SampleGame.ground
@@ -1445,6 +1477,12 @@ final class SampleGame: GameLoop {
                 solidVolumes.append(volume)
                 solidPlacements.append(placementIndex)
             }
+            if placement.tags.contains("turntable") {
+                let at = level.transform(of: placement, on: ground).columns.3
+                turntables.append((drawables.count - 1,
+                                   placement.tags.contains("solid") ? solidVolumes.count - 1 : nil,
+                                   SIMD3(at.x, at.y, at.z), placement.yaw, placement.scale))
+            }
             if placement.tags.contains("lift") {
                 lifts.append((drawables.count - 1,
                               placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
@@ -1459,6 +1497,7 @@ final class SampleGame: GameLoop {
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
+        placeTurntables(turnedBy: 0)
         rebuildFigures()
         rebuildLanterns()
         rebuildLights()
@@ -2331,6 +2370,13 @@ final class SampleGame: GameLoop {
                                         tally.deepestDip * body.tuning.landingDipMax * 180 / .pi)
                     }
                     print("WindageSample:     \(heard)")
+                    if let table = turntables.first(where: { t in body.groundSolid.map { t.solid == $0 } ?? false }) {
+                        // Angles the way a yaw turns an offset — `Level.turned` — so all three read alike.
+                        let offset = SIMD2(body.feet.x - table.position.x, body.feet.z - table.position.z)
+                        let feetAngle = atan2(-offset.y, offset.x) * 180 / .pi
+                        print(String(format: "WindageSample:     on the turntable (turned %.1f°): feet at %.1f° round its centre, radius %.2f m; view yaw %.1f°",
+                                     turntableAngle * 180 / .pi, feetAngle, simd_length(offset), camera.yaw * 180 / .pi))
+                    }
                     if !lifts.isEmpty {
                         let riding = body.groundSolid.map { solid in
                             lifts.contains { $0.solid == solid }
@@ -2485,12 +2531,16 @@ final class SampleGame: GameLoop {
         // In edit mode the movement keys are the editor's, so the camera holds still. So is a
         // finished run: walking around after the clock stops reads as the game not having noticed.
         if !isEditing && !run.isOver && run.mode != .paused {
+            // **The level's machinery runs whichever camera is in use.** These were inside the walking
+            // branch, so in photo mode every lift and turntable stood still — found by two frames of
+            // the turntable 1.5 s apart that came out identical.
+            advanceLifts(deltaTime)
+            advanceTurntables(deltaTime)
             if isPhotoMode {
                 camera.advance(input.movement, deltaTime: deltaTime)
             } else {
                 // **Yaw from the camera, and nothing else.** Pitch never reaches the body: looking at
                 // your feet does not slow the walk, and looking at the sky does not lift you off it.
-                advanceLifts(deltaTime)
                 let wasAirborne = !body.isGrounded
                 let fallSpeed = -body.verticalVelocity
                 body.step(yaw: camera.yaw,
@@ -2500,6 +2550,10 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                // **The view turns with whatever turned the feet.** The controller carries the body round
+                // a turntable and says how far; the camera is the game's, so the game adds it — or the
+                // player faces one fixed way while the floor spins under them.
+                if body.turned != 0 { camera.yaw = Camera.wrapAngle(camera.yaw + body.turned) }
                 playFootfalls()
                 tally.deepestDip = max(tally.deepestDip, body.landingCompression)
                 bobSeen.low = simd_min(bobSeen.low, shownBob)

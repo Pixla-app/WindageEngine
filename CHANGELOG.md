@@ -12,6 +12,26 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.11.1] — 2026-09-11
+
+**A platform that turns.** Additive: nothing turns until a game says so.
+
+### Added
+
+- **`CharacterController.Surroundings.turns`** and **`Surroundings.Turn`** — how far each solid turned
+  and about which centre. A body standing on one is carried round it, through collision.
+- **`CharacterController.turned`** — the angle the ground turned the body this step. **Add it to the
+  view's yaw.**
+
+### In the sample
+
+- **A turntable in the courtyard** — `turntable.obj`, a 24-sided stone disc from
+  `Tools/make_sample_turntable.py`, turning at `SampleLevel.turntableRate` (30°/s); the view turns with it.
+- **Fixed: lifts and turntables stood still in photo mode** — they advanced inside the walking branch.
+- The scripted walk reports the feet's angle round a turntable's centre, and the view's yaw.
+
+**Consumers**: `CharacterController` and `Surroundings` gained stored properties — build clean.
+
 ## [0.11.0] — 2026-09-11
 
 **A foot on every tread going down.** A minor version because it changes what the controller reports:

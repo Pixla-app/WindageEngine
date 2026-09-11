@@ -1046,6 +1046,25 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### Something that turns underfoot (0.11.1)
+
+`Surroundings.turns` says how far each solid turned since the last step, and about which centre. A body
+standing on one is carried round it — through collision, like any carry, and with no footsteps — and
+`turned` reports the angle, **for the game to add to the view**: the controller walks by the yaw it is
+given and does not own the camera, and a player carried round with a fixed view faces one way while the
+floor spins. Positive is the way a placement's yaw and a camera's yaw both turn (`Level.turned`), so the
+one number serves both. A solid that moves and turns is moved first, then turned about where its
+centre is now.
+
+**Ridden in the sample**: a 4 m stone turntable in the courtyard (`Tools/make_sample_turntable.py` —
+round, so its box does not swell as it turns), at 30° a second. Standing 1.2 m from its centre for three
+seconds, the table turned 90.0°, the feet 90.0° round its centre at the same 1.21 m, and the view 89.9°.
+
+**Two things found**: a test measured against the *reported* turn passed with the turning switched off,
+because both were zero — it is measured against the table's own turn now; and the sample's lifts and
+turntables stood still in photo mode, because they advanced inside the walking branch — two frames 1.5 s
+apart came out identical.
+
 ### A foot on the way down, as on the way up (0.11.0)
 
 The climb has had a footfall on every tread since 0.6.9: at these speeds a stride is longer than a

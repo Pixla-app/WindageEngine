@@ -64,9 +64,32 @@ public nonisolated struct CharacterController: Sendable {
         /// stair, because a floor carrying you is not a floor you stepped onto. Across goes through
         /// the same collision as walking, so a platform does not carry anyone through a wall.
         ///
-        /// **Translation only.** A platform that turns — a ship's deck — would also turn the body
-        /// about its centre; nothing here does that yet.
+        /// Turning is ``turns``.
         public var motion: [SIMD3<Float>] = []
+
+        /// How far each of ``solids`` turned since the last step, and about where — a turntable, a
+        /// ship's deck, a rotating walkway. Same order as ``solids``; missing entries do not turn.
+        ///
+        /// **A body standing on one is carried round the centre and turned with it**: its position
+        /// through collision like any carry, its facing reported as ``CharacterController/turned`` for
+        /// the game to add to the view. Standing on a turntable and staying put while it spins under
+        /// you is the fault this answers.
+        ///
+        /// A solid that both moves and turns is moved by ``motion`` first and then turned about its
+        /// centre — the centre where it is *now*, after moving.
+        public var turns: [Turn] = []
+
+        /// A turn about a vertical axis: where the axis stands on the ground plane, and by how much.
+        /// **Positive the way a placement's yaw is**, and the way a camera's is — turning left, seen
+        /// from above anticlockwise — so a view turned by it turns with the thing underfoot.
+        public struct Turn: Sendable, Equatable {
+            public var centre: SIMD2<Float>
+            public var radians: Float
+            public init(about centre: SIMD2<Float>, by radians: Float) {
+                self.centre = centre
+                self.radians = radians
+            }
+        }
 
         public init(groundHeight: @escaping @Sendable (Float, Float) -> Float = { _, _ in 0 },
                     solids: [BoundingBox] = []) {
@@ -334,6 +357,12 @@ public nonisolated struct CharacterController: Sendable {
     /// on still ground. Less than the platform's own motion when a wall stopped the carry.
     public private(set) var carried = SIMD3<Float>.zero
 
+    /// How far whatever is underfoot turned the body this step, in radians — see
+    /// ``Surroundings/turns``. **Add it to the view's yaw**: the controller walks by the yaw it is
+    /// given and does not own the camera, so a turntable that carried the feet round without the game
+    /// turning the view would leave the player facing one fixed direction while the floor spins.
+    public private(set) var turned: Float = 0
+
     /// How far through a slide, 0 at entry to 1 at the end. Zero when not sliding.
     public var slideProgress: Float { slideLeft > 0 ? 1 - slideLeft / tuning.slideSeconds : 0 }
 
@@ -411,13 +440,26 @@ public nonisolated struct CharacterController: Sendable {
         // --- Carried by whatever is underfoot, if it moved. First, so everything after — walking,
         // footsteps, the bob — is relative to it.
         carried = .zero
-        if isGrounded, let solid = groundSolid, world.motion.indices.contains(solid), world.motion[solid] != .zero {
-            let carry = world.motion[solid]
-            let start = feet
-            feet.y += carry.y
-            move(along: SIMD3(carry.x, 0, 0), in: world)
-            move(along: SIMD3(0, 0, carry.z), in: world)
-            carried = feet - start
+        turned = 0
+        if isGrounded, let solid = groundSolid {
+            var carry = world.motion.indices.contains(solid) ? world.motion[solid] : .zero
+            if world.turns.indices.contains(solid), world.turns[solid].radians != 0 {
+                // Round the centre: where the feet would be once moved, turned about the axis, less
+                // where they are — one displacement, so a turn goes through collision like a slide.
+                let turn = world.turns[solid]
+                let moved = SIMD2(feet.x + carry.x, feet.z + carry.z)
+                let round = turn.centre + Level.turned(moved - turn.centre, by: turn.radians)
+                carry.x = round.x - feet.x
+                carry.z = round.y - feet.z
+                turned = turn.radians
+            }
+            if carry != .zero {
+                let start = feet
+                feet.y += carry.y
+                move(along: SIMD3(carry.x, 0, 0), in: world)
+                move(along: SIMD3(0, 0, carry.z), in: world)
+                carried = feet - start
+            }
         }
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.

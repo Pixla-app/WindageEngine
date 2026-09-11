@@ -452,6 +452,20 @@
         "objective"
       ],
       "yaw" : 2
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "turntable",
+      "position" : [
+        -5,
+        0,
+        5
+      ],
+      "surface" : "stone",
+      "tags" : [
+        "solid",
+        "turntable"
+      ]
     }
   ],
   "settings" : {},

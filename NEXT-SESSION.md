@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-545 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+550 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,27 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a platform that turns (0.11.1)
+
+**`Surroundings.turns`** (per-solid turn and centre) and **`turned`** (the angle, for the game to add to
+its view). Carried round the centre through collision, no footsteps; a solid that moves and turns is moved
+first. Four tests; three fail with the turning switched off (the fourth is the off-the-table guard).
+
+**Ridden in the courtyard's new turntable** (24-sided stone disc, 4 m, 30°/s), standing 1.2 m from its
+centre, window in front at 60 frames a second:
+
+| over 3 s | table | feet round its centre | view yaw | radius |
+|---|---|---|---|---|
+| before | 70.5° | 16.7° | 16.8° | 1.21 m |
+| after | 160.5° | 106.7° | 106.7° | 1.21 m |
+
+**Found on the way**: a test compared against the *reported* turn and passed with turning switched off
+(both zero) — it compares against the table's turn now; and **lifts and turntables froze in photo
+mode** (advanced inside the walking branch) — caught by two identical frames 1.5 s apart. A run with the
+window hidden stalled again, and ran on time once in front: the throttling noted below, confirmed.
+
+**Every game checked, clean builds**: none uses the controller; all five build and pass.
 
 ## Done 2026-09-11 — a foot on every tread going down (0.11.0)
 
@@ -1205,23 +1226,23 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
-   it spins under you while you stay put. A turning solid should carry the body round its centre and
-   turn the view by the same angle — the settled shape of a based character — with `Surroundings`
-   saying how far each solid turned and about where. **Proved in the sample by** a turntable in the
-   courtyard and the scripted walk standing on it logging the feet circling the centre at the table's
-   rate and the view turning by the table's angle.
-
-2. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
+1. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
    a player who wants the fire quieter has to turn down their own footsteps with it. An ambience
    setting that scales the loops and nothing else, on the settings screen. **Proved by** the offline
    render: the crackle at half ambience measuring 6 dB down while a footstep measures unchanged.
 
-3. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
+2. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
    jump is no higher than from the ground, and stepping off anything moving sideways stops dead in the
    air. The carried motion should become the body's velocity at take-off. **Proved in the sample by** a
    scripted jump from the ruins' lift near its fastest (about 0.54 m/s up) peaking near 1.17 m above the
    deck rather than the ground jump's 0.99 m — the difference computed first, then measured.
+
+3. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
+   world-aligned box, so a crate at 45° stops a player a hand's width short of its faces and lets them
+   stand on air past its corners — the sample says so where it builds its solids. Solids that carry
+   their turn, and a body collided against the turned box. **Proved in the sample by** a crate at 45° in
+   the courtyard and the scripted walk stopping 0.30 m (the body's radius) from its face, where today it
+   stops at the box's corner, computed first.
 
 ## Parked — not next, and why
 
