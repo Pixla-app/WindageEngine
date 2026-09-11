@@ -743,26 +743,34 @@ and sorts what is missing into three buckets:
 
 ## Next — in order
 
-**Every entry below is parked, and that is the honest state of the list.** The last three sessions
-took the top item each time; what is left is either measured as not needed yet or deferred on
-purpose. **The README's own build order is the better place to look for the next task** — its
-"settled shape" table still has particles, a character controller, LOD and instancing, and input
-rebinding, in that order, and the honest bar for somebody else being able to use this engine runs
-down to and including the character controller.
+**This is the only "next" list. The top item is what "next" or "continue" means.** When one is
+done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
+below, never in this list.
 
-1. **The cluster binning is per frame on the CPU**, which is fine at a handful of lights and will not
-   be at hundreds — it walks lights against tiles, so the cost grows with both. The GPU version is a
-   compute pass over the grid, and the maths here is what it would be written against. **Not needed
-   yet**: measured, the sample's ten lights bin in well under a millisecond.
+1. **Character controller.** Gravity, standing on things rather than a fixed eye height, a step
+   height so a low ledge is walked up and a crate is not, and crouch. Today the sample pins the
+   camera to one height every step and the only collision is sideways. The engine already has
+   `SprintLatch`, `InputState`'s crouch handling and `Volume`, so this is the body that uses
+   them. **Proved in the sample by** walking up onto a crate and dropping off it. The README names
+   this as part of the bar for somebody else being able to use the engine.
 
-2. **Auto-exposure, if a title ever wants it.** Deliberately deferred as contested; the note in the
-   README says why. A fixed exposure per level would be a cheap middle step and is a level-format
-   change rather than an engine one.
+2. **Particles.** A pool, an emitter, camera-facing quads, and a deterministic spread so the same
+   seed gives the same burst. **Proved in the sample by** sparks rising off the braziers and the
+   lanterns, and a burst when a crate is collected.
 
-3. **A soft shadow is four taps wide on a cube and nine on a spot**, and neither is a penumbra. Both are
-   percentage-closer filters of a fixed radius, so a contact edge and a shadow across a room are
-   equally hard. PCSS or a variance map is the shape of the answer; **nothing in the sample looks
-   wrong for want of it**, which is why it is here rather than above.
+3. **Input rebinding and settings that persist.** Keys a player can change, and settings —
+   bindings, mouse sensitivity, tone map, volume — saved and loaded through `SaveStore`. **Proved in
+   the sample by** rebinding a key, quitting, and finding it still rebound.
+
+## Parked — not next, and why
+
+- **Cluster binning on the GPU.** The CPU version bins the sample's lights in well under a
+  millisecond. Build it when a level has hundreds of lights.
+- **Auto-exposure.** Contested; the README says why. A fixed exposure per level is the cheap
+  middle step if a level needs one.
+- **Soft shadows (PCSS or variance maps).** Fixed-radius filtering everywhere today. Nothing in the
+  sample looks wrong for want of it.
+- **LOD and instancing.** Needed once a scene is larger than the sample's. Nothing in it is yet.
 
 ## Standing reminders
 
