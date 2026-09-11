@@ -33,8 +33,141 @@
       ]
     },
     {
+      "name": "head bob",
+      "recorded": "0.8.1 — head bob: a walk, back, a sprint, a crouch, then turned off on the settings screen",
+      "level": 0,
+      "script": "wait:0.5 w:1.5 wait:0.8 s:1.5 wait:0.8 w+shift:0.8 wait:0.8 c:0.05 wait:0.4 s:1.5 wait:0.8 c:0.05 wait:0.5 o:0.1 wait:0.1 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 o:0.1 wait:0.3 w:1.5 wait:0.5",
+      "expect": [
+        {
+          "after": "wait:0.5",
+          "footsteps": 0,
+          "bob": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "after": "w:1.5",
+          "feet": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "footsteps": 4,
+          "on": [
+            "dirt"
+          ],
+          "bob": [
+            2.8,
+            1.8
+          ]
+        },
+        {
+          "after": "w+shift:0.8",
+          "feet": [
+            0.0,
+            0.0,
+            -2.4
+          ],
+          "footsteps": 3,
+          "bob": [
+            4.7,
+            3.0
+          ]
+        },
+        {
+          "after": "s:1.5",
+          "occurrence": 2,
+          "feet": [
+            0.0,
+            0.0,
+            1.65
+          ],
+          "footsteps": 3,
+          "bob": [
+            1.4,
+            0.9
+          ]
+        },
+        {
+          "after": "w:1.5",
+          "occurrence": 2,
+          "feet": [
+            0.0,
+            0.0,
+            -7.35
+          ],
+          "footsteps": 4,
+          "bob": [
+            0.0,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "head bob at half",
+      "recorded": "0.8.1 — the setting at 50%, set here on the settings screen (0.8.1 set it in the file)",
+      "level": 0,
+      "script": "wait:0.5 o:0.1 wait:0.1 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 o:0.1 wait:0.3 w:1.5 wait:0.5",
+      "expect": [
+        {
+          "after": "w:1.5",
+          "feet": [
+            0.0,
+            0.0,
+            3.0
+          ],
+          "footsteps": 4,
+          "on": [
+            "dirt"
+          ],
+          "bob": [
+            1.4,
+            0.9
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stairs down",
+      "recorded": "0.11.0 — a foot on every tread going down, as going up",
+      "level": 1,
+      "script": "wait:0.5 d:0.75 wait:0.5 w:1.0 wait:0.6 s:1.0 wait:0.6",
+      "expect": [
+        {
+          "after": "w:1.0",
+          "feet": [
+            4.5,
+            1.2,
+            0.0
+          ],
+          "footsteps": 4,
+          "on": [
+            "dirt",
+            "stone",
+            "wood"
+          ]
+        },
+        {
+          "after": "s:1.0",
+          "feet": [
+            4.5,
+            0.0,
+            6.0
+          ],
+          "footsteps": 5,
+          "on": [
+            "dirt",
+            "stone",
+            "wood"
+          ]
+        }
+      ]
+    },
+    {
       "name": "lift jump",
-      "recorded": "0.12.0 — a jump keeps the platform's motion",
+      "recorded": "0.12.0 — a jump keeps the platform's motion (and 0.10.1's: no footsteps riding it)",
       "level": 1,
       "script": "wait:0.5 d:1.25 w:0.8 space:0.05 wait:1.2 wait:4.3 w:0.2 wait:1.1 wait:1.35 space:0.05 wait:1.2 wait:1.5",
       "expect": [
@@ -42,6 +175,10 @@
           "after": "wait:1.2",
           "occurrence": 1,
           "highest": 0.97
+        },
+        {
+          "after": "wait:1.35",
+          "footsteps": 0
         },
         {
           "after": "wait:1.35",
@@ -96,7 +233,7 @@
     },
     {
       "name": "push",
-      "recorded": "0.13.1 — pushed by the courtyard's slider, at its place since 0.13.1",
+      "recorded": "0.13.1 — pushed by the courtyard's slider, at its place since 0.13.1 (and 0.13.0's: no footsteps being pushed)",
       "level": 0,
       "script": "wait:0.3 yaw:69.44 w:1.424 yaw:90 wait:2.516 wait:0.5 wait:0.5 wait:0.5 wait:1.5",
       "expect": [
@@ -112,6 +249,16 @@
           "line": "slider's face at x",
           "pattern": "face at x ([-0-9.]+)",
           "value": -7.423
+        },
+        {
+          "after": "wait:0.5",
+          "occurrence": 1,
+          "footsteps": 0
+        },
+        {
+          "after": "wait:0.5",
+          "occurrence": 2,
+          "footsteps": 0
         },
         {
           "line": "slider's face at x",

@@ -79,6 +79,20 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
 
+## Done 2026-09-11 — the walk check hears footsteps and sees the head bob (0.15.1)
+
+**`Tools/walks.py` checks the lines under each segment**: footsteps (exact), surfaces (exact), head bob
+(± the printed millimetre). **Three walks recovered from the transcript and logs, not retyped** — 0.8.1's
+head bob (walk 2.8 × 1.8, sprint 4.7 × 3.0, crouch 1.4 × 0.9, then off on the settings screen), the same at
+50% (1.4 × 0.9, now set on the screen), 0.11.0's stairs down (4 up, 5 down, dirt/stone/wood) — plus no
+footsteps riding the lift (0.10.1) and none being pushed (0.13.0). **11 walks, 59 expectations, all hold.**
+Failing on purpose: tread `abs` out → 3 against 5; bob a fifth smaller → all three gaits caught.
+
+**A claim of mine, checked and wrong**: I wrote into `walks.json` that the head-bob walk's settings-screen
+part had to be left out because the screen's rows had moved. Read: without a pad every row added since
+(dead zones, stick rows, ambience) is pad-only or below Head bob, so the old key presses still land on it.
+The full walk went in, and reproduced 0.8.1's "off" exactly.
+
 ## Done 2026-09-11 — a push in mid-air is kept (0.15.0)
 
 **Air push → `airVelocity`**, up to the pusher's speed along the push. **And the kept speed is the
@@ -1445,15 +1459,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
-   positions and a few report numbers; the walk report also carries footsteps and their surfaces, and
-   the head bob's size — measured once and now unguarded: 0.8.1's bob (2.8 cm up and down at a walk, 4.7
-   at a sprint, 1.4 crouched) and 0.11.0's walk down the ruins' stairs (5 footsteps — wood, stone,
-   dirt — where the old tread rule gave 3). Recover those walks' scripts from git (`git log -S`), add
-   them with their numbers. **Proved by** the check passing, and failing with the tread rule's `abs`
-   taken out (5 → 3).
-
-2. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
+1. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
    rate, but a game chooses its *step* rate, and the jump is integrated a step at a time. Measured
    2026-09-11: apex **0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240** — the exact
    answer is 0.992 (6.3² / 2·20). A game at 60 jumps 2.6 cm lower than one at 120 and misses a ledge the
@@ -1461,13 +1467,21 @@ below, never in this list.
    spring was made exact). **Proved by** a test giving 0.992 at all four rates, and the walk check —
    whose recorded 0.97 and 1.90 apexes will move up by the Euler error, each change measured and explained.
 
-3. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
+2. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
    every item adds one; a check that is slow is a check that gets skipped. Each walk is its own process
    and its result is fixed by the step count, not the clock, so they can run at once. **Proved by** the
-   eight finishing in under 25 s with every number the same as run singly — and the deliberate failure
+   eleven finishing in under 30 s with every number the same as run singly — and the deliberate failure
    (the slider back at z 8) still caught. (Checked on the way and *not* broken, 2026-09-11: a body landing
    on a slab sliding at 1.5 m/s takes the same 6.33 m/s impact as on still ground and moves with the slab
    from the next step, relative speed 0.0.)
+
+3. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
+   the same way and is unguarded. 0.8.0: at defaults the stick turned the view 91.67° right and 45.84° up,
+   the mouse 63.03° and 25.21°, and set on the settings screen (mouse 2.0, stick 0.5 inverted) 45.84°,
+   −22.92°, 126.05°, 50.42°. 0.9.0: the stick at 20% drifted 2.26° at the default dead zone and not at all
+   at 26%; at 50%, 18.11° and 9.64°. Recover those walks (`pad.lookRight:0.5`, `mousex:500`,
+   `pad.lookRight@0.2:1`), read the `look '…' → view turned` lines. **Proved by** the check passing, and
+   failing with the mouse's look scale doubled.
 
 ## Parked — not next, and why
 

@@ -15,7 +15,8 @@ length and a few seconds to start.
     python3 Tools/walks.py piston     the walks whose names contain "piston"
 
 Exit status 0 when every expectation holds, 1 otherwise. Positions are compared to the walk report's two
-decimals, so a feet expectation allows the tolerance plus half a centimetre of rounding.
+decimals, so a feet expectation allows the tolerance plus half a centimetre of rounding. Footsteps and
+their surfaces must match exactly; the head bob, printed to a millimetre, may differ by one.
 """
 import json, os, pathlib, re, subprocess, sys, threading, time
 
@@ -52,8 +53,14 @@ def run(walk):
 def check(walk, lines, tolerance):
     """Each expectation against the log: what it wanted, what it got, and whether that holds."""
     results = []
-    segments = [(m.group(1), [float(m.group(i)) for i in (2, 3, 4)], float(m.group(5)))
-                for m in (WALK_LINE.search(l) for l in lines) if m]
+    # Each segment's report, and the indented lines that follow it: footsteps, surfaces, the head bob.
+    segments = []
+    for l in lines:
+        m = WALK_LINE.search(l)
+        if m:
+            segments.append((m.group(1), [float(m.group(i)) for i in (2, 3, 4)], float(m.group(5)), []))
+        elif segments and l.startswith("WindageSample:     "):
+            segments[-1][3].append(l)
     for want in walk["expect"]:
         if "after" in want:
             hits = [s for s in segments if s[0] == want["after"]]
@@ -66,6 +73,22 @@ def check(walk, lines, tolerance):
             if "highest" in want:
                 ok = got is not None and abs(got[2] - want["highest"]) <= tolerance + 0.005
                 results.append((f"highest in '{want['after']}' #{n}", want["highest"], got[2] if got else None, ok))
+            heard = "\n".join(got[3]) if got else ""
+            where = f"'{want['after']}'" + (f" #{n}" if "occurrence" in want else "")
+            if "footsteps" in want:
+                m = re.search(r"(\d+) footsteps?", heard)
+                count = int(m.group(1)) if m else None
+                results.append((f"footsteps in {where}", want["footsteps"], count, count == want["footsteps"]))
+            if "on" in want:
+                m = re.search(r"footsteps? on ([a-z ]+?)(?:,|$)", heard, re.M)
+                surfaces = sorted(m.group(1).split(" and ")) if m else []
+                results.append((f"surfaces in {where}", sorted(want["on"]), surfaces, surfaces == sorted(want["on"])))
+            if "bob" in want:
+                # Printed to a millimetre, so a millimetre either way is the rounding, not a change.
+                m = re.search(r"head bob ([0-9.]+) cm up and down, ([0-9.]+) cm side to side", heard)
+                bob = [float(m.group(1)), float(m.group(2))] if m else ([0.0, 0.0] if "no head bob" in heard else None)
+                ok = bob is not None and all(abs(a - b) <= 0.1 + 1e-6 for a, b in zip(bob, want["bob"]))
+                results.append((f"head bob in {where}, cm", want["bob"], bob, ok))
         else:
             hits = [l for l in lines if want["line"] in l]
             line = (hits[-1] if want.get("last") else hits[0]) if hits else None

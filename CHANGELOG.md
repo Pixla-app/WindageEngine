@@ -12,6 +12,24 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.15.1] — 2026-09-11
+
+**The walk check hears footsteps and sees the head bob.** Additive; no engine change.
+
+### In the sample
+
+- **`Tools/walks.py` reads the lines under each segment** — footstep counts, their surfaces, the head
+  bob — and checks them: counts and surfaces exactly, the bob to the millimetre it is printed to.
+- **Three more walks, recovered, not retyped** — their scripts from this repository's history and the
+  logs that measured them: **0.8.1's head bob** (walk 2.8 × 1.8 cm, sprint 4.7 × 3.0, crouched
+  1.4 × 0.9, then turned off on the settings screen: none), **the same at 50%** (1.4 × 0.9, reached on the
+  settings screen where 0.8.1 set it in the file), and **0.11.0's walk down the ruins' stairs** (up in
+  4 footsteps, down in 5, on dirt, stone and wood). And two claims already made: no footsteps riding
+  the lift (0.10.1), none being pushed (0.13.0).
+- **Eleven walks, 59 expectations, all hold. Proved by failing twice**: the tread rule's `abs` taken out
+  — the walk down gave 3 footsteps against 5, 0.11.0's before; the head bob made a fifth smaller — all
+  three gaits caught (2.2 against 2.8, 3.8 against 4.7, 1.1 against 1.4).
+
 ## [0.15.0] — 2026-09-11
 
 **A push in mid-air is kept.** Measured before: a block at 1.5 m/s shoved a body mid-jump and stopped,

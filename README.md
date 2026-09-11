@@ -1108,7 +1108,10 @@ python3 Tools/walks.py
 ```
 
 runs them all and fails on anything more than 2 cm from its record. Six walks, 21 expectations, about a
-minute (seven since 0.14.2). Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
+minute (seven since 0.14.2). **Since 0.15.1 it hears and sees as well**: footstep counts and surfaces
+exactly, the head bob to the millimetre, from the lines the walk report prints under each segment — eleven
+walks, 59 expectations, among them every row of 0.8.1's head-bob table and 0.11.0's footsteps down the
+ruins' stairs. Take the tread rule's `abs` out and it fails on 3 footsteps where 5 are recorded. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
 
 **They run as a check — `WINDAGE_SAMPLE_CHECK=1` — so they can run while somebody works**: the window is
 never shown, the keyboard never taken, nothing played aloud, and the saves are the check's own, cleared
