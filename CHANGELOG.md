@@ -12,6 +12,36 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.9.0] — 2026-09-11
+
+**A stick dead zone the player sets — and a stick that walks at the speed it is pushed to.** A minor
+version because the second changes what existing code does: a stick part-way now moves part-speed.
+
+### Fixed
+
+- **`CharacterController` and `Camera.advance` normalised the movement direction**, so any push past
+  the dead zone moved at full speed — a stick at 5% walked 6 m a second, the same as at 100%, and the
+  move curve reached nothing. Clamped to length 1 instead: two keys at once are still no faster than
+  one, and a stick at 0.3 walks 1.8 m a second.
+
+### Added
+
+- **`PlayerSettings.moveDeadzone` and `lookDeadzone`**, 0…0.5, defaulting to the engine's tuning
+  (0.16 and 0.10). A file without them loads the defaults.
+- **`InputState.moveDeadzone` and `lookDeadzone`**, read by `movement` and `lookRate` in place of the
+  `StickResponse` constants — which stay, as the defaults.
+
+### Upgrading
+
+Nothing to change for keys. **A game on a controller will walk slower at part deflection** — that is
+the fix. Hand the player's dead zones to `InputState` where the bindings are handed over.
+
+### In the sample
+
+- **Move stick dead zone and Look stick dead zone** on the settings screen beside the stick's rows,
+  in steps of 2%.
+- **The scripted walk holds a stick part-way**: `pad.lookRight@0.2:1`, `pad.moveUp@0.6:1`.
+
 ## [0.8.2] — 2026-09-11
 
 **A lamp from the editor.** A placement could carry a lamp since 0.7.1, and the editor could move one,

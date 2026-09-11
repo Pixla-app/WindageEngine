@@ -164,6 +164,16 @@ struct PlayerSettingsTests {
         #expect(!s.invertMouse && !s.invertStick)
     }
 
+    @Test("Dead zones default to the engine's tuning, load when missing, and clamp to half a stick")
+    func deadZones() throws {
+        let s = PlayerSettings()
+        #expect(s.moveDeadzone == StickResponse.moveDeadzone && s.lookDeadzone == StickResponse.lookDeadzone)
+        let older = try decode(PlayerSettings.self, #"{ "headBob": 0.5 }"#)
+        #expect(older.lookDeadzone == StickResponse.lookDeadzone && older.headBob == 0.5)
+        let wild = try decode(PlayerSettings.self, #"{ "moveDeadzone": 0.9, "lookDeadzone": -1 }"#)
+        #expect(wild.moveDeadzone == 0.5 && wild.lookDeadzone == 0)
+    }
+
     /// Head bob arrived in 0.8.1; a file from before it has none, and must not lose everything else.
     @Test("Head bob is on by default, off at zero, and clamped")
     func headBob() throws {

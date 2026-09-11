@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-509 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+512 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,33 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a stick dead zone the player sets, and a stick that walks at its speed (0.9.0)
+
+**`PlayerSettings.moveDeadzone`, `lookDeadzone`** (0…0.5, defaults 0.16 and 0.10), read by
+**`InputState.moveDeadzone`, `lookDeadzone`**. On the sample's settings screen beside the stick rows,
+in 2% steps. The scripted walk holds a stick part-way: `pad.lookRight@0.2:1`, `pad.moveUp@0.6:1`.
+
+**It found a real bug first**: `CharacterController` and `Camera.advance` *normalised* the movement
+direction, so a stick at 5% walked 6 m a second, the same as full. Measured by a probe before touching
+anything; clamped to 1 now (two keys still no faster than one). **Minor version for that.**
+
+**Measured in the running sample:**
+
+| stick held | defaults (look 10%, move 16%) | look 26%, move 30% — set on the settings screen from the pad |
+|---|---|---|
+| look at 8%, 1 s | no turn | — |
+| look at 20%, 1 s | 2.26° (the drift) | no turn |
+| look at 50%, ½ s | 18.11° | 9.64° |
+| look full, ½ s | 91.67° | 91.67° |
+| move at 20%, 1 s | 0.11 m | 0 m |
+| move at 60%, 1 s | 2.59 m | 1.99 m |
+
+Every figure is the response curve's, computed before the run.
+
+**The game with a window had the same normalising line** — its walking is where the engine's came
+from — and its left stick was an on/off switch. **Fixed there in the same pass**, with a test that fails
+on the old line; built, run and looked at. The four rigs pass unchanged.
 
 ## Done 2026-09-11 — a lamp from the editor (0.8.2)
 
@@ -1017,26 +1044,25 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
-   constants, and a worn stick drifts past them: the view creeps with nobody touching it, and the only
-   cure a player has is a new controller. A dead zone per stick in `PlayerSettings`, on the settings
-   screen beside the stick's sensitivity. **Proved in the sample by** the scripted walk holding the
-   stick at part deflection (`pad.lookRight@0.1`) — no turn below the setting, a turn that starts from
-   zero just above it, and full speed still at full deflection.
-
-2. **What a surface is, from the level file.** A footstep knows which solid it is on
+1. **What a surface is, from the level file.** A footstep knows which solid it is on
    (`groundSolid`) but not what that solid is made of: the sample hard-codes "every solid is stone,
    the rest is dirt", which is true of its two levels only by accident. A `surface` on a placement —
    stone, wood, metal, dirt — read by the level format, so a game picks the sound from the level rather
    than from a guess. **Proved in the sample by** a wooden step in the ruins and the scripted walk
    reporting "footsteps on wood" across it and "on stone" on the steps beside it.
 
-3. **Dropping a new thing in from the editor.** `LevelEditor.add` has existed since the editor did,
+2. **Dropping a new thing in from the editor.** `LevelEditor.add` has existed since the editor did,
    and nothing in the sample calls it: a level can be rearranged but never added to without editing
    the file. A key that cycles through the meshes the level already uses and drops one where the
    crosshair meets the ground — a brazier arriving with its lamp, through `add(…, light:)`. **Proved in
    the sample by** a scripted edit that adds a brazier and a crate, the log placing each where the
    crosshair was, and the brazier's lamp lighting the ground around it.
+
+3. **Standing up under something low.** A crouched player can stand up into a ceiling: the controller
+   raises the body's height with no check above it, so under a lintel the head ends up inside the stone.
+   Stay crouched until there is room, and stand the moment there is. **Proved in the sample by** a low
+   lintel added to the ruins and a scripted crouch-walk under it that lets go of crouch halfway — the
+   log reporting the eye held at crouch height until the body is clear, and standing after.
 
 ## Parked — not next, and why
 
@@ -1051,8 +1077,6 @@ below, never in this list.
   slot doubles every rule in `InputBindings` and waits for a title that asks.
 - **Soft particles and sorting.** Particles are cut off hard where they meet a surface, and matter is
   drawn unsorted. Neither shows at the sample's sizes and opacities; dense smoke would show both.
-- **Standing up under something low.** The controller lets a crouched player stand up into a
-  ceiling. Nothing in either level has an overhang to find it; it is a few lines when one does.
 - **Standing on something that moves.** A deck or a lift. The engine's reference-frame probe is the
   shape of it; nothing in the sample moves yet.
 

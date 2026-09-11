@@ -1116,6 +1116,23 @@ exactly. With the mouse at 2.0, the stick at 0.5 and the stick inverted, set thr
 from the virtual pad, they are 45.84°, 126.05°, and a stick-up that looks *down* while the mouse's
 vertical stays put. An old-style file at 1.5, inverted, turns both devices 1.5× with both flipped.
 
+### A dead zone per stick, and a stick that walks at the speed it is pushed to (0.9.0)
+
+**A worn stick drifts**: it rests a few percent off centre, and past the dead zone that is a view
+creeping round with nobody touching it. `PlayerSettings.moveDeadzone` and `lookDeadzone` let the player
+cure it; `InputState` reads them. The response still starts from zero at the new edge and reaches full
+at full deflection, so a bigger dead zone costs travel and never top speed.
+
+**Building it found that movement ignored how far the stick was pushed.** `CharacterController` and
+`Camera.advance` normalised the direction to stop two keys being faster than one — which also threw the
+stick's deflection away: 5% walked 6 m a second, the same as 100%. They clamp to length 1 now. The game
+the walking was extracted from had the same line and was fixed the same day.
+
+**Proved in the sample with a stick held part-way** (`pad.lookRight@0.2`): at the defaults a stick
+resting at 20% turns 2.26° a second and walks 0.11 m — the drift — and 50% turns 18.11° in half a
+second; with the dead zones raised to 26% and 30% on the settings screen, 20% does nothing, 50% turns
+9.64°, full deflection is still 91.67°, and 60% walks 1.99 m. Every figure is the curve's.
+
 ### No apply button
 
 Every change is saved the moment it is made. A settings screen that can be closed without saving is

@@ -11,7 +11,8 @@ import simd
 public nonisolated enum StickResponse {
 
     /// Movement tolerates a larger dead area than aiming: drifting forward slowly is harmless,
-    /// while an aim that creeps is unusable.
+    /// while an aim that creeps is unusable. **The defaults** — a player sets their own in
+    /// ``PlayerSettings/moveDeadzone`` and ``PlayerSettings/lookDeadzone``, which ``InputState`` reads.
     public static let moveDeadzone: Float = 0.16
     public static let lookDeadzone: Float = 0.10
 

@@ -137,8 +137,10 @@ public nonisolated struct Camera: Sendable {
         let lengthSquared = simd_length_squared(direction)
         guard lengthSquared > 0 else { return }
 
-        // Normalise so that holding two directions at once is not faster than one.
-        direction /= lengthSquared.squareRoot()
+        // **Clamped to 1, not normalised**, so holding two keys at once is not faster than one — and
+        // a stick pushed a third of the way goes a third as fast. Normalising did the first and
+        // broke the second: every deflection past the dead zone flew at full speed (0.9.0).
+        if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
         let speed = input.sprint ? Camera.sprintSpeed : Camera.walkSpeed
         position += direction * speed * deltaTime

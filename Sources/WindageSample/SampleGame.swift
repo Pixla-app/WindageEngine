@@ -225,7 +225,7 @@ final class SampleGame: GameLoop {
             case pad(InputBindings.Action)
             case mouseSensitivity, invertMouse
             /// The stick's own look settings — shown only while a pad is connected, beside its buttons.
-            case stickSensitivity, invertStick
+            case stickSensitivity, invertStick, moveDeadzone, lookDeadzone
             case headBob, volume, brightness, reset
         }
 
@@ -233,7 +233,8 @@ final class SampleGame: GameLoop {
         /// its rows, and putting it down takes them away rather than leaving rows that do nothing.
         static func rows(withPad pad: Bool) -> [Row] {
             InputBindings.Action.allCases.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
-                + (pad ? PadBindings.actions.map { .pad($0) } + [.stickSensitivity, .invertStick] : [])
+                + (pad ? PadBindings.actions.map { .pad($0) }
+                    + [.stickSensitivity, .invertStick, .moveDeadzone, .lookDeadzone] : [])
                 + [.headBob, .volume, .brightness, .reset]
         }
 
@@ -1738,6 +1739,8 @@ final class SampleGame: GameLoop {
             case .invertMouse: ("Invert mouse", settings.invertMouse ? "on" : "off")
             case .stickSensitivity: ("Stick sensitivity", String(format: "%.1f", settings.stickSensitivity))
             case .invertStick: ("Invert stick", settings.invertStick ? "on" : "off")
+            case .moveDeadzone: ("Move stick dead zone", "\(Int((settings.moveDeadzone * 100).rounded()))%")
+            case .lookDeadzone: ("Look stick dead zone", "\(Int((settings.lookDeadzone * 100).rounded()))%")
             case .headBob: ("Head bob", settings.headBob == 0 ? "off" : "\(Int((settings.headBob * 100).rounded()))%")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
@@ -1859,7 +1862,8 @@ final class SampleGame: GameLoop {
             case .bind, .pad:
                 current.capturing = current.row
                 current.message = nil
-            case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .headBob, .volume, .brightness:
+            case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .moveDeadzone, .lookDeadzone,
+                 .headBob, .volume, .brightness:
                 adjust(current.row, by: 1)
             case .reset:
                 settings = PlayerSettings()
@@ -1912,6 +1916,10 @@ final class SampleGame: GameLoop {
         case .invertMouse: settings.invertMouse.toggle()
         case .stickSensitivity: settings.stickSensitivity = Self.tenths(settings.stickSensitivity + 0.1 * step)
         case .invertStick: settings.invertStick.toggle()
+        // Steps of 2%: a drifting stick rests a few percent off centre, so the useful settings are
+        // close together, and a 10% step would jump straight past the one that just stops it.
+        case .moveDeadzone: settings.moveDeadzone = ((settings.moveDeadzone + 0.02 * step) * 50).rounded() / 50
+        case .lookDeadzone: settings.lookDeadzone = ((settings.lookDeadzone + 0.02 * step) * 50).rounded() / 50
         // Quarters, so off is two presses from half and four from full — and activating it from
         // full wraps to off, which is the press a player looking for "off" makes.
         case .headBob:
@@ -1939,6 +1947,8 @@ final class SampleGame: GameLoop {
     private func applySettings() {
         input.bindings = settings.bindings
         input.padBindings = settings.padBindings
+        input.moveDeadzone = settings.moveDeadzone
+        input.lookDeadzone = settings.lookDeadzone
         audio?.masterVolume = settings.volume
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
     }
@@ -2009,9 +2019,14 @@ final class SampleGame: GameLoop {
     /// > is accepted and does nothing — `isPressed` stays false — so the first scripted run opened the
     /// > settings screen with the menu button and then could not move off its first row. The
     /// > direction pad only moves through `setValueForXAxis(_:yAxis:)`.
-    private func setScriptPad(_ name: String, down: Bool) {
+    private func setScriptPad(_ token: String, down: Bool) {
         guard let pad = scriptPad else { return }
-        let value: Float = down ? 1 : 0
+        // `lookRight@0.2` holds the stick a fifth of the way — what a worn stick resting off centre
+        // looks like, and what a dead zone is for. Buttons ignore it.
+        let parts = token.split(separator: "@")
+        let name = String(parts[0])
+        let amount = parts.count > 1 ? Float(parts[1]) ?? 1 : 1
+        let value: Float = down ? amount : 0
         switch name {
         case "up": pad.dpad.setValueForXAxis(0, yAxis: value)
         case "down": pad.dpad.setValueForXAxis(0, yAxis: -value)
@@ -2022,6 +2037,11 @@ final class SampleGame: GameLoop {
         case "lookDown": pad.rightThumbstick.setValueForXAxis(0, yAxis: -value)
         case "lookLeft": pad.rightThumbstick.setValueForXAxis(-value, yAxis: 0)
         case "lookRight": pad.rightThumbstick.setValueForXAxis(value, yAxis: 0)
+        // The move stick, likewise.
+        case "moveUp": pad.leftThumbstick.setValueForXAxis(0, yAxis: value)
+        case "moveDown": pad.leftThumbstick.setValueForXAxis(0, yAxis: -value)
+        case "moveLeft": pad.leftThumbstick.setValueForXAxis(-value, yAxis: 0)
+        case "moveRight": pad.leftThumbstick.setValueForXAxis(value, yAxis: 0)
         default: scriptPadElement(name)?.setValue(value)
         }
     }

@@ -174,6 +174,31 @@ struct InputStatePadTests {
         #expect(input.isBraced)
     }
 
+    /// **A worn stick resting at 20%** — past the engine's dead zones, so it walks and turns with
+    /// nobody touching it — and the player's own dead zone is what stops it.
+    @Test("The player's dead zones decide what a drifting stick does")
+    func deadZonesFromSettings() {
+        let (input, pad) = rig()
+        pad.leftThumbstick.setValueForXAxis(0, yAxis: 0.2)
+        pad.rightThumbstick.setValueForXAxis(0.2, yAxis: 0)
+        #expect(input.movement.forward > 0, "at the default the drift walks")
+        #expect(input.lookRate.x > 0, "at the default the drift turns")
+
+        var settings = PlayerSettings()
+        settings.moveDeadzone = 0.25
+        settings.lookDeadzone = 0.25
+        input.moveDeadzone = settings.moveDeadzone
+        input.lookDeadzone = settings.lookDeadzone
+        #expect(input.movement.forward == 0 && input.lookRate == .zero, "the setting did not stop the drift")
+
+        // **Still a full throw above it**: the response starts at zero at the new edge and reaches full
+        // at full deflection, so a larger dead zone costs travel, not top speed.
+        pad.rightThumbstick.setValueForXAxis(1, yAxis: 0)
+        #expect(abs(input.lookRate.x - 1) < 1e-5)
+        pad.rightThumbstick.setValueForXAxis(0.26, yAxis: 0)
+        #expect(input.lookRate.x > 0 && input.lookRate.x < 0.001, "just past the edge should barely move: \(input.lookRate.x)")
+    }
+
     @Test("Handing the pad back to the system forgets the supplied one")
     func handBack() {
         let (input, _) = rig()

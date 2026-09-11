@@ -170,6 +170,11 @@ public final class InputState {
     /// Which button does what on a pad. **Everything the pad's buttons drive reads through this.**
     public var padBindings = PadBindings.standard
 
+    /// How far each stick must move before it counts. The engine's tuning until a game hands over the
+    /// player's — ``PlayerSettings/moveDeadzone`` and ``PlayerSettings/lookDeadzone``.
+    public var moveDeadzone = StickResponse.moveDeadzone
+    public var lookDeadzone = StickResponse.lookDeadzone
+
     /// Whether the pad's buttons act — crouch, brace, sprint, jump, the scroll notch.
     ///
     /// **Off while a game's menu has the pad.** A keyboard key the menu takes never reaches this type;
@@ -511,7 +516,7 @@ public final class InputState {
         if let gamepad {
             let stick = StickResponse.shaped(
                 SIMD2(gamepad.leftThumbstick.xAxis.value, gamepad.leftThumbstick.yAxis.value),
-                deadzone: StickResponse.moveDeadzone, exponent: StickResponse.moveExponent)
+                deadzone: moveDeadzone, exponent: StickResponse.moveExponent)
             input.strafe += stick.x
             input.forward += stick.y
 
@@ -552,6 +557,6 @@ public final class InputState {
         guard let gamepad else { return .zero }
         return StickResponse.shaped(
             SIMD2(gamepad.rightThumbstick.xAxis.value, gamepad.rightThumbstick.yAxis.value),
-            deadzone: StickResponse.lookDeadzone, exponent: StickResponse.lookExponent)
+            deadzone: lookDeadzone, exponent: StickResponse.lookExponent)
     }
 }

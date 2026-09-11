@@ -399,8 +399,12 @@ public nonisolated struct CharacterController: Sendable {
         let right = SIMD2<Float>(cos(yaw), -sin(yaw))
         var direction = forward * input.forward + right * input.strafe
         let lengthSquared = simd_length_squared(direction)
-        // Normalised so holding two directions at once is not faster than one.
-        if lengthSquared > 0 { direction /= lengthSquared.squareRoot() }
+        // **Clamped to 1, not normalised**, so holding two directions at once is not faster than one —
+        // and a stick pushed a third of the way walks a third as fast. Normalising did the first and
+        // broke the second: any deflection past the dead zone walked at full speed, so the stick's
+        // response curve reached the look and never the feet. Measured before the fix: a stick at 5%
+        // covered the same 6 m a second as one pushed all the way (0.9.0).
+        if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
         // A slide goes where it was aimed when it started, nudged by the stick and no more.
         if slideLeft > 0 {

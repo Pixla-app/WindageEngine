@@ -100,6 +100,19 @@ struct CharacterWalkingTests {
         #expect(eyeJerk < groundJerk, "the eye moved \(eyeJerk) m a step against the ground's \(groundJerk)")
     }
 
+    /// **Normalising the direction threw the deflection away**: every push past the dead zone walked
+    /// at full speed, so the stick's response curve reached the look and never the feet.
+    @Test("A stick pushed part of the way walks part of the speed")
+    func stickPartWayWalksPartSpeed() {
+        var c = CharacterController(feet: .zero)
+        run(&c, seconds: 1, MovementInput(forward: 0.3))
+        #expect(abs(simd_length(ground(c.feet)) - 1.8) < 0.01,
+                "a stick at 0.3 should cover 0.3 of 6 m, not all of it: \(simd_length(ground(c.feet)))")
+        var camera = Camera()
+        for _ in 0..<120 { camera.advance(MovementInput(forward: 0.3), deltaTime: step) }
+        #expect(abs(simd_length(camera.position) - 1.8) < 0.01, "the flying camera had the same fault")
+    }
+
     @Test("Walking diagonally is not faster")
     func diagonalIsNotFaster() {
         var straight = CharacterController(feet: .zero)

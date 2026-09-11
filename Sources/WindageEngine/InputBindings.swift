@@ -277,6 +277,25 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     /// Pushing the look stick up looks down.
     public var invertStick = false
 
+    /// How far each stick must move before it counts, 0…0.5 of its travel.
+    ///
+    /// **A worn stick drifts**: it rests a few percent off centre, and past the dead zone that is a
+    /// view creeping round or a player walking off with nobody touching anything. The only fix a
+    /// player has without this is a new controller. The defaults are the engine's tuning — movement
+    /// tolerates more dead area than aiming, because drifting forward slowly is harmless and an aim
+    /// that creeps is not. **The response still starts from zero at the edge** of whatever dead zone
+    /// is set, and still reaches full at full deflection; see ``StickResponse/shaped(_:deadzone:exponent:)``.
+    public var moveDeadzone: Float = StickResponse.moveDeadzone {
+        didSet { moveDeadzone = PlayerSettings.clamp(moveDeadzone, PlayerSettings.deadzoneRange, StickResponse.moveDeadzone) }
+    }
+    public var lookDeadzone: Float = StickResponse.lookDeadzone {
+        didSet { lookDeadzone = PlayerSettings.clamp(lookDeadzone, PlayerSettings.deadzoneRange, StickResponse.lookDeadzone) }
+    }
+
+    /// Half the stick is the most a dead zone may take: past that, what is left is too short a
+    /// throw to control anything with.
+    public static let deadzoneRange: ClosedRange<Float> = 0...0.5
+
     /// How much of the head bob to show, 0…1 — **0 is off**. See ``CharacterController/headBob``.
     ///
     /// **An amount rather than a switch, with off at the bottom of it.** Bob is a known cause of
@@ -318,7 +337,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case bindings, padBindings, mouseSensitivity, stickSensitivity, invertMouse, invertStick
-        case headBob, volume, brightness
+        case moveDeadzone, lookDeadzone, headBob, volume, brightness
         /// Read, never written: one sensitivity and one invert for both devices, before 0.8.0.
         case lookSensitivity, invertLook
     }
@@ -342,6 +361,10 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
             (try? c.decodeIfPresent(Float.self, forKey: .stickSensitivity)) ?? sharedSensitivity, range, 1)
         invertMouse = (try? c.decodeIfPresent(Bool.self, forKey: .invertMouse)) ?? sharedInvert
         invertStick = (try? c.decodeIfPresent(Bool.self, forKey: .invertStick)) ?? sharedInvert
+        moveDeadzone = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .moveDeadzone))
+            ?? StickResponse.moveDeadzone, PlayerSettings.deadzoneRange, StickResponse.moveDeadzone)
+        lookDeadzone = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .lookDeadzone))
+            ?? StickResponse.lookDeadzone, PlayerSettings.deadzoneRange, StickResponse.lookDeadzone)
         headBob = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .headBob)) ?? 1, 0...1, 1)
         volume = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .volume)) ?? 0.8, 0...1, 0.8)
         brightness = PlayerSettings.clamp(
@@ -356,6 +379,8 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         try c.encode(stickSensitivity, forKey: .stickSensitivity)
         try c.encode(invertMouse, forKey: .invertMouse)
         try c.encode(invertStick, forKey: .invertStick)
+        try c.encode(moveDeadzone, forKey: .moveDeadzone)
+        try c.encode(lookDeadzone, forKey: .lookDeadzone)
         try c.encode(headBob, forKey: .headBob)
         try c.encode(volume, forKey: .volume)
         try c.encode(brightness, forKey: .brightness)
