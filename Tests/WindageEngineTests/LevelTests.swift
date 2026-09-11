@@ -238,3 +238,85 @@ struct LevelAnchorTests {
         }
     }
 }
+
+/// **One definition of where a placement is.** Bedding turned the other way from every renderer until
+/// 2026-09-11, and no test said so because none asked where the corners it sampled actually were.
+@Suite("Placement transform")
+struct PlacementTransformTests {
+
+    /// Positive yaw turns +X towards −Z — the turn `Camera` makes, and the one every renderer draws.
+    @Test("The turn is right-handed about +Y, like the camera's")
+    func handedness() {
+        let m = Level.transform(yaw: .pi / 2, scale: 1, at: .zero)
+        let x = m * SIMD4<Float>(1, 0, 0, 0)
+        #expect(abs(x.x) < 1e-6 && abs(x.z + 1) < 1e-6, "+X went to \(x)")
+        // And a camera at that yaw has the same right-hand side.
+        let camera = Camera(position: .zero, yaw: .pi / 2)
+        #expect(simd_distance(SIMD3(x.x, x.y, x.z), camera.right) < 1e-6)
+    }
+
+    @Test("turned(_:by:) is the matrix's turn")
+    func turnedMatchesMatrix() {
+        for yaw in stride(from: Float(-3), through: 3, by: 0.37) {
+            let m = Level.transform(yaw: yaw, scale: 1, at: .zero)
+            let world = m * SIMD4<Float>(2, 0, -0.7, 1)
+            let turned = Level.turned(SIMD2(2, -0.7), by: yaw)
+            #expect(abs(world.x - turned.x) < 1e-5 && abs(world.z - turned.y) < 1e-5)
+        }
+    }
+
+    /// **The corners bedding samples are the corners the placement is drawn with.** An asymmetric
+    /// footprint, turned, on a slope — the case where the old rotation sampled its mirror image.
+    @Test("Bedding samples the ground under the corners the placement is drawn with")
+    func beddingUsesDrawnCorners() {
+        let corners: [SIMD2<Float>] = [SIMD2(-1, -4), SIMD2(-1, 1), SIMD2(9, -4), SIMD2(9, 1)]
+        let sampled = SampledPoints()
+        let ground = Level.Ground(
+            heightAt: { x, z in sampled.add(SIMD2(x, z)); return 0.1 * x - 0.05 * z },
+            footprintCorners: { _ in corners })
+        let placement = Level.Placement(mesh: "long", position: SIMD3(20, 0, -5), yaw: 0.6,
+                                        scale: 1.5, anchor: .beddedFootprint)
+        let level = Level(name: "slope", placements: [placement])
+        _ = level.worldPosition(of: placement, on: ground)
+
+        let m = Level.transform(yaw: 0.6, scale: 1.5, at: SIMD3(20, 0, -5))
+        for corner in corners {
+            let drawn = m * SIMD4<Float>(corner.x, 0, corner.y, 1)
+            #expect(sampled.points.contains { simd_distance($0, SIMD2(drawn.x, drawn.z)) < 1e-4 },
+                    "the corner drawn at \(drawn) was never sampled")
+        }
+    }
+
+    /// And the height it lands at is the lowest of those drawn corners.
+    @Test("A bedded placement sits on the lowest drawn corner")
+    func sitsOnLowestDrawnCorner() {
+        let corners: [SIMD2<Float>] = [SIMD2(-1, -4), SIMD2(-1, 1), SIMD2(9, -4), SIMD2(9, 1)]
+        let height: @Sendable (Float, Float) -> Float = { x, z in 0.1 * x - 0.3 * z }
+        let ground = Level.Ground(heightAt: height, footprintCorners: { _ in corners })
+        let placement = Level.Placement(mesh: "long", position: SIMD3(0, 0, 0), yaw: 0.8,
+                                        anchor: .beddedFootprint)
+        let level = Level(name: "slope", placements: [placement])
+        let m = Level.transform(yaw: 0.8, scale: 1, at: .zero)
+        let lowest = (corners.map { c -> Float in
+            let w = m * SIMD4<Float>(c.x, 0, c.y, 1)
+            return height(w.x, w.z)
+        } + [height(0, 0)]).min()!
+        #expect(abs(level.worldPosition(of: placement, on: ground).y - lowest) < 1e-5)
+    }
+
+    @Test("transform(of:on:) puts the placement where worldPosition says")
+    func transformUsesTheAnchor() {
+        let ground = Level.Ground(heightAt: { _, _ in 3 })
+        let placement = Level.Placement(mesh: "box", position: SIMD3(4, 0.5, -2), yaw: 1, scale: 2)
+        let level = Level(name: "raised", placements: [placement])
+        let m = level.transform(of: placement, on: ground)
+        #expect(SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z) == SIMD3(4, 3.5, -2))
+        #expect(abs(simd_length(SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z)) - 2) < 1e-6)
+    }
+}
+
+/// Collects where a ground function was asked for its height.
+private final class SampledPoints: @unchecked Sendable {
+    private(set) var points: [SIMD2<Float>] = []
+    func add(_ point: SIMD2<Float>) { points.append(point) }
+}

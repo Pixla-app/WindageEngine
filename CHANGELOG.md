@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.7.0] — 2026-09-11
+
+**A placement's transform, defined once — and bedding turned the right way.** A minor version because
+a bedded placement can now sit at a different height than it did: that is the fix, and it changes a
+result a consumer may have tested against.
+
+### Added
+
+- **`Level.transform(of:on:)`** — scaled, turned by `yaw` about +Y, moved to the anchored position.
+- **`Level.transform(yaw:scale:at:)`** and **`Level.turned(_:by:)`**, the same turn for a matrix and for a
+  ground-plane offset.
+
+### Changed — the fix
+
+**`Anchor.beddedFootprint` sampled the ground under the corners of the placement's mirror image.**
+Its inline rotation turned the opposite way from every renderer in the studio: the sample's placement
+matrix, a game's scatter, a game's renderer (Apple's template rotation) all turn +X towards −Z for a
+positive yaw, and bedding turned it towards +Z. On flat ground, for a square footprint, or at a yaw that
+is a multiple of 90°, nothing differs. **A long footprint turned on a slope was bedded on corners it
+does not have** — its height set by ground it does not stand on.
+
+It uses `Level.turned(_:by:)` now, which is the matrix's turn. A test builds an asymmetric footprint
+turned on a slope and checks that every corner the placement is *drawn* with is a corner bedding
+*sampled* — and fails against the old rotation.
+
+> **For a consumer that copied the old rotation**: a game's own bedding or collision written the same
+> way turns the same wrong way. Compare it with `Level.turned(_:by:)`; a parity test between the two
+> will now disagree, and that disagreement is the bug.
+
+### Why now
+
+A light carried by a placement — the next change — needs the placement's transform to be carried by.
+Asking where that was defined found it defined four times, one of them backwards.
+
 ## [0.6.12] — 2026-09-11
 
 **The landing dip.** A hard landing now shows as well as sounds: the eye drops as the legs take the

@@ -918,6 +918,22 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
 
+## A placement's transform, and a rotation that ran backwards (2026-09-11)
+
+**`Level.transform(of:on:)` is the one definition of where a placement is**: scaled, turned by `yaw`
+about +Y, moved to its anchored position. There was none. The sample built the matrix by hand; a game
+built it twice; and **the engine's own bedding turned the other way from all of them** — for a
+positive yaw every renderer turns +X towards −Z, and bedding turned it towards +Z, so it sampled the
+ground under the corners of the placement's mirror image.
+
+Nothing showed on flat ground, for square footprints, or at right angles. A long building turned on a
+slope was bedded on corners it does not have. It came out of a game the engine was extracted from, and
+that game's own collision uses the same backwards turn; the engine is fixed, and the game's parity test
+against it will now say so.
+
+> **What found it was needing the transform, not looking for a bug.** A light carried by a placement
+> has to be moved by the placement's transform, and asking where that lived turned up four copies.
+
 ## Controller buttons a player can move (2026-09-10)
 
 `PadBindings` does for the controller what `InputBindings` does for the keyboard, for the four actions

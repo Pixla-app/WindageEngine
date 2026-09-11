@@ -1260,15 +1260,14 @@ final class SampleGame: GameLoop {
         let ground = Level.Ground(heightAt: { _, _ in 0 })
         for placement in level.placements {
             guard let mesh = meshes[placement.mesh] else { continue }
-            let position = level.worldPosition(of: placement, on: ground)
-            let c = cos(placement.yaw), s = sin(placement.yaw), k = placement.scale
+            // **The engine's placement transform, not one built here.** This file used to build the
+            // matrix itself; so did a game, twice; and the engine's own bedding turned the other way
+            // from all of them. `Level.transform(of:on:)` is the one definition now.
+            //
             // **Times the mesh's node transform**, which is the identity for these hand-written OBJs
             // and would not be for anything exported. Composing it unconditionally is what stops a
             // level looking correct until the first asset that has one.
-            let transform = matrix_float4x4(columns: (SIMD4(c * k, 0, -s * k, 0),
-                                                      SIMD4(0, k, 0, 0),
-                                                      SIMD4(s * k, 0, c * k, 0),
-                                                      SIMD4(position, 1))) * mesh.nodeTransform
+            let transform = level.transform(of: placement, on: ground) * mesh.nodeTransform
             drawables.append((mesh, transform, SampleGame.albedo(for: placement),
                               baseColorMaps[placement.mesh] ?? [],
                               normalMaps[placement.mesh] ?? [],

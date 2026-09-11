@@ -322,15 +322,49 @@ nonisolated extension Level {
         case .beddedFootprint:
             // The **lowest** corner, not the average and not the origin: bedding to anything higher
             // leaves the low end of a long building in the air, which is the failure this exists for.
+            //
+            // **Turned by `turned(_:by:)`, the same turn `transform(of:on:)` draws with.** This used
+            // its own inline rotation until 2026-09-11, and it turned the other way: every renderer
+            // in the studio draws a placement with the standard right-handed turn about +Y, and this
+            // sampled the ground under the corners of the placement's *mirror image*. On flat ground
+            // or for a square footprint nothing shows; a long building turned on a slope was bedded
+            // on corners it does not have.
             var lowest = ground.heightAt(x, z)
-            let c = cos(placement.yaw), s = sin(placement.yaw)
             for corner in ground.footprintCorners(placement.mesh) {
-                let scaled = corner * placement.scale
-                lowest = min(lowest, ground.heightAt(x + scaled.x * c - scaled.y * s,
-                                                    z + scaled.x * s + scaled.y * c))
+                let offset = Level.turned(corner * placement.scale, by: placement.yaw)
+                lowest = min(lowest, ground.heightAt(x + offset.x, z + offset.y))
             }
             return SIMD3(x, lowest + placement.position.y, z)
         }
+    }
+
+    /// Where a placement is, which way it faces and how big it is, as one matrix: scaled, turned by
+    /// `yaw` about +Y, then moved to its anchored position.
+    ///
+    /// **The one definition, and it was missing.** Every consumer built this matrix by hand — the
+    /// sample, a game's scatter, a game's renderer — and the engine's own bedding turned the other
+    /// way from all of them. A light carried by a placement needed a transform to be carried by, which
+    /// is what finally made the engine say what one is.
+    public func transform(of placement: Placement, on ground: Ground) -> matrix_float4x4 {
+        Level.transform(yaw: placement.yaw, scale: placement.scale,
+                        at: worldPosition(of: placement, on: ground))
+    }
+
+    /// The matrix for a yaw, a uniform scale and a position. **Right-handed about +Y**: positive yaw
+    /// turns +X towards −Z, which is the turn `Camera.yaw` makes and every renderer here draws.
+    public nonisolated static func transform(yaw: Float, scale: Float, at position: SIMD3<Float>) -> matrix_float4x4 {
+        let c = cos(yaw), s = sin(yaw)
+        return matrix_float4x4(columns: (SIMD4(c * scale, 0, -s * scale, 0),
+                                         SIMD4(0, scale, 0, 0),
+                                         SIMD4(s * scale, 0, c * scale, 0),
+                                         SIMD4(position, 1)))
+    }
+
+    /// A ground-plane offset `(x, z)` turned by `yaw`, the same way ``transform(yaw:scale:at:)`` turns
+    /// it.
+    public nonisolated static func turned(_ offset: SIMD2<Float>, by yaw: Float) -> SIMD2<Float> {
+        let c = cos(yaw), s = sin(yaw)
+        return SIMD2(offset.x * c + offset.y * s, -offset.x * s + offset.y * c)
     }
 
     /// The same, for a marker.
