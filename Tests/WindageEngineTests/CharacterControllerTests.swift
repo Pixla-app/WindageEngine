@@ -1214,3 +1214,108 @@ struct CharacterTurntableTests {
         #expect(c.feet == SIMD3(10, 0, 10) && c.turned == 0)
     }
 }
+
+// MARK: - Leaving something that moves
+
+@Suite("Character controller — leaving something that moves")
+struct CharacterLeavingPlatformTests {
+
+    private func slab(top: Float, centre: SIMD2<Float> = .zero, half: Float = 1.5) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(centre.x - half, top - 0.5, centre.y - half),
+                    maximum: SIMD3(centre.x + half, top, centre.y + half))
+    }
+
+    /// The highest the feet get above where they left, jumping from a slab moving at `velocity`.
+    private func jumpApex(from velocity: SIMD3<Float>) -> (apex: Float, landedX: Float) {
+        var top: Float = 1, centre = SIMD2<Float>(0, 0)
+        var c = CharacterController(feet: SIMD3(0, top, 0))
+        func world(_ delta: SIMD3<Float>) -> CharacterController.Surroundings {
+            var w = CharacterController.Surroundings(solids: [slab(top: top, centre: centre, half: 20)])
+            w.motion = [delta]
+            return w
+        }
+        // Ride a moment, so the ground's speed is known, then jump and keep riding it underneath.
+        for _ in 0..<30 {
+            let d = velocity * step; top += d.y; centre += SIMD2(d.x, d.z)
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(d))
+        }
+        let takeoff = c.feet.y
+        var apex: Float = 0
+        for i in 0..<120 {
+            let d = velocity * step; top += d.y; centre += SIMD2(d.x, d.z)
+            c.step(yaw: 0, input: MovementInput(), jump: i < 2, deltaTime: step, in: world(d))
+            if !c.isGrounded { apex = max(apex, c.feet.y - takeoff) }
+        }
+        return (apex, c.feet.x)
+    }
+
+    /// **The point of it.** From a lift rising at 1.2 m/s the jump leaves at 6.3 + 1.2, and rises
+    /// (7.5² − 6.3²) / 2g higher than from still ground — 0.414 m at this gravity.
+    @Test("A jump from a rising lift goes higher, by what its speed adds")
+    func jumpFromRisingLift() {
+        let still = jumpApex(from: .zero).apex
+        let rising = jumpApex(from: SIMD3(0, 1.2, 0)).apex
+        let g = CharacterController.Tuning().gravity, j = CharacterController.Tuning().jumpSpeed
+        let expected = ((j + 1.2) * (j + 1.2) - j * j) / (2 * g)
+        #expect(abs((rising - still) - expected) < 0.02, "rose \(rising - still) m higher; the speeds say \(expected)")
+    }
+
+    /// Jumping on a train: you land where you jumped from on the train, not behind it.
+    @Test("A jump from a platform sliding sideways keeps going with it through the air")
+    func jumpKeepsSideways() {
+        let (_, x) = jumpApex(from: SIMD3(2, 0, 0))
+        // One second at 2 m/s: the platform went 2 m, and so did the body, air and all.
+        let expected: Float = 2 * (30 + 120) * step
+        #expect(abs(x - expected) < 0.05, "landed at x \(x), the platform took it to \(expected)")
+    }
+
+    @Test("Walking off the edge of a moving platform falls away at its speed")
+    func stepOffKeepsSpeed() {
+        var centre = SIMD2<Float>(0, 0)
+        var c = CharacterController(feet: SIMD3(1.2, 1, 0))
+        var airborneX: [Float] = []
+        for _ in 0..<120 {
+            let d = SIMD3<Float>(0, 0, -1.5) * step
+            centre += SIMD2(d.x, d.z)
+            var w = CharacterController.Surroundings(solids: [slab(top: 1, centre: centre)])
+            w.motion = [d]
+            c.step(yaw: -.pi / 2, input: MovementInput(forward: 0.3), deltaTime: step, in: w)   // walk off +x
+            if !c.isGrounded { airborneX.append(c.feet.z) }
+        }
+        #expect(airborneX.count > 2, "never left the platform")
+        let drift = (airborneX.last! - airborneX.first!) / (Float(airborneX.count - 1) * step)
+        #expect(abs(drift + 1.5) < 0.05, "fell with a drift of \(drift) m/s along the platform's way, it moved at −1.5")
+    }
+
+    /// A turning table flings you along its rim, not round it: the kept speed is ω·r, square to the
+    /// radius where the feet left.
+    @Test("A jump from a turning table leaves along the tangent, at the rim's speed")
+    func jumpFromTurntable() {
+        let rate: Float = .pi / 2, centre = SIMD2<Float>(1, -3)
+        let table = BoundingBox(minimum: SIMD3(centre.x - 2, 0, centre.y - 2), maximum: SIMD3(centre.x + 2, 0.2, centre.y + 2))
+        var c = CharacterController(feet: SIMD3(centre.x + 1.2, 0.2, centre.y))
+        var world = CharacterController.Surroundings(solids: [table])
+        world.turns = [.init(about: centre, by: rate * step)]
+        for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
+        let radius = SIMD2(c.feet.x, c.feet.z) - centre
+        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: world)
+        #expect(!c.isGrounded, "did not leave the table")
+        let speed = simd_length(c.airVelocity)
+        #expect(abs(speed - rate * 1.2) < 0.01, "left at \(speed) m/s, the rim moves at \(rate * 1.2)")
+        #expect(abs(simd_dot(c.airVelocity, radius)) / (speed * simd_length(radius)) < 0.02,
+                "left at an angle to the tangent: \(c.airVelocity) against radius \(radius)")
+    }
+
+    @Test("Landing on still ground stops the kept speed")
+    func landingStops() {
+        var c = CharacterController(feet: SIMD3(0, 1, 0))
+        var w = CharacterController.Surroundings(solids: [slab(top: 1)])
+        w.motion = [SIMD3(2 * step, 0, 0)]
+        for i in 0..<10 { c.step(yaw: 0, input: MovementInput(), jump: i == 9, deltaTime: step, in: w) }
+        let still = CharacterController.Surroundings(solids: [slab(top: 1, half: 30)])
+        for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
+        let x = c.feet.x
+        for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
+        #expect(c.isGrounded && c.airVelocity == .zero && abs(c.feet.x - x) < 1e-5, "still drifting after landing")
+    }
+}

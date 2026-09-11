@@ -64,6 +64,11 @@ public nonisolated struct CharacterController: Sendable {
         /// stair, because a floor carrying you is not a floor you stepped onto. Across goes through
         /// the same collision as walking, so a platform does not carry anyone through a wall.
         ///
+        /// **And the body keeps it on leaving** (0.12.0): a jump adds the ground's speed to its own, and
+        /// a step off an edge falls away at it — ``CharacterController/groundVelocity``. So this is
+        /// *movement*: a solid put back at its start in one step must report no motion that step, or
+        /// whoever leaves it next goes at the speed of the jump back.
+        ///
         /// Turning is ``turns``.
         public var motion: [SIMD3<Float>] = []
 
@@ -363,6 +368,14 @@ public nonisolated struct CharacterController: Sendable {
     /// turning the view would leave the player facing one fixed direction while the floor spins.
     public private(set) var turned: Float = 0
 
+    /// How fast the ground was carrying the body this step, metres a second — zero on still ground.
+    /// **What the body keeps when it leaves**: added to a jump, and the speed a step off an edge falls at.
+    public private(set) var groundVelocity = SIMD3<Float>.zero
+
+    /// Across the ground plane, the speed kept from whatever the body left — carried on through the air
+    /// until it lands. Zero on the ground.
+    public private(set) var airVelocity = SIMD2<Float>.zero
+
     /// How far through a slide, 0 at entry to 1 at the end. Zero when not sliding.
     public var slideProgress: Float { slideLeft > 0 ? 1 - slideLeft / tuning.slideSeconds : 0 }
 
@@ -460,6 +473,18 @@ public nonisolated struct CharacterController: Sendable {
                 move(along: SIMD3(0, 0, carry.z), in: world)
                 carried = feet - start
             }
+        }
+        // How fast the ground was carrying the body — kept for the moment it leaves the ground.
+        groundVelocity = isGrounded && dt > 0 ? carried / dt : .zero
+
+        // --- In the air, still going the way the ground was: a jump off a moving platform, a step off
+        // its edge. Through collision, like any movement; a wall stops that part of it.
+        if !isGrounded && airVelocity != .zero && dt > 0 {
+            let before = SIMD2(feet.x, feet.z)
+            move(along: SIMD3(airVelocity.x * dt, 0, 0), in: world)
+            move(along: SIMD3(0, 0, airVelocity.y * dt), in: world)
+            if abs(feet.x - before.x) < abs(airVelocity.x * dt) * 0.5 { airVelocity.x = 0 }
+            if abs(feet.z - before.y) < abs(airVelocity.y * dt) * 0.5 { airVelocity.y = 0 }
         }
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
@@ -708,7 +733,15 @@ public nonisolated struct CharacterController: Sendable {
         // **Not out of a slide.** A slide is committed; a jump out of it at sprint speed is exactly
         // the movement tech the slide's own tuning forbids.
         if jumpBufferLeft > 0 && coyoteLeft > 0 && slideLeft == 0 {
-            verticalVelocity = tuning.jumpSpeed
+            // **Off whatever was carrying the body, at its speed as well as the jump's** — a jump from a
+            // rising lift goes higher, one from a moving walkway keeps going with it.
+            // A late jump — coyote time, the feet already off the edge — keeps what the step off it kept.
+            if isGrounded {
+                verticalVelocity = tuning.jumpSpeed + groundVelocity.y
+                airVelocity = SIMD2(groundVelocity.x, groundVelocity.z)
+            } else {
+                verticalVelocity = tuning.jumpSpeed
+            }
             isGrounded = false
             groundSolid = nil
             jumpBufferLeft = 0
@@ -727,10 +760,12 @@ public nonisolated struct CharacterController: Sendable {
                 groundSolid = solid
                 return
             }
-            // Walked off something taller than a step: now falling, from rest.
+            // Walked off something taller than a step: now falling — from rest, or at whatever the
+            // ground underfoot was doing.
             isGrounded = false
             groundSolid = nil
-            verticalVelocity = 0
+            verticalVelocity = groundVelocity.y
+            airVelocity = SIMD2(groundVelocity.x, groundVelocity.z)
         }
 
         verticalVelocity -= tuning.gravity * dt
@@ -760,6 +795,7 @@ public nonisolated struct CharacterController: Sendable {
                 compressionRate += strength * tuning.landingSpring * Float(M_E)
                 next = support
                 verticalVelocity = 0
+                airVelocity = .zero
                 isGrounded = true
                 groundSolid = solid
                 // Both feet just came down; the next footfall is a whole stride away.

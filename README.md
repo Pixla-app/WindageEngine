@@ -1057,6 +1057,26 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### Leaving something that moves (0.12.0)
+
+The carry moved a body with its ground and then forgot the ground's speed the moment the body left
+it: a jump from a rising lift went no higher than from the floor, and stepping off a sliding platform
+stopped dead in the air, as if the world had braked. **The body keeps what the ground was doing** — a
+jump adds the ground's speed to its own, a step off an edge falls away at it, and the horizontal part
+carries on through the air (`airVelocity`) until a landing, or a wall, stops it. A turntable throws
+you along its rim, at ω·r. `groundVelocity` is the ground's speed this step.
+
+**So `Surroundings.motion` has to be movement.** A solid put back at its start in one step must report
+no motion that step, or whoever leaves it next leaves at the speed of the jump back.
+
+**Measured in the sample**, jumping from the ruins' lift at mid-rise, where it rises at 0.54 m/s:
+
+| jump | takes off at | highest | rise | computed |
+|---|---|---|---|---|
+| from the ground | 0.00 | 0.97 | 0.97 | 0.99, less the stepper's 2.5 cm |
+| from the lift, before | 0.75 | 1.72 | 0.97 | — the lift forgotten |
+| from the lift, after | 0.75 | 1.90 | **1.15** | 6.84²/2g = 1.17, less 2.5 cm |
+
 ### Something that turns underfoot (0.11.1)
 
 `Surroundings.turns` says how far each solid turned since the last step, and about which centre. A body

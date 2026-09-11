@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-552 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+557 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,30 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a jump keeps the platform's motion (0.12.0)
+
+**`groundVelocity`** (the ground's speed this step) and **`airVelocity`** (the horizontal part, kept
+through the air). A jump adds the ground's speed to its own; a step off an edge falls away at it; a
+landing clears it and a wall stops the part that runs into it. **Minor, not patch**: jumping off
+anything a game reports moving now comes out differently. `motion` has to be movement — a solid put
+back at its start in one step must report none that step (in the `motion` doc).
+
+Five tests, each **failing with its part switched off** — the rising-lift apex (0.40 m out), a
+sliding platform's jump (1.25 m behind), a step off one moving at 1.5 m/s (no drift), a turntable's
+tangent (no speed); the landing test fails only with the landing's clearing removed, checked
+separately.
+
+**Jumped in the ruins** from the lift at mid-rise (0.54 m/s up), computed first — window in front:
+
+| jump | takes off | highest | rise | computed |
+|---|---|---|---|---|
+| from the ground | 0.00 | 0.97 | 0.97 | 0.97 (0.99 less the stepper's 2.5 cm) |
+| from the lift, switched off | 0.75 | 1.72 | 0.97 | — |
+| from the lift | 0.75 | 1.90 | **1.15** | 1.14 (1.17 less 2.5 cm) |
+
+It came back down onto the still-rising lift and rode it to the top. No frame taken: a still cannot
+show a height a log measures to the centimetre.
 
 ## Done 2026-09-11 — an ambience volume (0.11.2)
 
@@ -1239,25 +1263,27 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
-   jump is no higher than from the ground, and stepping off anything moving sideways stops dead in the
-   air. The carried motion should become the body's velocity at take-off. **Proved in the sample by** a
-   scripted jump from the ruins' lift near its fastest (about 0.54 m/s up) peaking near 1.17 m above the
-   deck rather than the ground jump's 0.99 m — the difference computed first, then measured.
-
-2. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
+1. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
    world-aligned box, so a crate at 45° stops a player a hand's width short of its faces and lets them
    stand on air past its corners — the sample says so where it builds its solids. Solids that carry
    their turn, and a body collided against the turned box. **Proved in the sample by** a crate at 45° in
    the courtyard and the scripted walk stopping 0.30 m (the body's radius) from its face, where today it
    stops at the box's corner, computed first.
 
-3. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
+2. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
    wait taking 20 s — because macOS throttles a hidden window's display timer and `FixedTimestep`
    credits at most `maxFrameTime` (0.25 s) of simulation a frame. Right for a game; wrong for a check that
    has to finish. A frame-time ceiling `FrameRenderer` lets a game set, and the sample lifting it while a
    script runs. **Proved by** the same scripted walk with the window hidden finishing on wall-clock time,
    the frame counter showing few frames and 120 steps a second.
+
+3. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
+   a solid. Measured 2026-09-11: a slab sliding at 1 m/s into a body standing beside it ended with its
+   face at the body's centre — **0.30 m inside it** — and the body was then stuck: a second of walking
+   away moved it 0.0 m, since every move starts from an overlap. A moving solid should push the body
+   ahead of it, through collision (and never through a wall — pinned is a separate, reported case).
+   **Proved in the sample by** a block sliding across the courtyard and a scripted walk standing in its
+   path: the body kept 0.30 m from the face every step and moving at the block's speed, computed first.
 
 ## Parked — not next, and why
 

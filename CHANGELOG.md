@@ -12,6 +12,38 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.12.0] — 2026-09-11
+
+**A jump keeps the platform's motion.** Leaving something that moves used to forget it: a jump from a
+rising lift went no higher than one from the ground, and a step off a sliding platform stopped dead in
+the air.
+
+### Changed
+
+- **Leaving a solid that `Surroundings.motion` or `turns` moves keeps its speed.** A jump adds the
+  ground's vertical speed to its own and carries its horizontal speed through the air; a step off an
+  edge falls away at it. Landing stops it; a wall stops the part of it that runs into the wall. **Only
+  worlds that report motion change** — still ground gives exactly the jumps it gave before.
+- **`motion` must be movement, not a teleport.** A solid put back at its start in one step has to report
+  no motion that step, or whoever leaves it next leaves at the speed of that jump.
+
+### Added
+
+- **`CharacterController.groundVelocity`** — how fast the ground carried the body this step, m/s.
+- **`CharacterController.airVelocity`** — the horizontal speed kept in the air; zero on the ground.
+
+### Measured
+
+Five tests; each fails with its part switched off. From a slab rising at 1.2 m/s, the jump rose
+(7.5² − 6.3²)/2g = 0.414 m higher, within 2 cm; a jump from a platform sliding at 2 m/s came down
+where the platform had taken it; a step off one moving at 1.5 m/s fell away at 1.5; a jump from a
+turntable left along the tangent at ω·r; a landing stopped the drift. **In the sample**, a jump from the
+ruins' lift at mid-rise (0.54 m/s) rose **1.15 m** above the deck (1.17 analytic, 1.14 after the
+stepper's usual 2.5 cm), where it rose **0.97** with this switched off — the same as from the ground,
+which rose 0.97 in the same run.
+
+**Consumers**: `CharacterController` gained stored properties — build clean.
+
 ## [0.11.2] — 2026-09-11
 
 **An ambience volume.** The loops and the one-shots shared one volume.
