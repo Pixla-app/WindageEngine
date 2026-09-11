@@ -758,6 +758,7 @@ final class SampleGame: GameLoop {
             volumes[table.drawable].transform = transform
             if let solid = table.solid {
                 surroundings.solids[solid] = volumes[table.drawable].worldBounds
+                surroundings.footprints[solid] = .init(of: volumes[table.drawable])
                 turns[solid] = .init(about: SIMD2(table.position.x, table.position.z), by: step)
             }
         }
@@ -789,6 +790,7 @@ final class SampleGame: GameLoop {
             volumes[lift.drawable].transform = transform
             if let solid = lift.solid {
                 surroundings.solids[solid] = volumes[lift.drawable].worldBounds
+                surroundings.footprints[solid] = .init(of: volumes[lift.drawable])
                 motion[solid] = SIMD3(0, delta, 0)
             }
         }
@@ -1497,12 +1499,13 @@ final class SampleGame: GameLoop {
                               placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
             }
         }
-        // **Axis-aligned world boxes, which overstate a turned crate's corners.** A crate at 45° is
-        // stood beside a hand's width further off than its faces are. That is the conservative way to
-        // be wrong for a thing you walk into — a player catching on air near a corner is a smaller
-        // fault than a player standing inside a crate.
+        // **The world box says how high each solid reaches; its footprint says where it stands.** With
+        // the box alone a crate at 45° held the player up three quarters of a metre short of its face,
+        // and let them slide along a wall of air. Every placement turns only about the vertical, so
+        // every one has a footprint.
         surroundings = CharacterController.Surroundings(groundHeight: { _, _ in 0 },
                                                         solids: solidVolumes.map(\.worldBounds))
+        surroundings.footprints = solidVolumes.map(CharacterController.Surroundings.Footprint.init(of:))
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
@@ -2339,6 +2342,47 @@ final class SampleGame: GameLoop {
         viewTurned += SIMD2(-atan2(sin(yaw), cos(yaw)), camera.pitch - before.pitch)
     }
 
+    /// The turned solid nearest the body, within 3 m: how far the body's square is from the solid as
+    /// it stands and from its world box (nil inside it). **Measured here, not asked of the controller**
+    /// — the gap between two convex outlines that do not overlap, the least of each one's corners to
+    /// the other's edges.
+    private func nearestTurnedSolid() -> (name: String, yaw: Float, centre: SIMD2<Float>, gap: Float, boxGap: Float?)? {
+        let r = body.tuning.radius, at = SIMD2(body.feet.x, body.feet.z)
+        let square = [SIMD2<Float>(-r, -r), SIMD2(r, -r), SIMD2(r, r), SIMD2(-r, r)].map { at + $0 }
+        var best: (name: String, yaw: Float, centre: SIMD2<Float>, gap: Float, boxGap: Float?)?
+        for (index, footprint) in surroundings.footprints.enumerated() {
+            guard let footprint, abs(sin(2 * footprint.yaw)) > 0.01,
+                  simd_distance(footprint.centre, at) < 3 + simd_length(footprint.halfSize) else { continue }
+            let h = footprint.halfSize
+            let outline = [SIMD2(-h.x, -h.y), SIMD2(h.x, -h.y), SIMD2(h.x, h.y), SIMD2(-h.x, h.y)]
+                .map { footprint.centre + Level.turned($0, by: footprint.yaw) }
+            let box = surroundings.solids[index]
+            let boxOutline = [SIMD2(box.minimum.x, box.minimum.z), SIMD2(box.maximum.x, box.minimum.z),
+                              SIMD2(box.maximum.x, box.maximum.z), SIMD2(box.minimum.x, box.maximum.z)]
+            let gap = SampleGame.gap(between: square, and: outline)
+            guard best == nil || gap < best!.gap else { continue }
+            let inBox = at.x + r > box.minimum.x && at.x - r < box.maximum.x
+                && at.y + r > box.minimum.z && at.y - r < box.maximum.z
+            best = (level.placements[solidPlacements[index]].mesh, footprint.yaw, footprint.centre,
+                    gap, inBox ? nil : SampleGame.gap(between: square, and: boxOutline))
+        }
+        return best
+    }
+
+    /// The distance between two convex outlines that do not overlap — zero if they touch.
+    private static func gap(between a: [SIMD2<Float>], and b: [SIMD2<Float>]) -> Float {
+        func toEdges(_ point: SIMD2<Float>, _ outline: [SIMD2<Float>]) -> Float {
+            var least = Float.greatestFiniteMagnitude
+            for i in outline.indices {
+                let p = outline[i], q = outline[(i + 1) % outline.count], edge = q - p
+                let t = simd_clamp(simd_dot(point - p, edge) / simd_length_squared(edge), 0, 1)
+                least = min(least, simd_distance(point, p + edge * t))
+            }
+            return least
+        }
+        return min(a.map { toEdges($0, b) }.min() ?? 0, b.map { toEdges($0, a) }.min() ?? 0)
+    }
+
     /// Plays the scripted walk's keys this step. See `ScriptedWalk`.
     private func runScript(_ deltaTime: Float) {
         guard scriptedWalk?.isRunning == true else { return }
@@ -2388,6 +2432,11 @@ final class SampleGame: GameLoop {
                         let feetAngle = atan2(-offset.y, offset.x) * 180 / .pi
                         print(String(format: "WindageSample:     on the turntable (turned %.1f°): feet at %.1f° round its centre, radius %.2f m; view yaw %.1f°",
                                      turntableAngle * 180 / .pi, feetAngle, simd_length(offset), camera.yaw * 180 / .pi))
+                    }
+                    if let near = nearestTurnedSolid() {
+                        print(String(format: "WindageSample:     %@ turned %.1f° at (%.2f, %.2f): %.3f m from it, %@",
+                                     near.name, near.yaw * 180 / .pi, near.centre.x, near.centre.y, near.gap,
+                                     near.boxGap.map { String(format: "%.3f m from its box", $0) } ?? "inside its box"))
                     }
                     if !lifts.isEmpty {
                         let riding = body.groundSolid.map { solid in

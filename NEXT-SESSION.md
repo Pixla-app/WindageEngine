@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-557 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+563 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,38 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a turned crate stops you at its face (0.12.1)
+
+**`Surroundings.footprints`** — each solid's plan, a rectangle turned about the vertical
+(`Footprint(of: Volume)`, nil for a tilted one) — and collision against it by separating axes. Standing,
+headroom and support use it too. **A move into a turned face slides along it** for the rest of the
+step: at an angle both axis moves hit the face, and without the slide the body stuck. Additive — a world
+without footprints passed all 557 earlier tests untouched, so a patch.
+
+Six tests: four fail with footprints ignored (checked), two with the slide off (checked); the other two
+check `Footprint(of:)` and that an unturned footprint collides exactly as its box.
+
+**The handoff's own prediction was wrong, and was corrected before measuring.** It said the walk would
+stop "0.30 m (the body's radius)" from the face — true of a round body. The body is a box, and at 45°
+its corner meets the face: h + r(|cos|+|sin|) from the centre. Walked in the courtyard, square at the
+face of the crate turned 45.8°, window in front:
+
+| | held up | from the real face | then |
+|---|---|---|---|
+| box alone | z −1.64 (computed −1.637) | **0.70 m** short | slid along a wall of air, round the crate, never touching it |
+| footprint | at the face | **0.000 m**, 1.174 from its centre (computed 1.174) | stayed there, inside the crate's box |
+
+A frame of each: the whole crate in view, held off; and nose to its face. The ruins' 0.12.0 lift walk
+came out identical line for line. The walk reports the nearest turned solid's gap now, measured by the
+sample from the two outlines, not asked of the controller.
+
+**Found**: the turntable's tool said a disc's box does not swell as it turns. It did — a world box is
+the local box's corners turned, and a disc's local box is a square: 5.66 m at 45°. Tool, OBJ header and
+README corrected. Its footprint is that square turning with it — which is the new third item.
+
+**Two test lessons**: a stop lands anywhere between a millimetre inside a face and two out (true of the
+old code as well); and rounding a corner overshoots by up to one step's slide.
 
 ## Done 2026-09-11 — a jump keeps the platform's motion (0.12.0)
 
@@ -1263,27 +1295,27 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Walking into a turned crate stops at its face, not its box.** The controller sees every solid as a
-   world-aligned box, so a crate at 45° stops a player a hand's width short of its faces and lets them
-   stand on air past its corners — the sample says so where it builds its solids. Solids that carry
-   their turn, and a body collided against the turned box. **Proved in the sample by** a crate at 45° in
-   the courtyard and the scripted walk stopping 0.30 m (the body's radius) from its face, where today it
-   stops at the box's corner, computed first.
-
-2. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
+1. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
    wait taking 20 s — because macOS throttles a hidden window's display timer and `FixedTimestep`
    credits at most `maxFrameTime` (0.25 s) of simulation a frame. Right for a game; wrong for a check that
    has to finish. A frame-time ceiling `FrameRenderer` lets a game set, and the sample lifting it while a
    script runs. **Proved by** the same scripted walk with the window hidden finishing on wall-clock time,
    the frame counter showing few frames and 120 steps a second.
 
-3. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
+2. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
    a solid. Measured 2026-09-11: a slab sliding at 1 m/s into a body standing beside it ended with its
    face at the body's centre — **0.30 m inside it** — and the body was then stuck: a second of walking
    away moved it 0.0 m, since every move starts from an overlap. A moving solid should push the body
    ahead of it, through collision (and never through a wall — pinned is a separate, reported case).
    **Proved in the sample by** a block sliding across the courtyard and a scripted walk standing in its
    path: the body kept 0.30 m from the face every step and moving at the block's speed, computed first.
+
+3. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
+   disc, turning with it: four corners 0.83 m past the rim where a body steps up 0.2 m onto nothing.
+   A round footprint — a disc, collided against the body's square as a rounded square, swept the same
+   way — for solids that are round. **Proved in the sample by** walking at the table's centre along the
+   line through one of its footprint's corners: the feet rise where the body's corner reaches the rim,
+   not 0.83 m before it, computed first.
 
 ## Parked — not next, and why
 

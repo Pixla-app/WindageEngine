@@ -25,10 +25,15 @@ import simd
 /// ### The body is a box, and that is a choice
 ///
 /// A capsule is the textbook body, because it slides round corners and up slopes on its own. Against
-/// a world made of axis-aligned boxes — which is what `Volume.worldBounds` produces, and what every
-/// solid in a level currently is — a box body is **exact**: two ranges per axis, no contact normals,
-/// no penetration depth to resolve. The cost is that it catches on a corner where a capsule would
-/// glance off, and the axis-at-a-time move below is what takes most of that back.
+/// a world made of axis-aligned boxes — which is what `Volume.worldBounds` produces — a box body is
+/// **exact**: two ranges per axis, no contact normals, no penetration depth to resolve. The cost is
+/// that it catches on a corner where a capsule would glance off, and the axis-at-a-time move below is
+/// what takes most of that back.
+///
+/// **A solid turned about the vertical is still a box, on its side of the ground plane** — see
+/// ``Surroundings/footprints``. Two rectangles are tested by their separating axes (the world's two
+/// and the solid's own two), and the one face that is not square to the world, the turned one, is the
+/// one contact that needs a normal: a move into it slides along it for the rest of the step (0.12.1).
 ///
 /// ### Vertical movement is smoothed; the body is not
 ///
@@ -93,6 +98,57 @@ public nonisolated struct CharacterController: Sendable {
             public init(about centre: SIMD2<Float>, by radians: Float) {
                 self.centre = centre
                 self.radians = radians
+            }
+        }
+
+        /// Where each of ``solids`` really stands on the ground plane, when that is not its box — a
+        /// crate set down at an angle. Same order as ``solids``; a missing or nil entry is the box.
+        ///
+        /// **A world box overstates anything turned.** A 1.5 m crate at 45° has a box 2.12 m across:
+        /// walking at one of its faces stops a body short of it, and past its corners there is air to
+        /// stand on. With its footprint, the body collides with the crate it can see — against a
+        /// turned face it slides along it, as it slides along a wall, rather than sticking. The box
+        /// still says how high a solid reaches; the footprint says where it stands.
+        ///
+        /// ``Footprint/init(of:)`` makes one from a ``Volume``.
+        public var footprints: [Footprint?] = []
+
+        /// A rectangle on the ground plane, turned about its centre: a solid's plan.
+        ///
+        /// Only a turn **about the vertical**, which is every turn a level placement has. A tilted box
+        /// has no rectangular plan, and keeps its world box.
+        public struct Footprint: Sendable, Equatable {
+            public var centre: SIMD2<Float>
+            /// Half its size along its own x and z, before it is turned.
+            public var halfSize: SIMD2<Float>
+            /// Positive the way a placement's yaw is (``Level/turned(_:by:)``).
+            public var yaw: Float
+
+            public init(centre: SIMD2<Float>, halfSize: SIMD2<Float>, yaw: Float) {
+                self.centre = centre
+                self.halfSize = halfSize
+                self.yaw = yaw
+            }
+
+            /// The plan of a volume whose transform turns it about the vertical — scaled, turned and
+            /// placed, but upright. **Nil for one tilted**, whose world box is the honest answer.
+            public init?(of volume: Volume) {
+                let m = volume.transform
+                let x = m.columns.0, up = m.columns.1, z = m.columns.2
+                let across = simd_length(SIMD2(x.x, x.z)), along = simd_length(SIMD2(z.x, z.z))
+                let tall = simd_length(SIMD3(up.x, up.y, up.z))
+                let level: Float = 1e-4
+                guard across > 0, along > 0, tall > 0,
+                      abs(x.y) <= level * across, abs(z.y) <= level * along,
+                      abs(up.x) <= level * tall, abs(up.z) <= level * tall,
+                      abs(x.x * z.x + x.z * z.z) <= level * across * along else { return nil }
+                let local = volume.local
+                let middle = m * SIMD4((local.minimum + local.maximum) / 2, 1)
+                self.centre = SIMD2(middle.x, middle.z)
+                self.halfSize = SIMD2((local.maximum.x - local.minimum.x) / 2 * across,
+                                      (local.maximum.z - local.minimum.z) / 2 * along)
+                // Local +x lands on (cos, −sin) turned by yaw — Level.transform(yaw:scale:at:).
+                self.yaw = atan2(-x.z, x.x)
             }
         }
 
@@ -614,13 +670,13 @@ public nonisolated struct CharacterController: Sendable {
 
     // MARK: - Across
 
-    private mutating func move(along delta: SIMD3<Float>, in world: Surroundings) {
+    private mutating func move(along delta: SIMD3<Float>, in world: Surroundings, sliding: Bool = true) {
         guard delta != .zero else { return }
         let candidate = feet + delta
 
         // What would be in the way, above the soles of the feet.
         let obstructions = obstructing(at: candidate, in: world)
-        guard let rise = obstructions.map(\.maximum.y).max() else {
+        guard let rise = obstructions.map({ world.solids[$0].maximum.y }).max() else {
             feet = candidate
             return
         }
@@ -628,7 +684,7 @@ public nonisolated struct CharacterController: Sendable {
         // **A step, if it is low enough and there is room on top of it.** Only from the ground: a
         // body in the air that catches a ledge with its shins has not stepped onto it.
         let climb = rise - feet.y
-        if isGrounded, climb <= tuning.stepHeight {
+        if sliding, isGrounded, climb <= tuning.stepHeight {
             let raised = SIMD3(candidate.x, rise, candidate.z)
             if obstructing(at: raised, in: world).isEmpty {
                 // The feet go up at once and the eye follows — see the type's notes on smoothing.
@@ -638,20 +694,112 @@ public nonisolated struct CharacterController: Sendable {
                 return
             }
         }
-        // Otherwise this axis is blocked — but **as far as the face, not a whole step short of it.**
+        // Otherwise the move is blocked — but **as far as the face, not a whole step short of it.**
         // Refusing the move outright stops the player wherever the last step happened to end: four
         // centimetres from a wall at a walk, fifteen at a sprint, and a gap you can see when you
         // turn to look at it. Measured in the sample before this line existed.
-        let axis = delta.x != 0 ? 0 : 2
-        let forward = delta[axis] > 0
-        let gap = tuning.radius + 2 * CharacterController.contactTolerance
-        var reach = candidate[axis]
-        for solid in obstructions {
-            reach = forward ? min(reach, solid.minimum[axis] - gap) : max(reach, solid.maximum[axis] + gap)
+        let from = SIMD2(feet.x, feet.z), along = SIMD2(delta.x, delta.z)
+        var fraction: Float = 1
+        var face = SIMD2<Float>.zero
+        for index in obstructions {
+            // Two tolerances clear, so the next step starts outside the one that counts as touching.
+            guard let contact = self.contact(from: from, along: along, with: plan(of: index, in: world),
+                                             clearance: 2 * CharacterController.contactTolerance) else { continue }
+            // Only ever onward: a body already inside something must not be pulled backwards through it.
+            let onward = max(0, contact.fraction)
+            if onward < fraction { fraction = onward; face = contact.face }
         }
-        // Only ever onward: a body already inside something must not be pulled backwards through it.
-        if forward ? reach > feet[axis] : reach < feet[axis] { feet[axis] = reach }
-        // The other axis still gets its turn.
+        feet.x += delta.x * fraction
+        feet.z += delta.z * fraction
+
+        // **Along a turned face, what is left of the move.** Against a face square to the world the
+        // other axis's move is the slide; against one at an angle both axes run into it, and without
+        // this a body walking into a turned crate stuck to it — the glue the axis-at-a-time move exists
+        // to avoid. Once, and not climbing: a slide is the rest of a move, not a new one.
+        if sliding, fraction < 1, abs(face.x) > 1e-4, abs(face.y) > 1e-4 {
+            let rest = along * (1 - fraction)
+            let tangent = rest - simd_dot(rest, face) * face
+            if simd_length_squared(tangent) > 1e-12 {
+                move(along: SIMD3(tangent.x, 0, tangent.y), in: world, sliding: false)
+            }
+        }
+    }
+
+    // MARK: - Plans
+
+    /// A solid as the ground plane sees it: its centre, its own two axes and half its size along each.
+    /// A plain box's axes are the world's.
+    private struct Plan {
+        var centre: SIMD2<Float>
+        var across: SIMD2<Float>
+        var along: SIMD2<Float>
+        var half: SIMD2<Float>
+        var isSquare: Bool
+    }
+
+    private func plan(of index: Int, in world: Surroundings) -> Plan {
+        if world.footprints.indices.contains(index), let footprint = world.footprints[index] {
+            let c = cos(footprint.yaw), s = sin(footprint.yaw)
+            return Plan(centre: footprint.centre, across: SIMD2(c, -s), along: SIMD2(s, c),
+                        half: footprint.halfSize, isSquare: false)
+        }
+        let box = world.solids[index]
+        return Plan(centre: SIMD2(box.minimum.x + box.maximum.x, box.minimum.z + box.maximum.z) / 2,
+                    across: SIMD2(1, 0), along: SIMD2(0, 1),
+                    half: SIMD2(box.maximum.x - box.minimum.x, box.maximum.z - box.minimum.z) / 2,
+                    isSquare: true)
+    }
+
+    /// The directions two rectangles can be told apart along: the world's two, and a turned plan's
+    /// own two. **Separating axes** — if no one of these has a gap on it, the two overlap.
+    private func separatingAxes(_ plan: Plan) -> [SIMD2<Float>] {
+        plan.isSquare ? [SIMD2(1, 0), SIMD2(0, 1)] : [SIMD2(1, 0), SIMD2(0, 1), plan.across, plan.along]
+    }
+
+    /// How far the body's footprint and the plan reach towards each other along `axis`, together.
+    private func reach(_ plan: Plan, on axis: SIMD2<Float>) -> Float {
+        tuning.radius * (abs(axis.x) + abs(axis.y))
+            + plan.half.x * abs(simd_dot(plan.across, axis)) + plan.half.y * abs(simd_dot(plan.along, axis))
+    }
+
+    /// How deep the body's footprint, centred at `position`, is into the plan — the least overlap on
+    /// any separating axis. **Negative when they are apart**, and then no deeper than the gap.
+    private func depth(at position: SIMD2<Float>, into plan: Plan) -> Float {
+        var least = Float.greatestFiniteMagnitude
+        for axis in separatingAxes(plan) {
+            least = min(least, reach(plan, on: axis) - abs(simd_dot(position - plan.centre, axis)))
+        }
+        return least
+    }
+
+    /// How far along `delta` the body can go from `position` before it comes within `clearance` of
+    /// the plan, as a fraction of `delta` — negative if it already is — and the face it meets,
+    /// pointing out of the solid. Nil if the move never comes that close.
+    ///
+    /// Per axis, the stretch of the move for which the two are that close; the contact is where the
+    /// last of those stretches begins.
+    private func contact(from position: SIMD2<Float>, along delta: SIMD2<Float>, with plan: Plan,
+                         clearance: Float) -> (fraction: Float, face: SIMD2<Float>)? {
+        var enter = -Float.greatestFiniteMagnitude, leave = Float.greatestFiniteMagnitude
+        var face = SIMD2<Float>.zero
+        let offset = position - plan.centre
+        for axis in separatingAxes(plan) {
+            let span = reach(plan, on: axis) + clearance
+            let apart = simd_dot(offset, axis), closing = simd_dot(delta, axis)
+            if abs(closing) < 1e-12 {
+                if abs(apart) >= span { return nil }
+                continue
+            }
+            let first = min((-span - apart) / closing, (span - apart) / closing)
+            let last = max((-span - apart) / closing, (span - apart) / closing)
+            if first > enter {
+                enter = first
+                face = (apart != 0 ? apart : -closing) > 0 ? axis : -axis
+            }
+            leave = min(leave, last)
+        }
+        guard enter <= leave else { return nil }
+        return (enter, face)
     }
 
     /// **A step up — or down — is a foot landing on something**, whatever the stride says.
@@ -696,15 +844,14 @@ public nonisolated struct CharacterController: Sendable {
     /// asked of what is *over* the body rather than what it would walk into. A step in front starts at
     /// the ground and is not overhead; a crate stood on starts below the feet and is not either.
     private func standingRoom(in world: Surroundings) -> Float {
-        let r = tuning.radius, t = CharacterController.contactTolerance
+        let t = CharacterController.contactTolerance
         var lowest = Float.greatestFiniteMagnitude
-        for solid in world.solids {
+        let at = SIMD2(feet.x, feet.z)
+        for (index, solid) in world.solids.enumerated() {
             // **With the collision test's own tolerance**, or a body resting against a beam's face —
             // which the walk allows to within a hair — counts it as overhead. The first version did,
             // and walking up to the ruins' lintel standing pushed the player into a crouch.
-            guard solid.minimum.y > feet.y + t,
-                  solid.minimum.x + t < feet.x + r, solid.maximum.x - t > feet.x - r,
-                  solid.minimum.z + t < feet.z + r, solid.maximum.z - t > feet.z - r else { continue }
+            guard solid.minimum.y > feet.y + t, depth(at: at, into: plan(of: index, in: world)) > t else { continue }
             lowest = min(lowest, solid.minimum.y)
         }
         guard lowest < .greatestFiniteMagnitude else { return .greatestFiniteMagnitude }
@@ -716,9 +863,14 @@ public nonisolated struct CharacterController: Sendable {
     /// **Above the soles only**: a solid whose top is at or below the feet is being stood on, not
     /// walked into. Without that allowance, standing on a crate is overlapping it, and every step
     /// across its top is refused.
-    private func obstructing(at position: SIMD3<Float>, in world: Surroundings) -> [BoundingBox] {
-        let box = body(at: position, eyeHeight: height)
-        return world.solids.filter { overlaps(box, $0, allowingFloorAt: position.y) }
+    private func obstructing(at position: SIMD3<Float>, in world: Surroundings) -> [Int] {
+        let t = CharacterController.contactTolerance
+        let top = position.y + tuning.bodyHeight(for: height), at = SIMD2(position.x, position.z)
+        return world.solids.indices.filter { index in
+            let solid = world.solids[index]
+            return top > solid.minimum.y + t && solid.maximum.y > position.y + t
+                && depth(at: at, into: plan(of: index, in: world)) > t
+        }
     }
 
     // MARK: - Up and down
@@ -815,12 +967,11 @@ public nonisolated struct CharacterController: Sendable {
                                in world: Surroundings) -> (height: Float, solid: Int?) {
         var highest = world.groundHeight(position.x, position.z)
         var which: Int?
-        let r = tuning.radius
+        let at = SIMD2(position.x, position.z)
         for (index, solid) in world.solids.enumerated()
         where solid.maximum.y <= limit + CharacterController.contactTolerance
-            && position.x + r > solid.minimum.x && position.x - r < solid.maximum.x
-            && position.z + r > solid.minimum.z && position.z - r < solid.maximum.z
-            && solid.maximum.y > highest {
+            && solid.maximum.y > highest
+            && depth(at: at, into: plan(of: index, in: world)) > 0 {
             highest = solid.maximum.y
             which = index
         }
@@ -830,13 +981,12 @@ public nonisolated struct CharacterController: Sendable {
     /// The lowest underside of anything the head would rise into, or nil.
     private func lowestCeiling(above position: SIMD3<Float>, reaching top: Float,
                                in world: Surroundings) -> Float? {
-        let r = tuning.radius
         let head = position.y + tuning.bodyHeight(for: height)
+        let at = SIMD2(position.x, position.z)
         var lowest: Float?
-        for solid in world.solids
+        for (index, solid) in world.solids.enumerated()
         where solid.minimum.y >= head - CharacterController.contactTolerance && solid.minimum.y < top
-            && position.x + r > solid.minimum.x && position.x - r < solid.maximum.x
-            && position.z + r > solid.minimum.z && position.z - r < solid.maximum.z {
+            && depth(at: at, into: plan(of: index, in: world)) > 0 {
             lowest = min(lowest ?? .greatestFiniteMagnitude, solid.minimum.y)
         }
         return lowest
@@ -859,12 +1009,5 @@ public nonisolated struct CharacterController: Sendable {
         return BoundingBox(minimum: SIMD3(position.x - r, position.y, position.z - r),
                            maximum: SIMD3(position.x + r, position.y + tuning.bodyHeight(for: eyeHeight),
                                           position.z + r))
-    }
-
-    private func overlaps(_ body: BoundingBox, _ solid: BoundingBox, allowingFloorAt floor: Float) -> Bool {
-        let t = CharacterController.contactTolerance
-        return body.maximum.x > solid.minimum.x + t && body.minimum.x < solid.maximum.x - t
-            && body.maximum.z > solid.minimum.z + t && body.minimum.z < solid.maximum.z - t
-            && body.maximum.y > solid.minimum.y + t && solid.maximum.y > floor + t
     }
 }

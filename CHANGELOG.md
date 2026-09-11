@@ -12,6 +12,38 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.12.1] — 2026-09-11
+
+**Walking into a turned crate stops at its face, not its box.** Additive: nothing changes until a game
+gives its solids footprints.
+
+### Added
+
+- **`CharacterController.Surroundings.footprints`** — each solid's plan on the ground plane, when that
+  is not its box. Same order as `solids`; missing or nil is the box. Walking, standing, headroom and
+  the ground underfoot all use it; the box still gives the height.
+- **`Surroundings.Footprint`** — centre, half size and yaw; **`Footprint(of: Volume)`** for any volume
+  turned only about the vertical, nil for one tilted.
+- **A move into a turned face slides along it** for the rest of its step, where the axis-at-a-time move
+  alone would stick.
+
+### Measured
+
+Six tests: four fail with footprints ignored and two with the slide switched off; the other two
+check a footprint made from a volume and that an unturned one collides exactly as its box. A world
+without footprints passed all 557 earlier tests untouched. **In the courtyard**, walking square at the face of the crate turned 45.8°:
+with its box alone the body was held **0.70 m** short of the face and slid round the crate without
+touching it; with its footprint it stopped **0.000 m** from the face, 1.174 m from the centre —
+computed 1.174. The ruins' lift walk from 0.12.0 came out identical, line for line.
+
+### Fixed in the sample's notes
+
+- **The turntable's box did swell as it turned.** Its tool said a disc's box stays the same at every
+  angle; a placed mesh's world box is its local box's corners turned, and a disc's local box is a
+  square. 5.66 m across at 45°. Corrected, and now it is collided as its footprint.
+
+**Consumers**: `Surroundings` gained a stored property — build clean.
+
 ## [0.12.0] — 2026-09-11
 
 **A jump keeps the platform's motion.** Leaving something that moves used to forget it: a jump from a

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Build the sample's turntable: a low stone disc, 4 m across and 0.2 m tall, standing on y = 0.
 
-**Round, and that is for collision.** The controller sees a solid as its world-aligned box, and a
-turning square's box swells by 41% at 45° — a body could stand on air past the corners. A disc's box
-is the same at every angle. Twenty-four sides: round to the eye at the sample's distances, and still
-faceted like everything else here.
+**Round — and not, as first written here, for collision.** It was made a disc on the belief that a
+disc's box is the same at every angle, so the controller's world-aligned box would not swell as it
+turned. **That was wrong** (found 2026-09-11, engine 0.12.1): a placed mesh's world box is its *local*
+box's eight corners turned, and a disc's local box is the square around it — so the table's box
+swelled exactly like a square's, 5.66 m across at 45°, its corners 2 m past the rim. Since 0.12.1 the
+controller stands on the table's footprint instead: that same square, turning with it — air to stand
+on at four corners, 0.83 m past the rim, which go round with the table. Twenty-four sides: round to
+the eye at the sample's distances, and still faceted like everything else here.
 
 **0.2 m tall, under the 0.45 m step**, so it is walked onto rather than climbed.
 
@@ -53,7 +57,7 @@ def build():
 def write():
     v, vt, vn, faces = build()
     lines = ["# the sample's turntable: a 24-sided stone disc, 4 m across and 0.2 m tall, standing on y = 0.",
-             "# Written by Tools/make_sample_turntable.py — round so its box does not swell as it turns.",
+             "# Written by Tools/make_sample_turntable.py.",
              "mtllib turntable.mtl", "usemtl stone"]
     lines += ["v %.5f %.5f %.5f" % p for p in v]
     lines += ["vt %.5f %.5f" % t for t in vt]

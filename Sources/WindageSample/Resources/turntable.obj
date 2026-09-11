@@ -1,5 +1,5 @@
 # the sample's turntable: a 24-sided stone disc, 4 m across and 0.2 m tall, standing on y = 0.
-# Written by Tools/make_sample_turntable.py — round so its box does not swell as it turns.
+# Written by Tools/make_sample_turntable.py.
 mtllib turntable.mtl
 usemtl stone
 v 0.00000 0.20000 0.00000

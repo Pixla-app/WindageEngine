@@ -1057,6 +1057,37 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### Something set down at an angle (0.12.1)
+
+The controller saw every solid as its world-aligned box, and a turned crate's box is bigger than the
+crate: a 1.5 m crate at 45° has one 2.12 m across. **`Surroundings.footprints`** gives each solid its
+real plan — a rectangle turned about the vertical, `Footprint(of:)` from a `Volume` — and the body
+collides with that: two rectangles tested on their separating axes, the world's two and the solid's
+own two. The box still says how high a solid reaches. **Against a turned face a move slides along it**
+for the rest of its step: both axes of the axis-at-a-time move run into a face at an angle, and without
+the slide a body walking into a turned crate stuck to it. Standing, headroom and the ground under the
+feet all use the footprint, so there is no air past a turned slab's corner to stand on and no beam's
+box to crouch under. A world without footprints is exactly what it was — every earlier test passed
+untouched.
+
+**Walked in the courtyard**, square at a face of the crate turned 45.8°, computed first:
+
+| | held up | from the real face | then |
+|---|---|---|---|
+| its box alone | at z −1.64 (computed −1.637) | **0.70 m** short | slid along a wall of air and round the crate, never touching it |
+| its footprint | at the face | **0.000 m** — 1.174 m from its centre, computed 1.174 | stayed there, standing inside the crate's box |
+
+**Found on the way**: the turntable was made round "so its box does not swell as it turns", and it
+swelled all the same — a placed mesh's world box is its *local* box's eight corners turned, and a
+disc's local box is the square round it. At 45° its box was 5.66 m across, corners 2 m past the rim.
+Its footprint is that square turning with it: 0.83 m of air at four corners that go round with the
+table, until a footprint can be round.
+
+**Two things a test had to learn**: a body stops anywhere from a millimetre inside a face (still
+touching) to two out (the clearance a blocked move keeps), axis-aligned or not; and the slide spends the
+rest of its step along the face even as the face ends, so rounding a corner clears it by up to one
+step's slide more than the body's half-width — as Quake's slide move does.
+
 ### Leaving something that moves (0.12.0)
 
 The carry moved a body with its ground and then forgot the ground's speed the moment the body left
@@ -1088,7 +1119,7 @@ one number serves both. A solid that moves and turns is moved first, then turned
 centre is now.
 
 **Ridden in the sample**: a 4 m stone turntable in the courtyard (`Tools/make_sample_turntable.py` —
-round, so its box does not swell as it turns), at 30° a second. Standing 1.2 m from its centre for three
+made round so its box would not swell as it turned, **which it did anyway**: see 0.12.1), at 30° a second. Standing 1.2 m from its centre for three
 seconds, the table turned 90.0°, the feet 90.0° round its centre at the same 1.21 m, and the view 89.9°.
 
 **Two things found**: a test measured against the *reported* turn passed with the turning switched off,

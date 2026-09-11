@@ -1319,3 +1319,168 @@ struct CharacterLeavingPlatformTests {
         #expect(c.isGrounded && c.airVelocity == .zero && abs(c.feet.x - x) < 1e-5, "still drifting after landing")
     }
 }
+
+// MARK: - Something set down at an angle
+
+@Suite("Character controller — solids turned about the vertical")
+struct CharacterTurnedSolidTests {
+
+    private typealias Footprint = CharacterController.Surroundings.Footprint
+    private let root2 = Float(2).squareRoot()
+
+    /// A 1.5 m crate turned 45° at the origin: its box, 2.12 m across, and its real plan.
+    private let half: Float = 0.75
+    private var crate: (box: BoundingBox, plan: Footprint) {
+        let a = half * root2
+        return (BoundingBox(minimum: SIMD3(-a, 0, -a), maximum: SIMD3(a, 1.5, a)),
+                Footprint(centre: .zero, halfSize: SIMD2(half, half), yaw: .pi / 4))
+    }
+
+    private func world(_ box: BoundingBox, _ plan: Footprint?) -> CharacterController.Surroundings {
+        var w = CharacterController.Surroundings(solids: [box])
+        w.footprints = [plan]
+        return w
+    }
+
+    /// Walks from `start` at `yaw` for `seconds`, returning where the feet ended, where they were
+    /// when something first held them up, and the deepest the body's square got into the crate's
+    /// diamond — measured here, independently of the controller.
+    private func walk(from start: SIMD2<Float>, yaw: Float, seconds: Float, in w: CharacterController.Surroundings)
+        -> (feet: SIMD2<Float>, firstHeld: SIMD2<Float>?, deepest: Float) {
+        var c = CharacterController(feet: SIMD3(start.x, 0, start.y))
+        var deepest: Float = -.greatestFiniteMagnitude
+        var firstHeld: SIMD2<Float>?
+        let free = CharacterController.Tuning().walkSpeed * step
+        for i in 0..<Int(seconds / step) {
+            let before = SIMD2(c.feet.x, c.feet.z)
+            c.step(yaw: yaw, input: MovementInput(forward: 1), deltaTime: step, in: w)
+            let now = SIMD2(c.feet.x, c.feet.z)
+            if i > 10, firstHeld == nil, simd_distance(before, now) < 0.9 * free { firstHeld = now }
+            // The square |x|,|z| < r against the diamond |x|+|z| < h√2: apart if any of the four axes
+            // shows a gap. Depth is the least overlap over them.
+            let p = SIMD2(c.feet.x, c.feet.z), r = CharacterController.Tuning().radius
+            let a = half * root2
+            let onX = r + a - abs(p.x), onZ = r + a - abs(p.y)
+            let sum: Float = abs(p.x + p.y) / root2, difference: Float = abs(p.x - p.y) / root2
+            let onU: Float = half + r * root2 - sum
+            let onV: Float = half + r * root2 - difference
+            deepest = max(deepest, min(onX, onZ, onU, onV))
+        }
+        return (SIMD2(c.feet.x, c.feet.z), firstHeld, deepest)
+    }
+
+    /// **The point of it.** Walking square at a face of the crate, the body's corner meets the face:
+    /// it stops h + r√2 from the centre — within the collision's own band, between a millimetre in
+    /// (still touching) and two out (the clearance a blocked move keeps). With the box alone the body
+    /// was held up 0.75 m short of the face, at the box's corner, and slid off along the box.
+    @Test("Walking square at a turned crate's face stops at the face, not its box")
+    func stopsAtTheFace() {
+        let (box, plan) = crate
+        let r = CharacterController.Tuning().radius
+        // Out along the face's normal (−sin, −cos of 45°) and walking back along it.
+        let normal = -SIMD2<Float>(sin(Float.pi / 4), cos(Float.pi / 4))
+        let yaw: Float = -3 * .pi / 4
+        let (feet, _, deepest) = walk(from: normal * 3, yaw: yaw, seconds: 2, in: world(box, plan))
+        let touching = half + r * root2
+        let out = simd_dot(feet, normal)
+        #expect(out >= touching - 0.001 && out <= touching + 0.002, "stopped \(out) m out, touching is \(touching)")
+        #expect(abs(simd_dot(feet, SIMD2(normal.y, -normal.x))) < 1e-3, "slid \(feet) along the face walking square at it")
+        #expect(deepest <= 1e-3, "went \(deepest) m into the crate")
+
+        let held = walk(from: normal * 3, yaw: yaw, seconds: 2, in: world(box, nil)).firstHeld
+        let short = held.map { simd_dot($0, normal) - touching } ?? 0
+        #expect(short > 0.7, "with the box alone it was held up \(short) m short of the face")
+    }
+
+    /// Against a face at an angle both axes run into it, so the axis-at-a-time move alone would stick
+    /// there. It slides up the face instead and round the corner, clearing it by the body's half-width.
+    @Test("Walking into a turned face at an angle slides along it and round the corner")
+    func slidesRound() {
+        let (box, plan) = crate
+        let r = CharacterController.Tuning().radius
+        let (feet, _, deepest) = walk(from: SIMD2(-4, 0.4), yaw: -.pi / 2, seconds: 3, in: world(box, plan))
+        #expect(feet.x > 3, "stuck at x \(feet.x)")
+        // Clear of the corner by the body's half-width — and by up to one step's slide more, since the
+        // last slide spends the rest of its step along the face even as the face ends.
+        let clear = half * root2 + r
+        let oneSlide = CharacterController.Tuning().walkSpeed * step / 2
+        #expect(feet.y >= clear && feet.y <= clear + oneSlide, "went past at z \(feet.y), clearing the corner is \(clear)")
+        #expect(deepest <= 1e-3, "went \(deepest) m into the crate")
+
+        let boxed = walk(from: SIMD2(-4, 0.4), yaw: -.pi / 2, seconds: 3, in: world(box, nil)).feet
+        #expect(abs(boxed.x - (-clear - 0.002)) < 1e-3, "with the box alone it stopped at x \(boxed.x)")
+    }
+
+    @Test("Past a turned slab's corner there is nothing to stand on")
+    func noAirPastTheCorner() {
+        // A 2 m slab 0.3 high at 45°: its box reaches 1.41 m along each axis, its corners only along
+        // the diagonals. At (1.1, 1.1) the body is inside the box and clear of the slab.
+        let a = root2
+        let slab = BoundingBox(minimum: SIMD3(-a, 0, -a), maximum: SIMD3(a, 0.3, a))
+        let plan = Footprint(centre: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
+        func drop(_ w: CharacterController.Surroundings) -> Float {
+            var c = CharacterController(feet: SIMD3(1.1, 1, 1.1))
+            for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w) }
+            return c.feet.y
+        }
+        #expect(drop(world(slab, plan)) == 0, "stood on air past the corner")
+        #expect(abs(drop(world(slab, nil)) - 0.3) < 1e-4, "the box alone should have held it up — the test is not testing anything")
+        // And on the slab itself, it still stands.
+        var c = CharacterController(feet: SIMD3(0.5, 1, 0))
+        for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(slab, plan)) }
+        #expect(abs(c.feet.y - 0.3) < 1e-4)
+    }
+
+    @Test("Headroom under a turned beam is the beam's, not its box's")
+    func headroomUnderATurnedBeam() {
+        // A 2 m beam at 45°, its underside at 1.5 m: low enough to hold a standing body down.
+        let a = root2
+        let beam = BoundingBox(minimum: SIMD3(-a, 1.5, -a), maximum: SIMD3(a, 1.8, a))
+        let plan = Footprint(centre: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
+        func heldDown(at x: Float, _ z: Float, _ w: CharacterController.Surroundings) -> Bool {
+            var c = CharacterController(feet: SIMD3(x, 0, z))
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            return c.isHeldDown
+        }
+        #expect(!heldDown(at: 1.1, 1.1, world(beam, plan)), "held down by the air past the beam's corner")
+        #expect(heldDown(at: 1.1, 1.1, world(beam, nil)), "the box alone should have — the test is not testing anything")
+        #expect(heldDown(at: 0.5, 0, world(beam, plan)), "not held down under the beam itself")
+    }
+
+    @Test("A footprint that is not turned collides exactly as the box does")
+    func unturnedMatchesTheBox() {
+        let box = BoundingBox(minimum: SIMD3(1, 0, -1), maximum: SIMD3(3, 1.5, 2))
+        let plan = Footprint(centre: SIMD2(2, 0.5), halfSize: SIMD2(1, 1.5), yaw: 0)
+        for start in [SIMD2<Float>(-2, 0), SIMD2(-2, 1.9), SIMD2(-2, 2.25)] {
+            let a = walk(from: start, yaw: -.pi / 2 + 0.3, seconds: 2, in: world(box, plan)).feet
+            let b = walk(from: start, yaw: -.pi / 2 + 0.3, seconds: 2, in: world(box, nil)).feet
+            #expect(simd_distance(a, b) < 1e-4, "from \(start): \(a) with the footprint, \(b) with the box")
+        }
+    }
+
+    @Test("A volume's footprint: its centre, its size scaled, its yaw — and none for a tilted one")
+    func footprintOfAVolume() {
+        let local = BoundingBox(minimum: SIMD3(0, 0, -0.5), maximum: SIMD3(2, 1, 0.5))
+        let placed = Volume(local: local, transform: Level.transform(yaw: 0.8, scale: 1.5, at: SIMD3(6, 0, -3)))
+        let f = Footprint(of: placed)
+        #expect(f != nil)
+        if let f {
+            // The local middle (1, 0.5, 0) scaled and turned: 1.5 along (cos 0.8, −sin 0.8).
+            let expected = SIMD2<Float>(6, -3) + Level.turned(SIMD2(1.5, 0), by: 0.8)
+            #expect(simd_distance(f.centre, expected) < 1e-5, "centre \(f.centre), expected \(expected)")
+            #expect(simd_distance(f.halfSize, SIMD2(1.5, 0.75)) < 1e-5)
+            #expect(abs(f.yaw - 0.8) < 1e-5)
+            // Every corner of the plan inside the volume's world box, and touching it.
+            let world = placed.worldBounds
+            for sx: Float in [-1, 1] { for sz: Float in [-1, 1] {
+                let corner = f.centre + Level.turned(SIMD2(sx * f.halfSize.x, sz * f.halfSize.y), by: f.yaw)
+                #expect(corner.x >= world.minimum.x - 1e-4 && corner.x <= world.maximum.x + 1e-4
+                        && corner.y >= world.minimum.z - 1e-4 && corner.y <= world.maximum.z + 1e-4)
+            } }
+        }
+        let tilt: Float = 0.3
+        let tilted = matrix_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, cos(tilt), sin(tilt), 0),
+                                             SIMD4(0, -sin(tilt), cos(tilt), 0), SIMD4(0, 0, 0, 1)))
+        #expect(Footprint(of: Volume(local: local, transform: tilted)) == nil, "a tilted box has no rectangular plan")
+    }
+}
