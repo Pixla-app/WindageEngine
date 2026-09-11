@@ -152,7 +152,31 @@ public nonisolated struct CharacterController: Sendable {
         /// the other side: pressing jump a moment before touching down should jump on touchdown.
         public var jumpBufferSeconds: Float = 0.12
 
+        /// Metres between footfalls at a walk, at a sprint, and crouched.
+        ///
+        /// **Longer than a person's, because these speeds are faster than a person's.** A walk here
+        /// is six metres a second — a jog — and a footstep every real 0.7 m would be eight a second,
+        /// which reads as a drum roll. These give about 2.3 steps a second walking, 3.6 sprinting and
+        /// 1.7 crouched: a cadence the ear accepts as feet, whatever the distance says.
+        public var walkStride: Float = 2.6
+        public var sprintStride: Float = 5.0
+        public var crouchStride: Float = 1.6
+
+        /// How far through a stride the first one starts, when setting off from standing.
+        ///
+        /// **Not zero**, or the first footstep arrives a whole stride after the key goes down and the
+        /// start of a walk is silent; not one, or tapping a key makes a sound for a movement too small
+        /// to have taken a step.
+        public var firstStepPhase: Float = 0.6
+
         public init() {}
+
+        /// Metres per footfall at a speed.
+        func strideLength(atSpeed speed: Float, crouching: Bool) -> Float {
+            if crouching { return crouchStride }
+            let t = simd_clamp((speed - walkSpeed) / max(sprintSpeed - walkSpeed, 1e-3), 0, 1)
+            return walkStride + (sprintStride - walkStride) * t
+        }
 
         /// The body's height for a posture height.
         func bodyHeight(for eye: Float) -> Float { eye + headroom }
@@ -193,6 +217,36 @@ public nonisolated struct CharacterController: Sendable {
     private var wasJumpHeld = false
     private var coyoteLeft: Float = 0
     private var jumpBufferLeft: Float = 0
+
+    // MARK: - What happened this step
+
+    /// Which foot. Alternates, so a game can pan a footstep a little left or right.
+    public enum Foot: Sendable, Equatable { case left, right }
+
+    /// Something the body did that a game will want to hear, see or count.
+    public enum Event: Sendable, Equatable {
+        /// A foot came down. `speed` is the ground speed that step was taken at, metres per second.
+        case stride(foot: Foot, speed: Float)
+        /// Down from a fall or a jump. `impactSpeed` is how fast, metres per second, downward.
+        case landed(impactSpeed: Float)
+        /// Left the ground on purpose.
+        case jumped
+    }
+
+    /// This step's events, in the order they happened. **Cleared at the start of every step**, so a
+    /// game reads them after ``step(yaw:input:jump:crouching:deltaTime:in:)`` and before the next.
+    public private(set) var events: [Event] = []
+
+    /// Which of the ``Surroundings/solids`` the feet are on, or nil for the terrain or the air.
+    ///
+    /// **What a footstep needs to know to sound like anything** — stone steps and dirt are different
+    /// sounds — and what a moving platform needs to know to carry you, when there is one.
+    public private(set) var groundSolid: Int?
+
+    /// How far through the current stride, 0…1.
+    private var stridePhase: Float = 0
+    private var nextFoot: Foot = .left
+    private var wasMoving = false
 
     public init(feet: SIMD3<Float>, tuning: Tuning = Tuning()) {
         self.tuning = tuning
@@ -237,6 +291,7 @@ public nonisolated struct CharacterController: Sendable {
                               deltaTime: Float,
                               in world: Surroundings) {
         let dt = max(deltaTime, 0)
+        events.removeAll(keepingCapacity: true)
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
         let moving = input.forward != 0 || input.strafe != 0
@@ -285,11 +340,32 @@ public nonisolated struct CharacterController: Sendable {
         // --- Across: one axis at a time, so walking into a wall at an angle slides along it
         // rather than sticking. Refusing the whole move is what makes a wall feel like glue.
         let travel = direction * speed * dt
+        let before = SIMD2(feet.x, feet.z)
         move(along: SIMD3(travel.x, 0, 0), in: world)
         move(along: SIMD3(0, 0, travel.y), in: world)
 
         // --- Up and down.
         stepVertically(jumpHeld: jump, deltaTime: dt, in: world)
+
+        // --- Footfalls, from the distance **actually covered**, not the distance asked for. Pushing
+        // into a wall asks for six metres a second and covers none; counting what was asked for is
+        // the classic bug where a player standing against a wall marches on the spot.
+        let covered = simd_distance(before, SIMD2(feet.x, feet.z))
+        if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
+            if !wasMoving { stridePhase = max(stridePhase, tuning.firstStepPhase) }
+            let groundSpeed = covered / dt
+            stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, crouching: crouching)
+            // **Not a slide**, which is excluded above: a slide is a body skidding, and footsteps at
+            // sprint speed under it would be nine a second of feet that are not moving.
+            while stridePhase >= 1 {
+                stridePhase -= 1
+                events.append(.stride(foot: nextFoot, speed: groundSpeed))
+                nextFoot = nextFoot == .left ? .right : .left
+            }
+            wasMoving = true
+        } else {
+            wasMoving = false
+        }
 
         // The eye catches up with the ground. Framed as a fraction per second, so the rate means the
         // same thing whatever the step is.
@@ -319,6 +395,7 @@ public nonisolated struct CharacterController: Sendable {
                 // The feet go up at once and the eye follows — see the type's notes on smoothing.
                 settling -= climb
                 feet = raised
+                footOnRise(climb)
                 return
             }
         }
@@ -336,6 +413,23 @@ public nonisolated struct CharacterController: Sendable {
         // Only ever onward: a body already inside something must not be pulled backwards through it.
         if forward ? reach > feet[axis] : reach < feet[axis] { feet[axis] = reach }
         // The other axis still gets its turn.
+    }
+
+    /// **A step up is a foot landing on something**, whatever the stride says.
+    ///
+    /// At these speeds a stride is longer than a stair tread, so counting distance alone climbs four
+    /// treads in two footsteps — which sounds like floating up the middle two.
+    ///
+    /// > **Called from both places a body rises, and the first version was only in one.** The climb
+    /// > in ``move(along:in:)`` is what the code *looked* like it did on stairs; in fact the footprint's
+    /// > leading edge usually reaches a tread first, and the ground-following in the vertical step
+    /// > lifts the body before any move is refused. A test counting footsteps per tread found it — two
+    /// > for four treads, with the rule written and apparently working.
+    ///
+    /// Not for a rise under 12 cm in a step, which is a slope rather than a stair, and not if a
+    /// footstep has only just sounded, or a tread taken mid-stride would ring twice.
+    private mutating func footOnRise(_ climb: Float) {
+        if climb > 0.12 && stridePhase > CharacterController.stepUpFootfall { stridePhase = 1 }
     }
 
     /// Every solid the body would overlap, standing at `position`.
@@ -362,21 +456,26 @@ public nonisolated struct CharacterController: Sendable {
         if jumpBufferLeft > 0 && coyoteLeft > 0 && slideLeft == 0 {
             verticalVelocity = tuning.jumpSpeed
             isGrounded = false
+            groundSolid = nil
             jumpBufferLeft = 0
             coyoteLeft = 0
+            events.append(.jumped)
         }
 
         if isGrounded {
             // Stay on the ground as it changes under you: up a slope, down a step, onto the next bump.
-            let support = supportHeight(at: feet, below: feet.y + tuning.stepHeight, in: world)
+            let (support, solid) = supportHeight(at: feet, below: feet.y + tuning.stepHeight, in: world)
             if support >= feet.y - tuning.stepHeight {
+                footOnRise(support - feet.y)
                 settling -= support - feet.y
                 feet.y = support
                 verticalVelocity = 0
+                groundSolid = solid
                 return
             }
             // Walked off something taller than a step: now falling, from rest.
             isGrounded = false
+            groundSolid = nil
             verticalVelocity = 0
         }
 
@@ -394,11 +493,17 @@ public nonisolated struct CharacterController: Sendable {
             // Landing: the highest thing under the footprint that was below the feet a moment ago.
             // **Measured from where the feet were, not where they are going**, so a fast fall
             // cannot skip through a thin floor between two steps.
-            let support = supportHeight(at: feet, below: feet.y, in: world)
+            let (support, solid) = supportHeight(at: feet, below: feet.y, in: world)
             if next <= support {
+                // **Speed at the moment of contact**, before it is zeroed — the number a landing's
+                // loudness, a camera dip or fall damage all want.
+                events.append(.landed(impactSpeed: -verticalVelocity))
                 next = support
                 verticalVelocity = 0
                 isGrounded = true
+                groundSolid = solid
+                // Both feet just came down; the next footfall is a whole stride away.
+                stridePhase = 0
             }
         }
         feet.y = next
@@ -408,17 +513,22 @@ public nonisolated struct CharacterController: Sendable {
     ///
     /// **Terrain always counts**, whatever the limit — it is the floor, and nothing goes below it.
     /// Solids count only if they are low enough to be under the feet rather than in front of them.
+    ///
+    /// Returns which solid it was, too — nil when the terrain is highest.
     private func supportHeight(at position: SIMD3<Float>, below limit: Float,
-                               in world: Surroundings) -> Float {
+                               in world: Surroundings) -> (height: Float, solid: Int?) {
         var highest = world.groundHeight(position.x, position.z)
+        var which: Int?
         let r = tuning.radius
-        for solid in world.solids
+        for (index, solid) in world.solids.enumerated()
         where solid.maximum.y <= limit + CharacterController.contactTolerance
             && position.x + r > solid.minimum.x && position.x - r < solid.maximum.x
-            && position.z + r > solid.minimum.z && position.z - r < solid.maximum.z {
-            highest = max(highest, solid.maximum.y)
+            && position.z + r > solid.minimum.z && position.z - r < solid.maximum.z
+            && solid.maximum.y > highest {
+            highest = solid.maximum.y
+            which = index
         }
-        return highest
+        return (highest, which)
     }
 
     /// The lowest underside of anything the head would rise into, or nil.
@@ -444,6 +554,9 @@ public nonisolated struct CharacterController: Sendable {
     /// the top; one rounding step later they are a hair inside it, and a strict test calls that an
     /// overlap and refuses the next step across the crate.
     static let contactTolerance: Float = 1e-3
+
+    /// How far through a stride a step up has to be before it counts as a footfall of its own.
+    static let stepUpFootfall: Float = 0.3
 
     private func body(at position: SIMD3<Float>, eyeHeight: Float) -> BoundingBox {
         let r = tuning.radius

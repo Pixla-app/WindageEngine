@@ -5,13 +5,13 @@
 files and its sounds are generated here — so somebody who clones this repo can build and run it
 without downloading anything, which is the whole point of the sample existing.
 
-They are deliberately plain: a rising blip, a small arpeggio, a falling tone. A sample with good
-sound design teaches the reader about the sound design.
+They are deliberately plain: a rising blip, a small arpeggio, a falling tone, and footsteps made of
+filtered noise. A sample with good sound design teaches the reader about the sound design.
 
 Run:  python3 Tools/make_sample_sounds.py
 Writes Sources/WindageSample/Resources/*.wav.
 """
-import math, pathlib, struct, wave
+import math, pathlib, random, struct, wave
 
 RATE = 44100
 OUT = pathlib.Path("Sources/WindageSample/Resources")
@@ -71,3 +71,60 @@ write("win", sequence([([523], 0.12), ([659], 0.12), ([784], 0.12), ([1047, 1568
 
 # Out of time: the same shape falling, and lower.
 write("lose", sequence([([311], 0.16), ([262], 0.16), ([196, 98], 0.55)], gain=0.32))
+
+
+# --- Footsteps -------------------------------------------------------------------------------------
+#
+# **Three of each, because one repeated is a machine gun.** The ear hears an identical sample
+# played twice a second as a mechanism, not as feet; three that differ slightly, played in an order
+# that does not repeat every three, is enough to stop it. Seeded, so running this again writes the
+# same files and the diff is empty.
+
+def lowpass(samples, cutoff):
+    """One pole. `cutoff` in Hz."""
+    a = 1 - math.exp(-2 * math.pi * cutoff / RATE)
+    out, y = [], 0.0
+    for x in samples:
+        y += a * (x - y)
+        out.append(y)
+    return out
+
+
+def bandpass(samples, low, high):
+    """The difference of two low-passes: crude, and enough for a scuff."""
+    return [h - l for h, l in zip(lowpass(samples, high), lowpass(samples, low))]
+
+
+def footfall(seed, seconds, thump_hz, thump_gain, noise_low, noise_high, noise_gain, decay, peak):
+    """A thump — the heel — and a burst of filtered noise — the sole on the surface.
+
+    **Normalised to `peak`, not scaled by a gain.** The first pass multiplied its way to the level
+    and clipped the landings and every stone step — a clipped footstep is a click with a sound
+    attached, and the click is what the ear hears."""
+    rng = random.Random(seed)
+    count = int(RATE * seconds)
+    # Filtered twice: a one-pole filter leaks everything above its cutoff at 6 dB an octave, and
+    # dirt filtered once still hissed like gravel.
+    noise = bandpass([rng.uniform(-1, 1) for _ in range(count)], noise_low, noise_high)
+    noise = lowpass(noise, noise_high)
+    wobble = 1 + rng.uniform(-0.08, 0.08)          # no two heels the same pitch
+    out = []
+    for i in range(count):
+        t = i / RATE
+        body = math.exp(-t / decay)
+        heel = math.sin(2 * math.pi * thump_hz * wobble * t) * math.exp(-t / (decay * 0.6))
+        # A 2 ms rise: an instant start clicks, and the click is louder than the step.
+        rise = min(1.0, t / 0.002)
+        out.append(rise * (heel * thump_gain + noise[i] * noise_gain * body))
+    loudest = max(abs(v) for v in out) or 1
+    return [v * peak / loudest for v in out]
+
+
+# Dirt: muffled, a soft low heel and a dull crunch. Stone: a harder heel and a bright scuff.
+for n in range(3):
+    write(f"step_dirt_{n}", footfall(100 + n, 0.16, 85, 0.9, 250, 1100, 5.0, 0.045, 0.6))
+    write(f"step_stone_{n}", footfall(200 + n, 0.14, 140, 0.7, 1500, 6000, 3.4, 0.028, 0.6))
+
+# Landings: the same two surfaces, heavier, longer, and lower.
+write("land_dirt", footfall(300, 0.32, 55, 1.2, 200, 900, 5.0, 0.09, 0.8))
+write("land_stone", footfall(400, 0.28, 90, 1.0, 1200, 5500, 3.6, 0.06, 0.8))

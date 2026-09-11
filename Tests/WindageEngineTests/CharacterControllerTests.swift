@@ -445,3 +445,183 @@ struct CharacterFootingTests {
         #expect(abs(c.feet.y - 1.5) < 1e-4)
     }
 }
+
+// MARK: - Footfalls and landings
+
+@Suite("Character controller — what it reports")
+struct CharacterEventTests {
+
+    private func strides(_ c: inout CharacterController, seconds: Float, _ input: MovementInput,
+                         crouching: Bool = false,
+                         in world: CharacterController.Surroundings = flat) -> [CharacterController.Event] {
+        var all: [CharacterController.Event] = []
+        for _ in 0..<Int((seconds / step).rounded()) {
+            c.step(yaw: 0, input: input, crouching: crouching, deltaTime: step, in: world)
+            all += c.events
+        }
+        return all
+    }
+
+    private func strideCount(_ events: [CharacterController.Event]) -> Int {
+        events.filter { if case .stride = $0 { true } else { false } }.count
+    }
+
+    /// A cadence the ear takes for feet: about two a second walking, more sprinting, fewer crouched.
+    @Test("Walking, sprinting and crouching step at different rates")
+    func cadence() {
+        var walk = CharacterController(feet: .zero)
+        var sprint = CharacterController(feet: .zero)
+        var crouch = CharacterController(feet: .zero)
+        let w = strideCount(strides(&walk, seconds: 4, MovementInput(forward: 1))) / 4
+        let s = strideCount(strides(&sprint, seconds: 4, MovementInput(forward: 1, sprint: true))) / 4
+        let c = strideCount(strides(&crouch, seconds: 4, MovementInput(forward: 1), crouching: true)) / 4
+        #expect(w >= 2 && w <= 3, "walking \(w) a second")
+        #expect(s > w, "sprinting \(s) against walking \(w)")
+        #expect(c < w, "crouched \(c) against walking \(w)")
+    }
+
+    /// **Distance covered, not asked for.** Pushing into a wall asks for six metres a second.
+    @Test("Walking into a wall does not march on the spot")
+    func noStepsAgainstAWall() {
+        let world = CharacterController.Surroundings(solids: [ledge(height: 2, ahead: 0.35)])
+        var c = CharacterController(feet: .zero)
+        _ = strides(&c, seconds: 0.5, MovementInput(forward: 1), in: world)     // reach the wall
+        let pressed = strides(&c, seconds: 3, MovementInput(forward: 1), in: world)
+        #expect(strideCount(pressed) == 0, "\(strideCount(pressed)) footsteps against a wall")
+    }
+
+    @Test("Standing still makes no footsteps")
+    func stillIsSilent() {
+        var c = CharacterController(feet: .zero)
+        #expect(strides(&c, seconds: 3, MovementInput()).isEmpty)
+    }
+
+    /// Not a whole stride's silence after the key goes down.
+    @Test("The first footstep comes soon after setting off")
+    func firstStepIsPrompt() {
+        var c = CharacterController(feet: .zero)
+        var seconds: Float = 0
+        while seconds < 2 {
+            c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step, in: flat)
+            seconds += step
+            if c.events.contains(where: { if case .stride = $0 { true } else { false } }) { break }
+        }
+        let strideTime = c.tuning.walkStride / c.tuning.walkSpeed
+        #expect(seconds < strideTime * 0.6, "the first step took \(seconds) s of a \(strideTime) s stride")
+    }
+
+    /// **A foot on every tread.** Distance alone climbs a flight of stairs in half the footsteps,
+    /// because a stride at these speeds is longer than a tread.
+    @Test("Climbing stairs sounds a foot on each tread")
+    func stairsGetAFootEach() {
+        // Four 0.3 m treads, 1 m deep, rising away along −z.
+        var treads: [BoundingBox] = []
+        for i in 0..<4 {
+            let near = -Float(i + 1), far = -Float(i + 2), top = 0.3 * Float(i + 1)
+            treads.append(BoundingBox(minimum: SIMD3<Float>(-3, 0, far), maximum: SIMD3<Float>(3, top, near)))
+        }
+        let landing = BoundingBox(minimum: SIMD3(-3, 0, -12), maximum: SIMD3(3, 1.2, -5))
+        var c = CharacterController(feet: .zero)
+        var climbSteps = 0
+        for _ in 0..<(120 * 2) {
+            let before = c.feet.y
+            c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step,
+                   in: CharacterController.Surroundings(solids: treads + [landing]))
+            let rose = c.feet.y > before + 0.1
+            if rose && c.events.contains(where: { if case .stride = $0 { true } else { false } }) {
+                climbSteps += 1
+            }
+        }
+        #expect(abs(c.feet.y - 1.2) < 1e-4)
+        #expect(climbSteps >= 4, "\(climbSteps) footsteps for four treads")
+    }
+
+    @Test("Feet alternate")
+    func feetAlternate() {
+        var c = CharacterController(feet: .zero)
+        let feet = strides(&c, seconds: 3, MovementInput(forward: 1)).compactMap { event -> CharacterController.Foot? in
+            if case .stride(let foot, _) = event { foot } else { nil }
+        }
+        #expect(feet.count > 4)
+        #expect(zip(feet, feet.dropFirst()).allSatisfy { $0 != $1 })
+    }
+
+    /// A slide is a body skidding; footsteps under it would be feet that are not moving.
+    @Test("A slide makes no footsteps")
+    func slideIsSilent() {
+        var c = CharacterController(feet: .zero)
+        _ = strides(&c, seconds: 1, MovementInput(forward: 1, sprint: true))
+        c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), crouching: true, deltaTime: step, in: flat)
+        var during: [CharacterController.Event] = []
+        while c.isSliding {
+            c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), crouching: true,
+                   deltaTime: step, in: flat)
+            if c.isSliding { during += c.events }
+        }
+        #expect(strideCount(during) == 0)
+    }
+
+    @Test("A fall lands once, with the speed it hit at")
+    func landing() {
+        var c = CharacterController(feet: SIMD3(0, 1.8, 0))
+        var landings: [Float] = []
+        for _ in 0..<(120 * 2) {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            for case .landed(let speed) in c.events { landings.append(speed) }
+        }
+        #expect(landings.count == 1)
+        // From rest through 1.8 m at 20 m/s²: √(2 · 20 · 1.8) ≈ 8.5 m/s.
+        #expect(abs((landings.first ?? 0) - (2 * 20 * 1.8 as Float).squareRoot()) < 0.4)
+    }
+
+    /// Down a stair is not a landing — the body never left the ground.
+    @Test("Stepping down a stair is not a landing")
+    func stairIsNotALanding() {
+        let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 0.3, 3))
+        let world = CharacterController.Surroundings(solids: [platform])
+        var c = CharacterController(feet: SIMD3(0, 0.3, 0))
+        let events = strides(&c, seconds: 2, MovementInput(forward: 1), in: world)
+        #expect(!events.contains { if case .landed = $0 { true } else { false } })
+    }
+
+    @Test("A jump is reported, and so is coming down from it")
+    func jumpAndLand() {
+        var c = CharacterController(feet: .zero)
+        var events: [CharacterController.Event] = []
+        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+        events += c.events
+        for _ in 0..<120 {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            events += c.events
+        }
+        #expect(events.first == .jumped)
+        #expect(events.contains { if case .landed = $0 { true } else { false } })
+    }
+
+    /// What a footstep needs to sound like anything: which surface is underfoot.
+    @Test("It knows which solid it is standing on, and when it is on the terrain")
+    func knowsTheGround() {
+        let slab = BoundingBox(minimum: SIMD3(-3, 0, -8), maximum: SIMD3(3, 0.3, -2))
+        let world = CharacterController.Surroundings(solids: [ledge(height: 5, ahead: 30), slab])
+        var c = CharacterController(feet: .zero)
+        c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
+        #expect(c.groundSolid == nil)
+        _ = strides(&c, seconds: 0.8, MovementInput(forward: 1), in: world)
+        #expect(c.groundSolid == 1, "on the slab, which is solid 1")
+        _ = strides(&c, seconds: 1.2, MovementInput(forward: 1), in: world)
+        #expect(c.groundSolid == nil, "off the far end, back on the terrain")
+    }
+
+    @Test("Events are this step's only")
+    func eventsClear() {
+        var c = CharacterController(feet: SIMD3(0, 0.5, 0))
+        var sawLanding = false
+        for _ in 0..<120 {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+            if c.events.contains(where: { if case .landed = $0 { true } else { false } }) { sawLanding = true; break }
+        }
+        #expect(sawLanding)
+        c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
+        #expect(c.events.isEmpty)
+    }
+}

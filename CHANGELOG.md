@@ -12,6 +12,58 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.9] — 2026-09-10
+
+**Footsteps and landings.** The controller says when a foot comes down, when the body lands and how
+hard, when it jumps, and what it is standing on. The sample plays dirt and stone footsteps, heavier
+landings, and a push-off when you jump.
+
+### Added
+
+- **`CharacterController.events`** — this step's `.stride(foot:speed:)`, `.landed(impactSpeed:)` and
+  `.jumped`, cleared at the start of every step.
+- **`CharacterController.groundSolid`** — which solid is underfoot, or nil for terrain or air.
+- **`Tuning.walkStride`, `sprintStride`, `crouchStride`, `firstStepPhase`.**
+
+### Decisions
+
+- **Footfalls come from distance actually covered, not asked for.** Pushing into a wall asks for six
+  metres a second and covers none; counting what was asked for is the classic bug where a player
+  standing against a wall marches on the spot.
+- **Strides are longer than a person's, because these speeds are.** A walk here is 6 m/s — a jog — and
+  a footstep every real 0.7 m would be eight a second. 2.6 m walking, 5 m sprinting and 1.6 m crouched
+  give about 2.3, 3.6 and 1.7 steps a second: a cadence the ear takes for feet.
+- **The first step comes 40% of a stride after setting off**, not a whole stride — or the start of every
+  walk is silent.
+- **No footsteps in a slide.** A skid with feet under it at sprint cadence would be nine footsteps a
+  second from feet that are not moving.
+- **A step down a stair is not a landing.** The body never left the ground; only a fall or a jump
+  reports one, with the speed at contact.
+
+### Found by the tests: stairs were climbed in half the footsteps
+
+A stride is longer than a tread, so four treads sounded like two. The fix — a foot on every rise — was
+written into the step-up in `move`, and **a test counting footsteps per tread still found two**. The
+leading edge of the footprint reaches a tread before any move is refused, so the ground-following in
+the vertical step lifts the body and the step-up never runs. The rule now sits in both places a body
+rises; four treads, four footsteps.
+
+### The sample's sounds
+
+Three recordings each of dirt and stone, played in an order that takes six steps to repeat — one
+recording twice a second is a machine gun. Synthesised by `Tools/make_sample_sounds.py`, seeded so a
+re-run writes the same files. **The first pass clipped** every landing and every stone step; they are
+normalised now. Measured, dirt sits around 1 kHz and stone around 6.5 kHz.
+
+The player's own footsteps are **not positioned**: the engine's own rule for a sound that happens to
+the player, since the ears are 1.7 m above the feet and moving with them.
+
+### Verified by walking
+
+The scripted walk now reports footsteps and landings per segment. On the ruins: 2 footsteps on dirt
+over 4.5 m; **4 on stone** up the four treads; a landing at **7.0 m/s** off the 1.2 m drop (the physics
+says 6.9); 6.2 m/s back from a jump; 5 over 12 m walking, 3 over 4 m crouched, 4 over 18 m sprinting.
+
 ## [0.6.8] — 2026-09-10
 
 **Keys a player can change, and settings that are still there next time.** The sample has a settings

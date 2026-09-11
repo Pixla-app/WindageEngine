@@ -56,7 +56,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-440 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+452 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -69,6 +69,25 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, **`InputBindings` and `PlayerSettings`**, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — footsteps and landings (0.6.9)
+
+**`CharacterController.events`** — strides, landings with impact speed, jumps — and **`groundSolid`**,
+what is underfoot. The sample plays three dirt and three stone footsteps in a six-step order, heavier
+landings, and a push-off on a jump, synthesised by `Tools/make_sample_sounds.py`.
+
+**Footfalls count distance covered, not asked for**, so a player pushing into a wall does not march.
+Strides are long because the speeds are (2.3, 3.6 and 1.7 steps a second walking, sprinting,
+crouched). No footsteps in a slide; a stair down is not a landing.
+
+**A test found stairs climbed in half the footsteps** even after the fix was written: the fix was in
+the step-up, and on stairs the body is lifted by the ground-following instead. It is in both now. The
+first pass of the sounds also clipped; they are normalised.
+
+**Verified by the scripted walk**, which now prints footsteps and landings per segment: 4 on stone for
+the four treads, a 7.0 m/s landing off the 1.2 m drop, 5 over 12 m walking, 3 over 4 m crouched, 4 over
+18 m sprinting. **Not verified by ear** — this session cannot hear the output; the files load, play
+through `AudioEngine` without error, and measure as intended.
 
 ## Done 2026-09-10 — keys a player can change (0.6.8)
 
@@ -819,22 +838,21 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
-   with how hard it was; the sample plays them through `AudioEngine`, which is already positional.
-   A body that walks silently reads as a camera on a rail. **Proved in the sample by** walking,
-   sprinting and dropping off the steps and hearing the difference, and by the stride count in a
-   scripted walk.
-
-2. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
+1. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
    them, so their embers rise out of thin air. A brazier mesh with an emissive map, placed from the
    level like everything else. **Proved in the sample by** a screenshot where the embers visibly come
    off something.
 
-3. **Gamepad rebinding.** The keyboard is rebindable now and the pad is not: its layout is the
-   console convention written into `InputState`, with reserved buttons on purpose. The same
-   `InputBindings` shape with a button per action, and the settings screen showing whichever device
-   is connected. **Proved in the sample by** a rebound button in the settings file surviving a
-   relaunch — the pad itself cannot be scripted, so the input path is tested in the package.
+2. **Gamepad rebinding.** The keyboard is rebindable and the pad is not: its layout is the console
+   convention written into `InputState`, with reserved buttons on purpose. The same `InputBindings`
+   shape with a button per action, and the settings screen showing whichever device is connected.
+   **Proved in the sample by** a rebound button in the settings file surviving a relaunch — the pad
+   itself cannot be scripted, so the input path is tested in the package.
+
+3. **A camera dip on landing.** The controller now reports how hard a landing was and nothing shows it
+   but the sound. A short dip of the view, scaled by impact speed and applied to the view and never
+   to the aim — the same rule as the slide's. **Proved in the sample by** the scripted drop off the
+   steps logging the dip's depth, and a screenshot mid-dip.
 
 ## Parked — not next, and why
 

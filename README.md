@@ -144,7 +144,7 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
 or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** · **particles** ·
-**rebindable keys and saved player settings** ·
+**rebindable keys and saved player settings** · **footsteps and landings** ·
 **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
@@ -917,6 +917,37 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## Footsteps and landings (2026-09-10)
+
+`CharacterController` reports what its body did each step — a foot coming down, a landing and how
+hard, a jump — and which solid it is standing on. The sample plays dirt and stone footsteps from that,
+and heavier landings.
+
+### Footfalls from distance covered, not distance asked for
+
+Pushing into a wall asks for six metres a second and covers none. Counting what was asked for is the
+classic bug where a player standing against a wall marches on the spot, so strides are counted from
+where the feet actually got to.
+
+**The strides are longer than a person's, because the speeds are.** A walk here is six metres a
+second — a jog — and a footstep every real 0.7 m would be eight a second, which reads as a drum roll.
+At 2.6 m walking, 5 m sprinting and 1.6 m crouched the cadence is about 2.3, 3.6 and 1.7 a second,
+which the ear takes for feet. The first step comes 40% of a stride after setting off, or the start of
+every walk would be silent. A slide makes none; a step down a stair is not a landing.
+
+### A foot on every tread — and where the rule had to live
+
+A stride is longer than a stair tread, so four treads sounded like two footsteps and floating. The
+fix was obvious and was put in the obvious place, the step-up in `move` — and **a test counting
+footsteps per tread still found two**. The footprint's leading edge reaches each tread before any move
+is refused, so it is the ground-following in the vertical step that lifts the body, and the step-up
+was never running on stairs at all. The rule is in both places now.
+
+### What is underfoot
+
+`groundSolid` is the index of the box the feet are on, or nil for terrain. It is what makes a stone
+step sound like stone, and what a moving platform will need to carry you.
 
 ## Keys a player can change (2026-09-10)
 

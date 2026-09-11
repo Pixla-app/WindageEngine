@@ -865,7 +865,10 @@ final class SampleGame: GameLoop {
             // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
             // which for a SwiftPM executable is the executable itself and holds no resources — the
             // sounds live in the target's own bundle.
-            for sound in ["pickup", "win", "lose"] where !audio.load(sound, bundle: .module) {
+            let feet = ["dirt", "stone"].flatMap { surface in
+                (0..<3).map { "step_\(surface)_\($0)" } + ["land_\(surface)"]
+            }
+            for sound in ["pickup", "win", "lose"] + feet where !audio.load(sound, bundle: .module) {
                 print("WindageSample: no sound named \(sound)")
             }
         } else {
@@ -1736,6 +1739,50 @@ final class SampleGame: GameLoop {
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
     }
 
+    // MARK: - Footsteps
+
+    /// Which of three recordings the next footstep uses. **An order that does not repeat every
+    /// three**, so the pattern takes six steps to come round — long enough that the ear stops
+    /// looking for it.
+    private static let stepOrder = [0, 2, 1, 0, 1, 2]
+    private var stepsPlayed = 0
+
+    /// What the scripted walk reports for the segment in progress: footsteps, and landings.
+    private var tally = (steps: 0, surfaces: Set<String>(), landings: [String]())
+
+    /// Plays whatever the body just did.
+    ///
+    /// **Not positioned**, which is the engine's own advice for a sound that happens *to* the player:
+    /// the ears are 1.7 m above the feet and moving with them, so a spatialised footstep would only
+    /// come out a little quieter and from somewhere odd.
+    private func playFootfalls() {
+        // Every solid you can stand on in this sample is stone — the steps. Crates are taller than a
+        // step and cannot be jumped onto, so there is no wood to walk on.
+        let surface = body.groundSolid == nil ? "dirt" : "stone"
+        for event in body.events {
+            switch event {
+            case .stride(_, let speed):
+                // Louder as it gets faster: crouched is a creep, a sprint is a run.
+                let crouched = body.tuning.walkSpeed * body.tuning.crouchedSpeedFraction
+                let t = simd_clamp((speed - crouched) / (body.tuning.sprintSpeed - crouched), 0, 1)
+                let variant = SampleGame.stepOrder[stepsPlayed % SampleGame.stepOrder.count]
+                audio?.play("step_\(surface)_\(variant)", volume: 0.3 + 0.7 * t)
+                stepsPlayed += 1
+                tally.steps += 1
+                tally.surfaces.insert(surface)
+            case .landed(let impact):
+                // **A step down a stair is not this** — the controller never reports one — so every
+                // landing here was a fall or a jump, and how loud is how hard.
+                audio?.play("land_\(surface)", volume: simd_clamp(impact / 9, 0.35, 1))
+                tally.landings.append(String(format: "%.1f m/s on %@", impact, surface))
+            case .jumped:
+                // The push-off: a footstep, softer. A jump with no sound at the start reads as the
+                // floor letting go rather than the legs pushing.
+                audio?.play("step_\(surface)_0", volume: 0.4)
+            }
+        }
+    }
+
     /// Plays the scripted walk's keys this step. See `ScriptedWalk`.
     private func runScript(_ deltaTime: Float) {
         guard scriptedWalk?.isRunning == true else { return }
@@ -1755,7 +1802,14 @@ final class SampleGame: GameLoop {
                 for key in segment.keys {
                     if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
                 }
-                if let report { print(report) }
+                if let report {
+                    print(report)
+                    var heard = tally.steps == 1 ? "1 footstep" : "\(tally.steps) footsteps"
+                    if !tally.surfaces.isEmpty { heard += " on " + tally.surfaces.sorted().joined(separator: " and ") }
+                    if !tally.landings.isEmpty { heard += ", landed at " + tally.landings.joined(separator: ", ") }
+                    print("WindageSample:     \(heard)")
+                }
+                tally = (0, [], [])
             }
         }
     }
@@ -1874,6 +1928,7 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                playFootfalls()
                 // **Dust on a landing that was a fall**, not on every step down a stair: 4 m/s is a
                 // drop of about 40 cm at this gravity, which is where a landing starts to be felt.
                 if wasAirborne && body.isGrounded && fallSpeed > 4 {
