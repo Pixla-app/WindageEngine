@@ -24,34 +24,6 @@
     },
     {
       "colour" : [
-        1.0,
-        0.6,
-        0.3
-      ],
-      "intensity" : 60,
-      "position" : [
-        -4.0,
-        1.8,
-        -10
-      ],
-      "range" : 14
-    },
-    {
-      "colour" : [
-        1.0,
-        0.86,
-        0.52
-      ],
-      "intensity" : 55,
-      "position" : [
-        -3.5,
-        1.8,
-        -28
-      ],
-      "range" : 14
-    },
-    {
-      "colour" : [
         0.55,
         0.78,
         1.0
@@ -707,6 +679,20 @@
     },
     {
       "anchor" : "absolute",
+      "light" : {
+        "colour" : [
+          1.0,
+          0.6,
+          0.3
+        ],
+        "intensity" : 60,
+        "position" : [
+          0,
+          1.8,
+          0
+        ],
+        "range" : 14
+      },
       "mesh" : "brazier",
       "position" : [
         -4.0,
@@ -719,6 +705,20 @@
     },
     {
       "anchor" : "absolute",
+      "light" : {
+        "colour" : [
+          1.0,
+          0.86,
+          0.52
+        ],
+        "intensity" : 55,
+        "position" : [
+          0,
+          1.8,
+          0
+        ],
+        "range" : 14
+      },
       "mesh" : "brazier",
       "position" : [
         -3.5,

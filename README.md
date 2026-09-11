@@ -918,6 +918,18 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
 
+## Lights that belong to a placement (2026-09-11)
+
+`Level.Placement.light` is a lamp the placement carries, in its own space — an offset from its origin,
+a cone aimed in its frame. `Level.resolvedLights(on:)` puts every lamp in the world: the free-standing
+ones, then the carried ones through a `TransformHierarchy`, each attached externally to its placement's
+transform.
+
+**It exists because a brazier and its flame were two entries in one file**, kept together by a test,
+and the first person to move a brazier in the in-game editor would have left its pool of light on the
+floor where it had been. Now moving, turning or copying the placement moves the lamp; the offset scales
+with the placement and the lamp's reach does not.
+
 ## A placement's transform, and a rotation that ran backwards (2026-09-11)
 
 **`Level.transform(of:on:)` is the one definition of where a placement is**: scaled, turned by `yaw`

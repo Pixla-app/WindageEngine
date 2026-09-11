@@ -37,8 +37,7 @@ final class SampleView: MTKView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard let game else { return }
-        if game.isEditingLevel { game.pickUnderCrosshair() } else { game.input.setMouseCaptured(true) }
+        game?.mousePressed()
     }
     override func mouseMoved(with event: NSEvent) { deliver(event) }
     override func mouseDragged(with event: NSEvent) { deliver(event) }

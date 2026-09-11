@@ -320,3 +320,85 @@ private final class SampledPoints: @unchecked Sendable {
     private(set) var points: [SIMD2<Float>] = []
     func add(_ point: SIMD2<Float>) { points.append(point) }
 }
+
+/// **A lamp that belongs to something goes where it goes.**
+@Suite("Lights carried by placements")
+struct CarriedLightTests {
+
+    private let flat = Level.Ground(heightAt: { _, _ in 0 })
+
+    private func brazier(at position: SIMD3<Float>, yaw: Float = 0, scale: Float = 1) -> Level.Placement {
+        Level.Placement(mesh: "brazier", position: position, yaw: yaw, scale: scale,
+                        light: PunctualLight(position: SIMD3(0, 1.8, 0), colour: SIMD3(60, 36, 18), range: 14))
+    }
+
+    @Test("A carried light sits at its offset from the placement")
+    func offset() {
+        let level = Level(name: "l", placements: [brazier(at: SIMD3(-4, 0, -10))])
+        #expect(level.resolvedLights(on: flat).map(\.position) == [SIMD3(-4, 1.8, -10)])
+    }
+
+    /// **The whole point.** The editor moves a placement; the lamp has to go with it.
+    @Test("Moving the placement in the editor moves its light")
+    func editorMovesTheLight() {
+        var editor = LevelEditor(level: Level(name: "l", placements: [brazier(at: SIMD3(-4, 0, -10))]))
+        editor.select(0)
+        editor.move(by: SIMD3(3, 0, 0))
+        #expect(editor.level.resolvedLights(on: flat).first?.position == SIMD3(-1, 1.8, -10))
+    }
+
+    @Test("Copying a placement copies its light")
+    func copyCopiesTheLight() {
+        var editor = LevelEditor(level: Level(name: "l", placements: [brazier(at: .zero)]))
+        editor.select(0)
+        editor.duplicate()
+        #expect(editor.level.resolvedLights(on: flat).count == 2)
+    }
+
+    /// An offset to the side turns with the placement, by the same turn it is drawn with.
+    @Test("An offset turns with the placement")
+    func offsetTurns() {
+        var carrier = brazier(at: .zero, yaw: .pi / 2)
+        carrier.light?.position = SIMD3(1, 1, 0)
+        let light = Level(name: "l", placements: [carrier]).resolvedLights(on: flat)[0]
+        let drawn = Level.transform(yaw: .pi / 2, scale: 1, at: .zero) * SIMD4<Float>(1, 1, 0, 1)
+        #expect(simd_distance(light.position, SIMD3(drawn.x, drawn.y, drawn.z)) < 1e-5)
+    }
+
+    /// A lamp on a post, aimed: turn the post and the beam turns with it — and stays a unit vector
+    /// however the post is scaled.
+    @Test("A carried spot's direction turns with the placement and ignores its scale")
+    func coneTurns() {
+        var post = Level.Placement(mesh: "post", position: .zero, yaw: .pi / 2, scale: 3)
+        post.light = PunctualLight(position: SIMD3(0, 4, 0), colour: SIMD3(repeating: 100), range: 20,
+                                   cone: .init(direction: SIMD3(1, 0, 0), innerAngle: 0.2, outerAngle: 0.4))
+        let light = Level(name: "l", placements: [post]).resolvedLights(on: flat)[0]
+        let direction = light.cone!.direction
+        #expect(abs(direction.x) < 1e-5 && abs(direction.z + 1) < 1e-5, "\(direction)")
+        #expect(abs(simd_length(direction) - 1) < 1e-5)
+        // The offset does scale: a post three times the size holds its lamp three times as high.
+        #expect(abs(light.position.y - 12) < 1e-4)
+        #expect(light.range == 20, "a light's reach is the lamp's, not the post's")
+    }
+
+    @Test("Free-standing lights come first, then carried ones in placement order")
+    func order() {
+        let sun = PunctualLight(position: SIMD3(0, 9, 0), colour: SIMD3(repeating: 1), range: 30)
+        let level = Level(name: "l", lights: [sun],
+                          placements: [brazier(at: SIMD3(1, 0, 0)),
+                                       Level.Placement(mesh: "box", position: .zero),
+                                       brazier(at: SIMD3(2, 0, 0))])
+        #expect(level.resolvedLights(on: flat).map(\.position.x) == [0, 1, 2])
+        #expect(level.carriedLights(on: flat).map(\.placement) == [0, 2])
+    }
+
+    @Test("A carried light survives a save and a load, and a placement without one writes nothing")
+    func codable() throws {
+        let level = Level(name: "l", placements: [brazier(at: .zero), Level.Placement(mesh: "box", position: .zero)])
+        let data = try JSONEncoder().encode(level)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.components(separatedBy: "\"light\"").count == 2, "only the brazier should write a light")
+        let back = try JSONDecoder().decode(Level.self, from: data)
+        #expect(back.resolvedLights(on: flat) == level.resolvedLights(on: flat))
+    }
+}

@@ -12,6 +12,44 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.7.1] — 2026-09-11
+
+**Lights that belong to a placement.** A placement can carry a lamp, in its own space; move, turn or
+copy the placement and the lamp goes with it. The ruins' braziers carry their flames now, and moving a
+brazier in the in-game editor moves its pool of light.
+
+### Added
+
+- **`Level.Placement.light`** — optional, in the placement's space: `position` is an offset, a cone's
+  `direction` is in the placement's frame. Omitted from the file when there is none.
+- **`Level.resolvedLights(on:)`** — the free-standing lights, then every carried one in the world.
+- **`Level.carriedLights(on:)`** — the carried ones, with the placement each came from.
+
+### Decisions
+
+- **Through the transform hierarchy.** Each carried light is a node attached externally to its
+  placement's transform — the case `TransformHierarchy`'s external attachment exists for, and its
+  second consumer.
+- **The offset scales with the placement; the light does not.** A brazier twice the size holds its
+  flame twice as high, but a lamp's reach and brightness are the lamp's. A cone's direction is turned
+  by the placement's rotation alone.
+- **Additive to the format.** No version change: an older file has no `light` keys, and an older build
+  reading a newer file ignores them — and so loses the lamps, which is the honest cost of reading a
+  file from the future.
+
+### In the sample
+
+The ruins' two flames moved out of `lights` and into their braziers. The test that held a lamp over
+each brazier became two: every brazier carries a lamp above its rim, and no lamp that points nowhere is
+left floating free. The scripted walk gained `click`, through the same `mousePressed` the window uses.
+
+### Verified by driving the editor
+
+A scripted walk looks at a brazier, enters the editor, clicks it and nudges it six times: the log
+reports the carried lamp at x −3.5, −3.0 … −1.0, one line per nudge, and the before-and-after frames
+from the same camera show the brazier, its pool, its shadow and its embers all moved. Nothing was
+saved.
+
 ## [0.7.0] — 2026-09-11
 
 **A placement's transform, defined once — and bedding turned the right way.** A minor version because

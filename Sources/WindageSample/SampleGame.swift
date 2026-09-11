@@ -111,6 +111,8 @@ final class SampleGame: GameLoop {
             let keys: [KeyCode]
             /// Controller elements by name — `south`, `menu`, `up` — pressed on a virtual pad.
             var pads: [String] = []
+            /// Whether the segment begins with a mouse click — the same `mousePressed` the view calls.
+            var clicks = false
             let seconds: Float
             var yaw: Float? = nil
             var pitch: Float? = nil
@@ -147,8 +149,11 @@ final class SampleGame: GameLoop {
                 }
                 var keys: [KeyCode] = []
                 var pads: [String] = []
+                var clicks = false
                 for name in parts[0].split(separator: "+") where name != "wait" {
-                    if name.hasPrefix("pad.") {
+                    if name == "click" {
+                        clicks = true
+                    } else if name.hasPrefix("pad.") {
                         pads.append(String(name.dropFirst(4)))
                     } else if let key = KeyCode(named: String(name)) {
                         keys.append(key)
@@ -156,7 +161,7 @@ final class SampleGame: GameLoop {
                         print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(name)'")
                     }
                 }
-                parsed.append(Segment(label: String(token), keys: keys, pads: pads, seconds: number))
+                parsed.append(Segment(label: String(token), keys: keys, pads: pads, clicks: clicks, seconds: number))
             }
             guard !parsed.isEmpty else { return nil }
             segments = parsed
@@ -521,6 +526,13 @@ final class SampleGame: GameLoop {
     /// Which level is loaded. **`var`, and that is the whole point of this pass** — everything about
     /// this game assumed one level, loaded once, because there had only ever been one.
     private var levelIndex = 0
+
+    /// This sample's ground: a plane at zero. What anchors resolve against and carried lights are
+    /// placed on.
+    private static let ground = Level.Ground(heightAt: { _, _ in 0 })
+
+    /// Where the placements' lamps were at the last rebuild, so the log can say when one moved.
+    private var lastCarriedLights: [SIMD3<Float>] = []
 
     /// **Two environment overrides, and they exist so a picture can be taken twice.**
     ///
@@ -1257,7 +1269,7 @@ final class SampleGame: GameLoop {
         solidVolumes.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
-        let ground = Level.Ground(heightAt: { _, _ in 0 })
+        let ground = SampleGame.ground
         for placement in level.placements {
             guard let mesh = meshes[placement.mesh] else { continue }
             // **The engine's placement transform, not one built here.** This file used to build the
@@ -1338,7 +1350,19 @@ final class SampleGame: GameLoop {
     /// rather than a lamp. This is the sample's one dynamic light, and it goes out when the crate is
     /// taken.
     private func rebuildLights() {
-        var lights = level.lights
+        // **The level's lights and the ones its placements carry**, resolved through the placements'
+        // own transforms — so a brazier moved in the editor takes its flame with it. They were two
+        // separate entries in the file until 2026-09-11, and moving one left the other behind.
+        var lights = level.resolvedLights(on: SampleGame.ground)
+        let carried = level.carriedLights(on: SampleGame.ground).map(\.light.position)
+        if carried != lastCarriedLights {
+            if !lastCarriedLights.isEmpty {
+                print("WindageSample: lamps carried by placements now at "
+                      + carried.map { String(format: "(%.2f, %.2f, %.2f)", $0.x, $0.y, $0.z) }
+                        .joined(separator: ", "))
+            }
+            lastCarriedLights = carried
+        }
         for (slot, position) in run.objectives.enumerated() {
             let taken = run.collected.indices.contains(slot) && run.collected[slot]
             guard !taken else { continue }
@@ -1967,6 +1991,7 @@ final class SampleGame: GameLoop {
                     }
                 }
                 for name in segment.pads { setScriptPad(name, down: true) }
+                if segment.clicks { mousePressed() }
             case .end(let segment, let report):
                 for key in segment.keys {
                     if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
@@ -2002,6 +2027,13 @@ final class SampleGame: GameLoop {
     /// Down the crosshair rather than from the mouse position: the sample captures the pointer for
     /// look, so there *is* no mouse position while playing, and a picker that needed one would only
     /// work in a mode the sample does not have.
+    /// A mouse button went down. **The game decides what that is**: in the editor it picks what is
+    /// under the crosshair, otherwise it captures the pointer for looking. Here rather than in the
+    /// view so the scripted walk can click through the same path.
+    func mousePressed() {
+        if isEditing { pickUnderCrosshair() } else { input.setMouseCaptured(true) }
+    }
+
     func pickUnderCrosshair() {
         let origin = camera.position
         // **Not the lanterns.** The editor's selection is an index into the level's placements, and

@@ -176,25 +176,42 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         /// Game-defined labels — `"solid"`, `"cover"`, `"decorative"`. The engine passes them through.
         public var tags: [String]
 
+        /// A lamp this thing carries — a brazier's flame, a lantern on a post, a light fitting.
+        ///
+        /// **In the placement's own space**: `position` is an offset from the placement's origin and a
+        /// cone's `direction` is in its frame, so moving, turning or copying the placement takes the
+        /// light with it. Resolve it with ``Level/resolvedLights(on:)``.
+        ///
+        /// > **Why a lamp is not just another entry in ``Level/lights``.** A brazier and its flame
+        /// > were two entries in one file until 2026-09-11, kept together by a test. Moving the
+        /// > brazier in the in-game editor left the pool of light on the floor where it had been.
+        ///
+        /// The offset scales with the placement — a brazier twice the size has its flame twice as
+        /// high — and the range and brightness do not, because a light's reach is a property of the
+        /// lamp rather than of the object holding it.
+        public var light: PunctualLight?
+
         public init(mesh: String,
                     position: SIMD3<Float>,
                     yaw: Float = 0,
                     scale: Float = 1,
                     anchor: Anchor = .ground,
-                    tags: [String] = []) {
+                    tags: [String] = [],
+                    light: PunctualLight? = nil) {
             self.mesh = mesh
             self.position = position
             self.yaw = yaw
             self.scale = scale
             self.anchor = anchor
             self.tags = tags
+            self.light = light
         }
 
         // Written long-hand so the JSON stays small and stable: yaw, scale, anchor and tags are all
         // omitted at their defaults. A level of four hundred props is mostly defaults, and a format
         // that writes them all is four times the file and four times the diff.
         private enum CodingKeys: String, CodingKey {
-            case mesh, position, yaw, scale, anchor, tags
+            case mesh, position, yaw, scale, anchor, tags, light
         }
 
         public init(from decoder: Decoder) throws {
@@ -205,6 +222,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             scale = try container.decodeIfPresent(Float.self, forKey: .scale) ?? 1
             anchor = try container.decodeIfPresent(Anchor.self, forKey: .anchor) ?? .ground
             tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+            light = try container.decodeIfPresent(PunctualLight.self, forKey: .light)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -215,6 +233,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             if scale != 1 { try container.encode(scale, forKey: .scale) }
             if anchor != .ground { try container.encode(anchor, forKey: .anchor) }
             if !tags.isEmpty { try container.encode(tags, forKey: .tags) }
+            try container.encodeIfPresent(light, forKey: .light)
         }
     }
 
@@ -335,6 +354,46 @@ nonisolated extension Level {
                 lowest = min(lowest, ground.heightAt(x + offset.x, z + offset.y))
             }
             return SIMD3(x, lowest + placement.position.y, z)
+        }
+    }
+
+    /// Every light in the level, in the world: the free-standing ``lights`` first, then each
+    /// placement's own, in placement order.
+    public func resolvedLights(on ground: Ground) -> [PunctualLight] {
+        lights + carriedLights(on: ground).map(\.light)
+    }
+
+    /// The lights placements carry, moved into the world, and which placement each came from.
+    ///
+    /// **Through a ``TransformHierarchy``**, each light attached externally to its placement's
+    /// transform: this is the case that type's `.external` attachment exists for, and a second
+    /// consumer of it. The position goes through the whole transform, scale included; a cone's
+    /// direction is turned by the placement's rotation alone, since a direction has no size.
+    public func carriedLights(on ground: Ground) -> [(placement: Int, light: PunctualLight)] {
+        let carriers = placements.indices.filter { placements[$0].light != nil }
+        guard !carriers.isEmpty else { return [] }
+        let offsets = carriers.map { index -> matrix_float4x4 in
+            var m = matrix_identity_float4x4
+            m.columns.3 = SIMD4(placements[index].light!.position, 1)
+            return m
+        }
+        guard var hierarchy = try? TransformHierarchy(attachments: carriers.indices.map { .external($0) },
+                                                      localTransforms: offsets,
+                                                      externalCount: carriers.count) else { return [] }
+        let frames = carriers.map { transform(of: placements[$0], on: ground) }
+        hierarchy.refresh(attachedTo: frames)
+
+        return carriers.enumerated().map { slot, index in
+            var light = placements[index].light!
+            let world = hierarchy.worldTransform(of: slot)
+            light.position = SIMD3(world.columns.3.x, world.columns.3.y, world.columns.3.z)
+            if var cone = light.cone {
+                let turn = matrix_without_scale(frames[slot])
+                let d = turn * SIMD4(cone.direction, 0)
+                cone.direction = simd_normalize(SIMD3(d.x, d.y, d.z))
+                light.cone = cone
+            }
+            return (index, light)
         }
     }
 

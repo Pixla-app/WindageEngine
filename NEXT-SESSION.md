@@ -57,7 +57,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-477 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+489 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -70,6 +70,27 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — lights that belong to a placement (0.7.0, 0.7.1)
+
+**Two releases, because the first was found on the way.**
+
+**0.7.0 — `Level.transform(of:on:)`, and bedding turned the right way.** A carried light needs its
+placement's transform, and there was no definition of one: the sample built it, a game built it twice,
+and **the engine's `beddedFootprint` bedding turned the opposite way from all of them** — sampling the
+ground under the corners of the placement's mirror image. It uses `Level.turned(_:by:)` now, the
+matrix's own turn; a test with an asymmetric footprint turned on a slope fails against the old
+rotation. Minor version, because a bedded placement can now sit at a different height.
+
+> **For the game this was extracted from:** its installation bedding and its collision masks use the
+> same backwards turn, while its renderer draws with the standard one. Its parity test against the
+> engine will now disagree, and that disagreement is the bug. That is the game's fix, on its schedule —
+> this repository does not touch it.
+
+**0.7.1 — `Placement.light`, `resolvedLights(on:)`, `carriedLights(on:)`.** The ruins' braziers carry
+their flames; free lights with no cone are gone from the level, and a test keeps them gone. **Driven in
+the editor by the scripted walk** (which gained `click`): select a brazier, nudge it six times, and the
+lamp is logged moving with each nudge; before-and-after frames show its pool, shadow and embers moved.
 
 ## Done 2026-09-11 — the landing dip (0.6.12)
 
@@ -889,23 +910,21 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
-   kept together by a test. Move the brazier in the in-game editor and the lamp stays where it was.
-   A placement should be able to carry its light, offset from it, placed through the transform
-   hierarchy. **Proved in the sample by** moving a brazier in the editor and the pool of light going
-   with it.
-
-2. **Separate mouse and stick sensitivity.** The settings have one look sensitivity multiplying
+1. **Separate mouse and stick sensitivity.** The settings have one look sensitivity multiplying
    both, and a mouse and a stick want very different ones — a player who uses both has to choose
    which to break. Separate sensitivities, and invert per device. **Proved in the sample by** a
    scripted stick turn and a mouse turn giving the rates each setting says.
 
-3. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
+2. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
    however fast the feet are going. The controller has a stride phase now, and a small bob locked to
-   it — down on each footfall, a little sideways between them — is what makes a walk read as one.
-   **An off switch in the settings from the start**, because bob is a known cause of motion sickness.
-   **Proved in the sample by** the scripted walk logging the bob's height walking, sprinting and
-   crouched, and logging none with the setting off.
+   it is what makes a walk read as one. **An off switch in the settings from the start**, because bob
+   is a known cause of motion sickness. **Proved in the sample by** the scripted walk logging the bob's
+   height walking, sprinting and crouched, and logging none with the setting off.
+
+3. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
+   but cannot give one: a new brazier dropped in from the editor arrives cold. Adding, removing and
+   nudging a selection's lamp — its height and brightness — from the editor's keys. **Proved in the
+   sample by** a scripted edit that adds a lamp to a crate and the log reporting it in the world.
 
 ## Parked — not next, and why
 
