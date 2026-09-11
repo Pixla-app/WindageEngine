@@ -12,6 +12,32 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.8.1] — 2026-09-11
+
+**Head bob, and a setting to turn it down or off.** Walking was flat: the eye glided at a fixed height
+however fast the feet were going.
+
+### Added
+
+- **`CharacterController.headBob`** — a view offset in metres, `x` across the view and `y` up, locked to
+  the stride phase: lowest as each foot lands, swaying toward the leg carrying the body, twice as many
+  dips as sways. Scaled by gait, eased in and out, and **none in the air or in a slide**. For the view,
+  never the aim.
+- **`Tuning.bobRise`, `bobSway`, `bobSprintScale`, `bobCrouchScale`, `bobEase`.**
+- **`PlayerSettings.headBob`**, 0…1, **0 is off**, default 1. A file without it loads at 1.
+
+### Fixed before it shipped
+
+- **A step up jolted the bob.** A tread jumps the stride phase to a footfall, and a bob read off the
+  phase jumped 2.86 cm in one frame. The jump — and the ones from setting off and landing — is carried
+  and eased out at the eye's settling rate. A test on a flight of stairs fails without it.
+
+### In the sample
+
+- **The view bobs**, scaled by a **Head bob** row on the settings screen: 100%, 75%, 50%, 25%, off.
+- **The scripted walk reports the bob each segment**, peak to peak, as shown: 2.8 × 1.8 cm walking,
+  4.7 × 3.0 sprinting, 1.4 × 0.9 crouched, half at 50%, none when off.
+
 ## [0.8.0] — 2026-09-11
 
 **The mouse and the stick have their own sensitivity and their own invert.** A mouse is a displacement

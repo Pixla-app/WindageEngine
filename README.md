@@ -1028,6 +1028,29 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### And a head that bobs, which a player can turn down or off (0.8.1)
+
+`headBob` is a view offset in metres — across the view and up — **locked to the stride phase**, the
+same distance-driven phase that sounds the footsteps. So the head dips as each foot lands, stops when
+the body stops, and does nothing for a player pushing into a wall; a bob on a clock sways while standing
+still, which reads as swimming.
+
+- **Two dips for every sway**, the sway leaning toward the leg carrying the body: a figure-eight. The
+  rise is the larger of the two (1.4 cm either side at a walk, against 0.9 of sway); equal amounts trace
+  a loop.
+- **Scaled by gait**: ×1.7 at a sprint, ×0.5 crouched, less below walking pace. **None in the air and
+  none in a slide**, since neither has footfalls. Eased in and out, never switched.
+- **A step up jumps the stride phase to a footfall**, and a bob read straight off the phase jumped with
+  it — 2.86 cm in one frame on every tread, measured by a test that fails without the fix. The jump is
+  carried and eased out at the eye's settling rate, the way the eye follows the step itself.
+- **The view's, never the aim's**, like the dips. `PlayerSettings.headBob` is 0…1 with **0 as off**:
+  bob is a known cause of motion sickness, so off has to exist, and most players who find it too much
+  want less rather than none.
+
+**Measured in the sample**, peak to peak through a scripted walk: 2.8 cm up and down and 1.8 cm side to
+side walking, 4.7 and 3.0 sprinting, 1.4 and 0.9 crouched — the tuning, to the millimetre. Half on the
+setting gives exactly half; off, set on the settings screen, gives none.
+
 ### What is underfoot
 
 `groundSolid` is the index of the box the feet are on, or nil for terrain. It is what makes a stone

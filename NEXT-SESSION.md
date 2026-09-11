@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-493 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+503 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,32 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — head bob, and a setting for it (0.8.1)
+
+**`CharacterController.headBob`**, a view offset locked to the stride phase — the head lowest as each
+foot lands, swaying toward the carrying leg, two dips per sway — scaled by gait, eased, and absent in
+the air and in a slide. **`PlayerSettings.headBob`**, 0…1, 0 is off. Nine tests.
+
+**Measured in the running sample** (scripted walk, peak to peak as shown on screen):
+
+| | up and down | side to side |
+|---|---|---|
+| walk | 2.8 cm | 1.8 cm |
+| sprint | 4.7 cm | 3.0 cm |
+| crouch | 1.4 cm | 0.9 cm |
+| walk, setting 50% | 1.4 cm | 0.9 cm |
+| walk, setting off (set on the settings screen) | none | none |
+
+**One bug found before it shipped**: a stair tread jumps the stride phase to a footfall, and the bob
+jumped 2.86 cm in one frame with it. Carried and eased out at the eye's settling rate now; the stairs
+test fails without it (checked by removing the fix).
+
+**Not seen as motion.** The numbers are the bob that reached the screen; a still frame cannot show a
+bob, and no video was captured.
+
+**Every game checked**: none uses `CharacterController` or `PlayerSettings`; all five build and pass
+against 0.8.1.
 
 ## Done 2026-09-11 — a mouse sensitivity and a stick sensitivity (0.8.0)
 
@@ -969,23 +995,24 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
-   however fast the feet are going. The controller has a stride phase now, and a small bob locked to
-   it is what makes a walk read as one. **An off switch in the settings from the start**, because bob
-   is a known cause of motion sickness. **Proved in the sample by** the scripted walk logging the bob's
-   height walking, sprinting and crouched, and logging none with the setting off.
-
-2. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
+1. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
    but cannot give one: a new brazier dropped in from the editor arrives cold. Adding, removing and
    nudging a selection's lamp — its height and brightness — from the editor's keys. **Proved in the
    sample by** a scripted edit that adds a lamp to a crate and the log reporting it in the world.
 
-3. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
+2. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
    constants, and a worn stick drifts past them: the view creeps with nobody touching it, and the only
    cure a player has is a new controller. A dead zone per stick in `PlayerSettings`, on the settings
    screen beside the stick's sensitivity. **Proved in the sample by** the scripted walk holding the
    stick at part deflection (`pad.lookRight@0.1`) — no turn below the setting, a turn that starts from
    zero just above it, and full speed still at full deflection.
+
+3. **What a surface is, from the level file.** A footstep knows which solid it is on
+   (`groundSolid`) but not what that solid is made of: the sample hard-codes "every solid is stone,
+   the rest is dirt", which is true of its two levels only by accident. A `surface` on a placement —
+   stone, wood, metal, dirt — read by the level format, so a game picks the sound from the level rather
+   than from a guess. **Proved in the sample by** a wooden step in the ruins and the scripted walk
+   reporting "footsteps on wood" across it and "on stone" on the steps beside it.
 
 ## Parked — not next, and why
 

@@ -192,6 +192,27 @@ public nonisolated struct CharacterController: Sendable {
         /// it never overshoots, which would read as a bounce.
         public var landingSpring: Float = 14
 
+        /// How far the head rises and falls, and sways side to side, at a walk — metres, each an
+        /// amplitude either side of still.
+        ///
+        /// **Up and down twice for every side to side.** The head is lowest as each foot comes down
+        /// and sways toward whichever leg is carrying it, so the vertical runs at every footfall and
+        /// the sway at every other one: a figure-eight. The vertical is the larger — it is the one
+        /// that reads as a walk — and the sway smaller, or the pair traces a loop and reads as
+        /// swimming. **Small on purpose**: bob is the effect most often overdone, and a known cause
+        /// of motion sickness; these are about half a real head's excursion.
+        public var bobRise: Float = 0.014
+        public var bobSway: Float = 0.009
+
+        /// The bob at a sprint and crouched, as multiples of the walk's.
+        public var bobSprintScale: Float = 1.7
+        public var bobCrouchScale: Float = 0.5
+
+        /// How fast the bob comes and goes, as a fraction per second — setting off, stopping,
+        /// leaving the ground. **Eased, never switched**: a bob that stops dead mid-stride leaves the
+        /// view parked a centimetre off where it rests, and then snaps it back.
+        public var bobEase: Float = 8
+
         public init() {}
 
         /// Metres per footfall at a speed.
@@ -310,6 +331,36 @@ public nonisolated struct CharacterController: Sendable {
     /// landing would otherwise shoot the ground.
     public var landingCameraDip: Float { -landingCompression * tuning.landingDipMax }
 
+    /// The head's bob for the *displayed* camera, in metres: `x` to the right of the view, `y` up.
+    ///
+    /// **Locked to the stride, not to a clock.** It advances with the distance the feet actually
+    /// cover — the same phase that sounds the footsteps — so the head dips as each foot lands, stops
+    /// when the body stops, and marches on the spot for nobody pushing into a wall. A bob on a timer
+    /// sways while standing still, which reads as swimming.
+    ///
+    /// **Applied to the view, never to the aim**, by the rule the dips follow: a bob in the aim is a
+    /// crosshair that wanders while walking. Multiply it by the player's setting — see
+    /// ``PlayerSettings/headBob`` — because some players cannot play with it at all.
+    public var headBob: SIMD2<Float> { rawBob + bobCatchUp }
+
+    /// How much bob there is, 0 to the sprint's scale — eased toward what the gait asks for.
+    private var bobAmount: Float = 0
+    /// What the bob has not caught up with yet, after the stride phase jumped. See ``footOnRise(_:)``.
+    private var bobCatchUp = SIMD2<Float>.zero
+
+    /// The bob the stride phase and the current amount give, before any catching up.
+    private var rawBob: SIMD2<Float> {
+        guard bobAmount > 0 else { return .zero }
+        // Lowest as the foot lands (phase 0 and 1), highest between. Centred on zero, so walking
+        // does not lower the eye on average.
+        let rise = -tuning.bobRise * cos(2 * .pi * stridePhase)
+        // Toward the leg carrying the body: the one *not* about to land, peaking mid-step and
+        // crossing zero as each foot comes down — so it swings once for every two dips.
+        let side: Float = nextFoot == .left ? 1 : -1
+        let sway = tuning.bobSway * sin(.pi * stridePhase) * side
+        return SIMD2(sway, rise) * bobAmount
+    }
+
     // MARK: - One step
 
     /// Advances by one simulation step.
@@ -387,8 +438,31 @@ public nonisolated struct CharacterController: Sendable {
         // into a wall asks for six metres a second and covers none; counting what was asked for is
         // the classic bug where a player standing against a wall marches on the spot.
         let covered = simd_distance(before, SIMD2(feet.x, feet.z))
+
+        // --- The bob's amount: what this gait asks for, reached gradually. Nothing in the air and
+        // nothing in a slide — neither has footfalls, and bobbing through a slide buried it.
+        var wantBob: Float = 0
         if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
-            if !wasMoving { stridePhase = max(stridePhase, tuning.firstStepPhase) }
+            let groundSpeed = covered / dt
+            let gait: Float
+            if crouching {
+                gait = tuning.bobCrouchScale
+            } else {
+                let t = simd_clamp((groundSpeed - tuning.walkSpeed)
+                                   / max(tuning.sprintSpeed - tuning.walkSpeed, 1e-3), 0, 1)
+                gait = 1 + (tuning.bobSprintScale - 1) * t
+            }
+            // Slower than a walk — easing into one, or pressed against a wall — bobs less.
+            let pace = crouching ? tuning.walkSpeed * tuning.crouchedSpeedFraction : tuning.walkSpeed
+            wantBob = gait * min(1, groundSpeed / max(pace, 1e-3))
+        }
+        let ease = min(1, tuning.bobEase * dt)
+        bobAmount += (wantBob - bobAmount) * ease
+        if bobAmount < 1e-4 && wantBob == 0 { bobAmount = 0 }
+        bobCatchUp *= 1 - min(1, tuning.settleRate * dt)
+
+        if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
+            if !wasMoving { setStridePhase(max(stridePhase, tuning.firstStepPhase)) }
             let groundSpeed = covered / dt
             stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, crouching: crouching)
             // **Not a slide**, which is excluded above: a slide is a body skidding, and footsteps at
@@ -476,8 +550,21 @@ public nonisolated struct CharacterController: Sendable {
     ///
     /// Not for a rise under 12 cm in a step, which is a slope rather than a stair, and not if a
     /// footstep has only just sounded, or a tread taken mid-stride would ring twice.
+    ///
+    /// **The head bob would jump with it**, from wherever the stride was to a footfall — up to three
+    /// centimetres in one frame, on every tread. So ``setStridePhase(_:)`` puts the jump into
+    /// ``bobCatchUp``, which eases out at the eye's own settling rate: the head bob follows a step the
+    /// way the eye does.
     private mutating func footOnRise(_ climb: Float) {
-        if climb > 0.12 && stridePhase > CharacterController.stepUpFootfall { stridePhase = 1 }
+        if climb > 0.12 && stridePhase > CharacterController.stepUpFootfall { setStridePhase(1) }
+    }
+
+    /// Moves the stride phase somewhere it did not walk to — a footfall on a step, the first step
+    /// setting off, a landing — **carrying the head bob across the jump** rather than snapping it.
+    private mutating func setStridePhase(_ phase: Float) {
+        let before = rawBob
+        stridePhase = phase
+        bobCatchUp += before - rawBob
     }
 
     /// Every solid the body would overlap, standing at `position`.
@@ -557,7 +644,7 @@ public nonisolated struct CharacterController: Sendable {
                 isGrounded = true
                 groundSolid = solid
                 // Both feet just came down; the next footfall is a whole stride away.
-                stridePhase = 0
+                setStridePhase(0)
             }
         }
         feet.y = next

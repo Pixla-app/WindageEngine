@@ -277,6 +277,15 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     /// Pushing the look stick up looks down.
     public var invertStick = false
 
+    /// How much of the head bob to show, 0…1 — **0 is off**. See ``CharacterController/headBob``.
+    ///
+    /// **An amount rather than a switch, with off at the bottom of it.** Bob is a known cause of
+    /// motion sickness, so off has to exist and be easy to find; but most players who find the full
+    /// bob too much want less of it rather than none.
+    public var headBob: Float = 1 {
+        didSet { headBob = PlayerSettings.clamp(headBob, 0...1, 1) }
+    }
+
     /// Everything the game plays, 0…1.
     public var volume: Float = 0.8 {
         didSet { volume = PlayerSettings.clamp(volume, 0...1, 0.8) }
@@ -309,7 +318,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case bindings, padBindings, mouseSensitivity, stickSensitivity, invertMouse, invertStick
-        case volume, brightness
+        case headBob, volume, brightness
         /// Read, never written: one sensitivity and one invert for both devices, before 0.8.0.
         case lookSensitivity, invertLook
     }
@@ -333,6 +342,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
             (try? c.decodeIfPresent(Float.self, forKey: .stickSensitivity)) ?? sharedSensitivity, range, 1)
         invertMouse = (try? c.decodeIfPresent(Bool.self, forKey: .invertMouse)) ?? sharedInvert
         invertStick = (try? c.decodeIfPresent(Bool.self, forKey: .invertStick)) ?? sharedInvert
+        headBob = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .headBob)) ?? 1, 0...1, 1)
         volume = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .volume)) ?? 0.8, 0...1, 0.8)
         brightness = PlayerSettings.clamp(
             (try? c.decodeIfPresent(Float.self, forKey: .brightness)) ?? 0, PlayerSettings.brightnessRange, 0)
@@ -346,6 +356,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         try c.encode(stickSensitivity, forKey: .stickSensitivity)
         try c.encode(invertMouse, forKey: .invertMouse)
         try c.encode(invertStick, forKey: .invertStick)
+        try c.encode(headBob, forKey: .headBob)
         try c.encode(volume, forKey: .volume)
         try c.encode(brightness, forKey: .brightness)
     }

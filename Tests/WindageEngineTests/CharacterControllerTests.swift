@@ -749,3 +749,146 @@ struct CharacterLandingDipTests {
         }
     }
 }
+
+// MARK: - Head bob
+
+@Suite("Character controller — head bob")
+struct CharacterHeadBobTests {
+
+    /// Steps the body and hands back each step's bob, and whether a foot came down on it.
+    private func samples(_ c: inout CharacterController, seconds: Float, _ input: MovementInput,
+                         jump: Bool = false, crouching: Bool = false,
+                         in world: CharacterController.Surroundings = flat) -> [(bob: SIMD2<Float>, footfall: Bool)] {
+        var out: [(SIMD2<Float>, Bool)] = []
+        for _ in 0..<Int((seconds / step).rounded()) {
+            c.step(yaw: 0, input: input, jump: jump, crouching: crouching, deltaTime: step, in: world)
+            out.append((c.headBob, c.events.contains { if case .stride = $0 { true } else { false } }))
+        }
+        return out
+    }
+
+    private func span(_ values: [Float]) -> Float { (values.max() ?? 0) - (values.min() ?? 0) }
+
+    private func settled(_ input: MovementInput, crouching: Bool = false) -> [(bob: SIMD2<Float>, footfall: Bool)] {
+        var c = CharacterController(feet: .zero)
+        _ = samples(&c, seconds: 1.5, input, crouching: crouching)
+        return samples(&c, seconds: 2, input, crouching: crouching)
+    }
+
+    @Test("Standing still does not bob")
+    func stillIsStill() {
+        var c = CharacterController(feet: .zero)
+        let bobs = samples(&c, seconds: 1, MovementInput())
+        #expect(bobs.allSatisfy { $0.bob == .zero })
+    }
+
+    @Test("A walk bobs by the tuned amounts, up and down and side to side")
+    func walkAmplitude() {
+        let t = CharacterController.Tuning()
+        let bobs = settled(MovementInput(forward: 1))
+        let rise = span(bobs.map(\.bob.y)), sway = span(bobs.map(\.bob.x))
+        #expect(abs(rise - 2 * t.bobRise) < 0.1 * 2 * t.bobRise, "rise \(rise)")
+        #expect(abs(sway - 2 * t.bobSway) < 0.1 * 2 * t.bobSway, "sway \(sway)")
+    }
+
+    /// **The head is lowest as the foot lands** — which is what ties the bob to the footsteps a
+    /// player hears. A bob out of phase with them reads as the camera wobbling on its own.
+    @Test("The head is at its lowest as each foot comes down")
+    func lowestAtFootfall() {
+        let t = CharacterController.Tuning()
+        let footfalls = settled(MovementInput(forward: 1)).filter(\.footfall)
+        #expect(footfalls.count >= 3)
+        for f in footfalls { #expect(f.bob.y < -0.9 * t.bobRise, "a foot landed with the head at \(f.bob.y)") }
+    }
+
+    /// Two dips for every sway: the sway leans one way for a step and the other way for the next.
+    @Test("The sway changes side with every step: a figure-eight, not a loop")
+    func swayAlternates() {
+        let bobs = settled(MovementInput(forward: 1))
+        var sides: [Float] = []
+        var widest: Float = 0
+        for sample in bobs {
+            if sample.footfall {
+                if widest != 0 { sides.append(widest) }
+                widest = 0
+            } else if abs(sample.bob.x) > abs(widest) {
+                widest = sample.bob.x
+            }
+        }
+        #expect(sides.count >= 3)
+        for (a, b) in zip(sides, sides.dropFirst()) { #expect(a * b < 0, "two steps leaned the same way: \(sides)") }
+    }
+
+    @Test("A sprint bobs more than a walk, and a crouch less")
+    func gaitScales() {
+        let t = CharacterController.Tuning()
+        let walk = span(settled(MovementInput(forward: 1)).map(\.bob.y))
+        let sprint = span(settled(MovementInput(forward: 1, sprint: true)).map(\.bob.y))
+        let crouch = span(settled(MovementInput(forward: 1), crouching: true).map(\.bob.y))
+        #expect(abs(sprint / walk - t.bobSprintScale) < 0.1, "sprint \(sprint) against walk \(walk)")
+        #expect(abs(crouch / walk - t.bobCrouchScale) < 0.1, "crouch \(crouch) against walk \(walk)")
+    }
+
+    /// **Eased out, not switched off** — stopping mid-stride must not park the view off centre and
+    /// then snap it back.
+    @Test("Stopping lets the bob die away smoothly")
+    func stopsSmoothly() {
+        var c = CharacterController(feet: .zero)
+        _ = samples(&c, seconds: 2, MovementInput(forward: 1))
+        var last = c.headBob, biggestJump: Float = 0
+        for sample in samples(&c, seconds: 0.8, MovementInput()) {
+            biggestJump = max(biggestJump, simd_length(sample.bob - last))
+            last = sample.bob
+        }
+        #expect(simd_length(c.headBob) < 0.001, "still bobbing \(c.headBob) after stopping")
+        #expect(biggestJump < 0.002, "the bob jumped \(biggestJump) m in one step")
+    }
+
+    @Test("Pushing into a wall does not bob")
+    func wallDoesNotBob() {
+        var c = CharacterController(feet: .zero)
+        let wall = BoundingBox(minimum: SIMD3(-3, 0, -2), maximum: SIMD3(3, 3, -1))
+        let world = CharacterController.Surroundings(solids: [wall])
+        _ = samples(&c, seconds: 1.5, MovementInput(forward: 1), in: world)
+        let bobs = samples(&c, seconds: 1, MovementInput(forward: 1), in: world)
+        #expect(bobs.allSatisfy { simd_length($0.bob) < 0.0005 })
+    }
+
+    /// Neither the air nor a slide has footfalls, so neither has a bob.
+    @Test("No bob in the air or in a slide")
+    func airAndSlide() {
+        let t = CharacterController.Tuning()
+        var c = CharacterController(feet: .zero)
+        _ = samples(&c, seconds: 1.5, MovementInput(forward: 1))
+        let flight = samples(&c, seconds: 0.5, MovementInput(forward: 1), jump: true)
+        #expect(simd_length(flight.last!.bob) < 0.1 * t.bobRise, "bobbing in mid-air: \(flight.last!.bob)")
+
+        var s = CharacterController(feet: .zero)
+        _ = samples(&s, seconds: 1.5, MovementInput(forward: 1, sprint: true))
+        let slide = samples(&s, seconds: 0.6, MovementInput(forward: 1, sprint: true), crouching: true)
+        #expect(s.isSliding)
+        #expect(simd_length(slide.last!.bob) < 0.1 * t.bobRise, "bobbing through a slide: \(slide.last!.bob)")
+    }
+
+    /// **The case that needed ``CharacterController/headBob``'s catch-up.** A step up jumps the stride
+    /// phase to a footfall, and a bob read straight off the phase jumped with it — every tread.
+    @Test("Climbing stairs does not jolt the bob")
+    func stairsDoNotJolt() {
+        var treads: [BoundingBox] = []
+        for i in 0..<4 {
+            let near = -Float(i + 1), far = -Float(i + 2), top = 0.3 * Float(i + 1)
+            treads.append(BoundingBox(minimum: SIMD3<Float>(-3, 0, far), maximum: SIMD3<Float>(3, top, near)))
+        }
+        let landing = BoundingBox(minimum: SIMD3(-3, 0, -12), maximum: SIMD3(3, 1.2, -5))
+        let world = CharacterController.Surroundings(solids: treads + [landing])
+        var c = CharacterController(feet: SIMD3(0, 0, 6))
+        _ = samples(&c, seconds: 1.2, MovementInput(forward: 1), in: flat)   // up to speed on the flat
+        var last = c.headBob, biggestJump: Float = 0
+        for sample in samples(&c, seconds: 1.5, MovementInput(forward: 1), in: world) {
+            biggestJump = max(biggestJump, simd_length(sample.bob - last))
+            last = sample.bob
+        }
+        #expect(abs(c.feet.y - 1.2) < 1e-4, "did not climb the stairs")
+        #expect(biggestJump < 0.004, "the bob jumped \(biggestJump) m in one step on the stairs")
+    }
+}

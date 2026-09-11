@@ -164,6 +164,19 @@ struct PlayerSettingsTests {
         #expect(!s.invertMouse && !s.invertStick)
     }
 
+    /// Head bob arrived in 0.8.1; a file from before it has none, and must not lose everything else.
+    @Test("Head bob is on by default, off at zero, and clamped")
+    func headBob() throws {
+        #expect(PlayerSettings().headBob == 1)
+        let older = try decode(PlayerSettings.self, #"{ "mouseSensitivity": 2 }"#)
+        #expect(older.headBob == 1 && older.mouseSensitivity == 2)
+        #expect(try decode(PlayerSettings.self, #"{ "headBob": 0 }"#).headBob == 0)
+        #expect(try decode(PlayerSettings.self, #"{ "headBob": 3 }"#).headBob == 1)
+        var s = PlayerSettings()
+        s.headBob = -1
+        #expect(s.headBob == 0)
+    }
+
     @Test("An empty file is the defaults, not a failure")
     func emptyFile() throws {
         #expect(try decode(PlayerSettings.self, "{}") == PlayerSettings())

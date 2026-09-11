@@ -226,7 +226,7 @@ final class SampleGame: GameLoop {
             case mouseSensitivity, invertMouse
             /// The stick's own look settings — shown only while a pad is connected, beside its buttons.
             case stickSensitivity, invertStick
-            case volume, brightness, reset
+            case headBob, volume, brightness, reset
         }
 
         /// **Rebuilt every frame from whether a pad is connected**, so picking one up mid-screen adds
@@ -234,7 +234,7 @@ final class SampleGame: GameLoop {
         static func rows(withPad pad: Bool) -> [Row] {
             InputBindings.Action.allCases.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
                 + (pad ? PadBindings.actions.map { .pad($0) } + [.stickSensitivity, .invertStick] : [])
-                + [.volume, .brightness, .reset]
+                + [.headBob, .volume, .brightness, .reset]
         }
 
         var rows = SettingsMenu.rows(withPad: false)
@@ -1708,6 +1708,7 @@ final class SampleGame: GameLoop {
             case .invertMouse: ("Invert mouse", settings.invertMouse ? "on" : "off")
             case .stickSensitivity: ("Stick sensitivity", String(format: "%.1f", settings.stickSensitivity))
             case .invertStick: ("Invert stick", settings.invertStick ? "on" : "off")
+            case .headBob: ("Head bob", settings.headBob == 0 ? "off" : "\(Int((settings.headBob * 100).rounded()))%")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
             case .reset: ("Reset to defaults", "")
@@ -1828,7 +1829,7 @@ final class SampleGame: GameLoop {
             case .bind, .pad:
                 current.capturing = current.row
                 current.message = nil
-            case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .volume, .brightness:
+            case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .headBob, .volume, .brightness:
                 adjust(current.row, by: 1)
             case .reset:
                 settings = PlayerSettings()
@@ -1881,6 +1882,11 @@ final class SampleGame: GameLoop {
         case .invertMouse: settings.invertMouse.toggle()
         case .stickSensitivity: settings.stickSensitivity = Self.tenths(settings.stickSensitivity + 0.1 * step)
         case .invertStick: settings.invertStick.toggle()
+        // Quarters, so off is two presses from half and four from full — and activating it from
+        // full wraps to off, which is the press a player looking for "off" makes.
+        case .headBob:
+            let next = settings.headBob + 0.25 * step
+            settings.headBob = next > 1.001 ? 0 : (next < -0.001 ? 1 : (next * 4).rounded() / 4)
         case .volume: settings.volume = Self.tenths(settings.volume + 0.1 * step)
         case .brightness: settings.brightness += 0.25 * step
         case .bind, .pad, .reset: return
@@ -1917,6 +1923,15 @@ final class SampleGame: GameLoop {
 
     /// What the scripted walk reports for the segment in progress: footsteps, and landings.
     private var tally = (steps: 0, surfaces: Set<String>(), landings: [String](), deepestDip: Float(0))
+    /// The lowest and highest head bob shown during the segment in progress, **after the player's
+    /// setting** — what reached the screen, not what the body offered.
+    private var bobSeen = (low: SIMD2<Float>(repeating: .greatestFiniteMagnitude),
+                           high: SIMD2<Float>(repeating: -.greatestFiniteMagnitude))
+
+    /// The head bob as shown: the body's, times the player's setting.
+    private var shownBob: SIMD2<Float> { body.headBob * settings.headBob }
+    /// Last step's, so a frame between two steps shows a bob between them — like the camera.
+    private var previousBob = SIMD2<Float>.zero
 
     /// Plays whatever the body just did.
     ///
@@ -2059,8 +2074,14 @@ final class SampleGame: GameLoop {
                                         tally.deepestDip * body.tuning.landingDipMax * 180 / .pi)
                     }
                     print("WindageSample:     \(heard)")
+                    let bob = bobSeen.high - bobSeen.low
+                    print(bob.y.isFinite && simd_max(bob.x, bob.y) > 0.0005
+                        ? String(format: "WindageSample:     head bob %.1f cm up and down, %.1f cm side to side",
+                                 bob.y * 100, bob.x * 100)
+                        : "WindageSample:     no head bob")
                 }
                 tally = (0, [], [], 0)
+                bobSeen = (SIMD2(repeating: .greatestFiniteMagnitude), SIMD2(repeating: -.greatestFiniteMagnitude))
             }
         }
     }
@@ -2115,6 +2136,7 @@ final class SampleGame: GameLoop {
 
     func step(deltaTime: Float) {
         previousCamera = camera
+        previousBob = shownBob
         // **First, and whatever state the run is in** — a script that opens the settings screen
         // pauses the run, and one that only advanced while playing would wait for ever.
         runScript(deltaTime)
@@ -2197,6 +2219,8 @@ final class SampleGame: GameLoop {
                 camera.position = body.eye
                 playFootfalls()
                 tally.deepestDip = max(tally.deepestDip, body.landingCompression)
+                bobSeen.low = simd_min(bobSeen.low, shownBob)
+                bobSeen.high = simd_max(bobSeen.high, shownBob)
                 // **Dust on a landing that was a fall**, not on every step down a stair: 4 m/s is a
                 // drop of about 40 cm at this gravity, which is where a landing starts to be felt.
                 if wasAirborne && body.isGrounded && fallSpeed > 4 {
@@ -2280,6 +2304,9 @@ final class SampleGame: GameLoop {
         // Both kicks are the view's, and both are the body's to report: the slide's, and the head
         // nodding with the legs on a landing. The landing's *drop* is already in `body.eye`.
         view.pitch += body.slideCameraDip + body.landingCameraDip
+        // The head bob, likewise the view's: across the view and up, never into the aim.
+        let bob = previousBob + (shownBob - previousBob) * interpolation
+        view.position += view.right * bob.x + SIMD3(0, bob.y, 0)
         return view
     }
 
