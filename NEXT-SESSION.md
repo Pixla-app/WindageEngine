@@ -60,9 +60,9 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
-## State — 2026-09-10
+## State — 2026-09-11
 
-489 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+493 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,33 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a mouse sensitivity and a stick sensitivity (0.8.0)
+
+**`PlayerSettings.mouseSensitivity`, `stickSensitivity`, `invertMouse`, `invertStick`**, with
+`mouseLookScale` and `stickLookScale` in front of the camera's two look paths. **Breaking**:
+`lookSensitivity`, `invertLook` and `lookScale` are gone — no game used them (checked). A file from
+before 0.8.0 loads with its one setting on both devices.
+
+**Proved by rates in the running sample**, three runs with the same scripted turns
+(`pad.lookRight:0.5`, `pad.lookUp:0.25`, `mousex:500`, `mousey:-200`):
+
+| settings | stick right | stick up | mouse right | mouse up |
+|---|---|---|---|---|
+| defaults | 91.67° | 45.84° | 63.03° | 25.21° |
+| mouse 2.0, stick 0.5, stick inverted — **set through the settings screen from the pad** | 45.84° | −22.92° | 126.05° | 50.42° |
+| an old-style file: `lookSensitivity` 1.5, `invertLook` on | 137.51° | −68.75° | 94.54° | −37.82° |
+
+Each is the constant times the setting, to the hundredth. The screen shows the mouse rows beside the
+keys and the stick rows beside the pad's buttons, only while a pad is connected.
+
+**It found a scripted-walk bug**: a segment could be held one step long, because sixty steps of
+1/120 s add to a hair under 0.5 in a Float. The first stick turn came out 1.53° — one step — over.
+Half a step of slack now.
+
+**Every game checked, per the rule**: none uses `PlayerSettings`, and all five build and pass against
+0.8.0 — the four rigs (5, 2, 3, 10 tests) and the game with a window (306 + 493, Debug build, run and
+looked at; it renders as before).
 
 ## Done 2026-09-11 — lights that belong to a placement (0.7.0, 0.7.1)
 
@@ -196,7 +223,8 @@ through `AudioEngine` without error, and measure as intended.
 
 **`KeyCode`, `InputBindings`, `PlayerSettings`**, `InputState.bindings` and `flagsChanged`, and
 `AudioEngine.masterVolume`. The sample has a settings screen on **O** — eight keys, look sensitivity,
-invert look, volume, brightness, reset — saved the instant anything changes.
+invert look, volume, brightness, reset — saved the instant anything changes. *(Look sensitivity and
+invert are per device since 0.8.0.)*
 
 **It found that Shift had never worked in the sample.** macOS sends modifiers as a flags change, not a
 key press, and the window never listened. Modifiers are keys now, read by their device-specific bit;
@@ -941,21 +969,23 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Separate mouse and stick sensitivity.** The settings have one look sensitivity multiplying
-   both, and a mouse and a stick want very different ones — a player who uses both has to choose
-   which to break. Separate sensitivities, and invert per device. **Proved in the sample by** a
-   scripted stick turn and a mouse turn giving the rates each setting says.
-
-2. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
+1. **Head bob, and a setting to turn it off.** Walking is flat: the eye glides at a fixed height
    however fast the feet are going. The controller has a stride phase now, and a small bob locked to
    it is what makes a walk read as one. **An off switch in the settings from the start**, because bob
    is a known cause of motion sickness. **Proved in the sample by** the scripted walk logging the bob's
    height walking, sprinting and crouched, and logging none with the setting off.
 
-3. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
+2. **Placing a lamp from the editor.** A placement can carry a light now, and the editor can move one
    but cannot give one: a new brazier dropped in from the editor arrives cold. Adding, removing and
    nudging a selection's lamp — its height and brightness — from the editor's keys. **Proved in the
    sample by** a scripted edit that adds a lamp to a crate and the log reporting it in the world.
+
+3. **A stick dead zone the player sets.** `StickResponse.lookDeadzone` and `moveDeadzone` are
+   constants, and a worn stick drifts past them: the view creeps with nobody touching it, and the only
+   cure a player has is a new controller. A dead zone per stick in `PlayerSettings`, on the settings
+   screen beside the stick's sensitivity. **Proved in the sample by** the scripted walk holding the
+   stick at part deflection (`pad.lookRight@0.1`) — no turn below the setting, a turn that starts from
+   zero just above it, and full speed still at full deflection.
 
 ## Parked — not next, and why
 

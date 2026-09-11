@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.8.0] — 2026-09-11
+
+**The mouse and the stick have their own sensitivity and their own invert.** A mouse is a displacement
+and a stick is a rate; a player's setting for one says nothing about the other, and one multiplier made
+a player who uses both leave one of them wrong.
+
+**Breaking**: `PlayerSettings.lookSensitivity`, `invertLook` and `lookScale` are gone.
+
+### Changed
+
+- **`PlayerSettings.mouseSensitivity` and `stickSensitivity`**, each 0.1…5, and **`invertMouse` and
+  `invertStick`**. `mouseLookScale` goes in front of `Camera.look(mouseDelta:)`, `stickLookScale` in
+  front of `Camera.turn(rate:deltaTime:)`.
+- **A settings file from before 0.8.0 still loads**: its `lookSensitivity` and `invertLook` go to both
+  devices, which is what the player had. They are read, never written. A device's own key wins where
+  a file has both.
+
+### Upgrading
+
+Replace `settings.lookScale` with `settings.mouseLookScale` where a mouse delta is scaled and
+`settings.stickLookScale` where a stick rate is. A settings screen with one look row wants two, or four
+with the inverts.
+
+### In the sample
+
+- **The settings screen has Mouse sensitivity and Invert mouse beside the keys, and Stick sensitivity
+  and Invert stick beside the controller's buttons**, shown only while a pad is connected.
+- **The scripted walk can move the look stick and the mouse** — `pad.lookRight:0.5`, `mousex:500` — and
+  prints how far the view turned. Every rate was checked against the constants: 91.67° for half a
+  second of full stick, 63.03° for 500 points of mouse, and the same scaled by each setting.
+- **Fixed: a scripted segment could be held one step long.** Its elapsed time is a sum of step lengths,
+  and sixty steps of 1/120 s add to a hair under 0.5 in a Float. Found when a half-second stick turn came
+  out 1.53° — one step's worth — over.
+
 ## [0.7.1] — 2026-09-11
 
 **Lights that belong to a placement.** A placement can carry a lamp, in its own space; move, turn or

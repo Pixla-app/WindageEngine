@@ -249,14 +249,33 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     /// Which controller button does what. See ``PadBindings``.
     public var padBindings = PadBindings.standard
 
-    /// A multiplier on the look speed, mouse and stick alike. 1 is the engine's tuning.
-    public var lookSensitivity: Float = 1 {
-        didSet { lookSensitivity = PlayerSettings.clamp(lookSensitivity, PlayerSettings.sensitivityRange, 1) }
+    /// A multiplier on how far a mouse movement turns the view. 1 is the engine's tuning.
+    ///
+    /// ### Two sensitivities, because one number cannot suit both
+    ///
+    /// **A mouse is a displacement and a stick is a rate** (see ``Camera/look(mouseDelta:)`` and
+    /// ``Camera/turn(rate:deltaTime:)``), and a player's comfortable setting for one says nothing
+    /// about the other. With one multiplier a player who uses both — a pad on the sofa, a mouse at
+    /// the desk — had to choose which device to leave wrong. Every shooter on a console and a PC
+    /// separates them for that reason.
+    public var mouseSensitivity: Float = 1 {
+        didSet { mouseSensitivity = PlayerSettings.clamp(mouseSensitivity, PlayerSettings.sensitivityRange, 1) }
+    }
+
+    /// A multiplier on how fast a held stick turns the view. 1 is the engine's tuning.
+    public var stickSensitivity: Float = 1 {
+        didSet { stickSensitivity = PlayerSettings.clamp(stickSensitivity, PlayerSettings.sensitivityRange, 1) }
     }
 
     /// Pushing the mouse forward looks down. **A setting rather than a preference someone can argue
     /// out of the game**, because the players who want it cannot play without it.
-    public var invertLook = false
+    ///
+    /// **Per device**, because the convention differs by device: flight-trained players often invert
+    /// a stick and not a mouse, and a single switch made them pick one to get wrong.
+    public var invertMouse = false
+
+    /// Pushing the look stick up looks down.
+    public var invertStick = false
 
     /// Everything the game plays, 0…1.
     public var volume: Float = 0.8 {
@@ -274,9 +293,14 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     public init() {}
 
-    /// What to multiply a look delta by — mouse or stick — for these settings.
-    public var lookScale: SIMD2<Float> {
-        SIMD2(lookSensitivity, invertLook ? -lookSensitivity : lookSensitivity)
+    /// What to multiply a mouse delta by before ``Camera/look(mouseDelta:)``.
+    public var mouseLookScale: SIMD2<Float> {
+        SIMD2(mouseSensitivity, invertMouse ? -mouseSensitivity : mouseSensitivity)
+    }
+
+    /// What to multiply a stick's look rate by before ``Camera/turn(rate:deltaTime:)``.
+    public var stickLookScale: SIMD2<Float> {
+        SIMD2(stickSensitivity, invertStick ? -stickSensitivity : stickSensitivity)
     }
 
     private static func clamp(_ value: Float, _ range: ClosedRange<Float>, _ fallback: Float) -> Float {
@@ -284,18 +308,31 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case bindings, padBindings, lookSensitivity, invertLook, volume, brightness
+        case bindings, padBindings, mouseSensitivity, stickSensitivity, invertMouse, invertStick
+        case volume, brightness
+        /// Read, never written: one sensitivity and one invert for both devices, before 0.8.0.
+        case lookSensitivity, invertLook
     }
 
     /// **Every field optional**, for the reason ``InputBindings`` gives: a settings file from an
     /// older build must load into a newer one with everything it did say intact.
+    ///
+    /// **A file from before 0.8.0 has one sensitivity and one invert**, and both devices inherit
+    /// them — that is what the player had, on both, the last time they played. A device's own key
+    /// wins where a file has both.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bindings = (try? c.decodeIfPresent(InputBindings.self, forKey: .bindings)) ?? .standard
         padBindings = (try? c.decodeIfPresent(PadBindings.self, forKey: .padBindings)) ?? .standard
-        invertLook = (try? c.decodeIfPresent(Bool.self, forKey: .invertLook)) ?? false
-        lookSensitivity = PlayerSettings.clamp(
-            (try? c.decodeIfPresent(Float.self, forKey: .lookSensitivity)) ?? 1, PlayerSettings.sensitivityRange, 1)
+        let range = PlayerSettings.sensitivityRange
+        let sharedSensitivity = (try? c.decodeIfPresent(Float.self, forKey: .lookSensitivity)) ?? 1
+        let sharedInvert = (try? c.decodeIfPresent(Bool.self, forKey: .invertLook)) ?? false
+        mouseSensitivity = PlayerSettings.clamp(
+            (try? c.decodeIfPresent(Float.self, forKey: .mouseSensitivity)) ?? sharedSensitivity, range, 1)
+        stickSensitivity = PlayerSettings.clamp(
+            (try? c.decodeIfPresent(Float.self, forKey: .stickSensitivity)) ?? sharedSensitivity, range, 1)
+        invertMouse = (try? c.decodeIfPresent(Bool.self, forKey: .invertMouse)) ?? sharedInvert
+        invertStick = (try? c.decodeIfPresent(Bool.self, forKey: .invertStick)) ?? sharedInvert
         volume = PlayerSettings.clamp((try? c.decodeIfPresent(Float.self, forKey: .volume)) ?? 0.8, 0...1, 0.8)
         brightness = PlayerSettings.clamp(
             (try? c.decodeIfPresent(Float.self, forKey: .brightness)) ?? 0, PlayerSettings.brightnessRange, 0)
@@ -305,8 +342,10 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(bindings, forKey: .bindings)
         try c.encode(padBindings, forKey: .padBindings)
-        try c.encode(lookSensitivity, forKey: .lookSensitivity)
-        try c.encode(invertLook, forKey: .invertLook)
+        try c.encode(mouseSensitivity, forKey: .mouseSensitivity)
+        try c.encode(stickSensitivity, forKey: .stickSensitivity)
+        try c.encode(invertMouse, forKey: .invertMouse)
+        try c.encode(invertStick, forKey: .invertStick)
         try c.encode(volume, forKey: .volume)
         try c.encode(brightness, forKey: .brightness)
     }

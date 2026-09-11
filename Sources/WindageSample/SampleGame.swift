@@ -116,7 +116,10 @@ final class SampleGame: GameLoop {
             let seconds: Float
             var yaw: Float? = nil
             var pitch: Float? = nil
-            var isLook: Bool { yaw != nil || pitch != nil }
+            /// A mouse movement, in points, made the moment the segment begins — through the same
+            /// path a real mouse's movement takes.
+            var mouse: SIMD2<Float>? = nil
+            var isLook: Bool { yaw != nil || pitch != nil || mouse != nil }
         }
         enum Event {
             case begin(Segment)
@@ -145,6 +148,13 @@ final class SampleGame: GameLoop {
                     parsed.append(parts[0] == "yaw"
                         ? Segment(label: String(token), keys: [], seconds: 0, yaw: radians)
                         : Segment(label: String(token), keys: [], seconds: 0, pitch: radians))
+                    continue
+                }
+                // `mousex:` and `mousey:` take points, and no time: a mouse movement is a
+                // displacement, not something held.
+                if parts[0] == "mousex" || parts[0] == "mousey" {
+                    let delta = parts[0] == "mousex" ? SIMD2(number, 0) : SIMD2(0, number)
+                    parsed.append(Segment(label: String(token), keys: [], seconds: 0, mouse: delta))
                     continue
                 }
                 var keys: [KeyCode] = []
@@ -187,7 +197,10 @@ final class SampleGame: GameLoop {
                     events.append(.begin(segment))
                 }
                 peak = max(peak, body.feet.y)
-                guard elapsed >= segment.seconds else {
+                // **Half a step of slack**, because `elapsed` is a sum of step lengths: sixty steps of
+                // 1/120 s add to a hair under 0.5 in a Float, and a half-second segment held for a
+                // sixty-first step — found when a scripted stick turn came out one step's worth long.
+                guard elapsed >= segment.seconds - seconds / 2 else {
                     elapsed += seconds
                     break
                 }
@@ -210,15 +223,18 @@ final class SampleGame: GameLoop {
             case bind(InputBindings.Action)
             /// A controller binding — shown only while a pad is connected.
             case pad(InputBindings.Action)
-            case sensitivity, invert, volume, brightness, reset
+            case mouseSensitivity, invertMouse
+            /// The stick's own look settings — shown only while a pad is connected, beside its buttons.
+            case stickSensitivity, invertStick
+            case volume, brightness, reset
         }
 
         /// **Rebuilt every frame from whether a pad is connected**, so picking one up mid-screen adds
         /// its rows, and putting it down takes them away rather than leaving rows that do nothing.
         static func rows(withPad pad: Bool) -> [Row] {
-            InputBindings.Action.allCases.map { .bind($0) }
-                + (pad ? PadBindings.actions.map { .pad($0) } : [])
-                + [.sensitivity, .invert, .volume, .brightness, .reset]
+            InputBindings.Action.allCases.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
+                + (pad ? PadBindings.actions.map { .pad($0) } + [.stickSensitivity, .invertStick] : [])
+                + [.volume, .brightness, .reset]
         }
 
         var rows = SettingsMenu.rows(withPad: false)
@@ -1688,8 +1704,10 @@ final class SampleGame: GameLoop {
             case .pad(let action):
                 ("Pad " + action.title.lowercased(), menu.capturing == row
                     ? "press a button..." : (settings.padBindings[action]?.name(on: input.gamepad) ?? ""))
-            case .sensitivity: ("Look sensitivity", String(format: "%.1f", settings.lookSensitivity))
-            case .invert: ("Invert look", settings.invertLook ? "on" : "off")
+            case .mouseSensitivity: ("Mouse sensitivity", String(format: "%.1f", settings.mouseSensitivity))
+            case .invertMouse: ("Invert mouse", settings.invertMouse ? "on" : "off")
+            case .stickSensitivity: ("Stick sensitivity", String(format: "%.1f", settings.stickSensitivity))
+            case .invertStick: ("Invert stick", settings.invertStick ? "on" : "off")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
             case .reset: ("Reset to defaults", "")
@@ -1810,7 +1828,7 @@ final class SampleGame: GameLoop {
             case .bind, .pad:
                 current.capturing = current.row
                 current.message = nil
-            case .invert, .sensitivity, .volume, .brightness:
+            case .mouseSensitivity, .invertMouse, .stickSensitivity, .invertStick, .volume, .brightness:
                 adjust(current.row, by: 1)
             case .reset:
                 settings = PlayerSettings()
@@ -1853,12 +1871,17 @@ final class SampleGame: GameLoop {
         saveAndApplySettings()
     }
 
+    /// Rounded to a tenth, so eleven presses of +0.1 read 1.1 and not 1.0999999.
+    private static func tenths(_ value: Float) -> Float { (value * 10).rounded() / 10 }
+
     private func adjust(_ row: SettingsMenu.Row, by steps: Int) {
         let step = Float(steps)
         switch row {
-        case .sensitivity: settings.lookSensitivity = ((settings.lookSensitivity + 0.1 * step) * 10).rounded() / 10
-        case .invert: settings.invertLook.toggle()
-        case .volume: settings.volume = ((settings.volume + 0.1 * step) * 10).rounded() / 10
+        case .mouseSensitivity: settings.mouseSensitivity = Self.tenths(settings.mouseSensitivity + 0.1 * step)
+        case .invertMouse: settings.invertMouse.toggle()
+        case .stickSensitivity: settings.stickSensitivity = Self.tenths(settings.stickSensitivity + 0.1 * step)
+        case .invertStick: settings.invertStick.toggle()
+        case .volume: settings.volume = Self.tenths(settings.volume + 0.1 * step)
         case .brightness: settings.brightness += 0.25 * step
         case .bind, .pad, .reset: return
         }
@@ -1949,6 +1972,11 @@ final class SampleGame: GameLoop {
         case "down": pad.dpad.setValueForXAxis(0, yAxis: -value)
         case "left": pad.dpad.setValueForXAxis(-value, yAxis: 0)
         case "right": pad.dpad.setValueForXAxis(value, yAxis: 0)
+        // The look stick, held at full deflection — the right thumbstick, by its axes as the d-pad is.
+        case "lookUp": pad.rightThumbstick.setValueForXAxis(0, yAxis: value)
+        case "lookDown": pad.rightThumbstick.setValueForXAxis(0, yAxis: -value)
+        case "lookLeft": pad.rightThumbstick.setValueForXAxis(-value, yAxis: 0)
+        case "lookRight": pad.rightThumbstick.setValueForXAxis(value, yAxis: 0)
         default: scriptPadElement(name)?.setValue(value)
         }
     }
@@ -1971,6 +1999,23 @@ final class SampleGame: GameLoop {
         }
     }
 
+    /// How far the view has turned since the current script segment began — right and up, in
+    /// radians — for the line a segment prints when it ends.
+    private var viewTurned = SIMD2<Float>.zero
+
+    /// A mouse movement, through the mouse's own sensitivity and invert. **The one place a mouse turns
+    /// the view**, whether the movement came from the hand or from a script.
+    private func lookWithMouse(_ delta: SIMD2<Float>) {
+        let before = camera
+        camera.look(mouseDelta: delta * settings.mouseLookScale)
+        noteTurn(from: before)
+    }
+
+    private func noteTurn(from before: Camera) {
+        let yaw = camera.yaw - before.yaw
+        viewTurned += SIMD2(-atan2(sin(yaw), cos(yaw)), camera.pitch - before.pitch)
+    }
+
     /// Plays the scripted walk's keys this step. See `ScriptedWalk`.
     private func runScript(_ deltaTime: Float) {
         guard scriptedWalk?.isRunning == true else { return }
@@ -1981,8 +2026,10 @@ final class SampleGame: GameLoop {
         for event in scriptedWalk!.advance(by: deltaTime, body: body) {
             switch event {
             case .begin(let segment):
+                viewTurned = .zero
                 if let yaw = segment.yaw { camera.yaw = yaw }
                 if let pitch = segment.pitch { camera.pitch = pitch }
+                if let mouse = segment.mouse { lookWithMouse(mouse) }
                 for key in segment.keys {
                     if let flag = key.modifierFlag {
                         modifiersChanged(key.rawValue, flags: flag)
@@ -1997,6 +2044,10 @@ final class SampleGame: GameLoop {
                     if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
                 }
                 for name in segment.pads { setScriptPad(name, down: false) }
+                if simd_length(viewTurned) > 1e-5 {
+                    print(String(format: "WindageSample: look '%@' → view turned %.2f° right, %.2f° up",
+                                 segment.label, viewTurned.x * 180 / .pi, viewTurned.y * 180 / .pi))
+                }
                 if let report {
                     print(report)
                     var heard = tally.steps == 1 ? "1 footstep" : "\(tally.steps) footsteps"
@@ -2059,7 +2110,7 @@ final class SampleGame: GameLoop {
         // **A scripted walk holds its heading.** Otherwise whatever the mouse is doing over the
         // window steers it, and the same script ends somewhere different each time — which was the
         // first thing it did.
-        if scriptedWalk?.isRunning != true { camera.look(mouseDelta: look * settings.lookScale) }
+        if scriptedWalk?.isRunning != true { lookWithMouse(look) }
     }
 
     func step(deltaTime: Float) {
@@ -2067,7 +2118,9 @@ final class SampleGame: GameLoop {
         // **First, and whatever state the run is in** — a script that opens the settings screen
         // pauses the run, and one that only advanced while playing would wait for ever.
         runScript(deltaTime)
-        camera.turn(rate: input.lookRate * settings.lookScale, deltaTime: deltaTime)
+        let before = camera
+        camera.turn(rate: input.lookRate * settings.stickLookScale, deltaTime: deltaTime)
+        noteTurn(from: before)
         // **A pause is "do not advance", not "stop the loop".** The frame loop keeps running, the
         // scene still draws and the window still resizes — which is why pausing is a game's decision
         // and not something the engine has to provide.

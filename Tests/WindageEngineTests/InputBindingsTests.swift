@@ -160,7 +160,8 @@ struct PlayerSettingsTests {
     func olderFile() throws {
         let s = try decode(PlayerSettings.self, #"{ "bindings": { "forward": "I" } }"#)
         #expect(s.bindings[.forward] == key("I"))
-        #expect(s.lookSensitivity == 1 && s.volume == 0.8 && s.brightness == 0 && !s.invertLook)
+        #expect(s.mouseSensitivity == 1 && s.stickSensitivity == 1 && s.volume == 0.8 && s.brightness == 0)
+        #expect(!s.invertMouse && !s.invertStick)
     }
 
     @Test("An empty file is the defaults, not a failure")
@@ -170,32 +171,87 @@ struct PlayerSettingsTests {
 
     @Test("A wrong type in one field costs that field")
     func wrongType() throws {
-        let s = try decode(PlayerSettings.self, #"{ "volume": "loud", "invertLook": true }"#)
+        let s = try decode(PlayerSettings.self, #"{ "volume": "loud", "invertStick": true }"#)
         #expect(s.volume == 0.8)
-        #expect(s.invertLook)
+        #expect(s.invertStick)
     }
 
     @Test("Values outside their range are clamped, from a file and when set")
     func clamped() throws {
-        let s = try decode(PlayerSettings.self, #"{ "volume": 7, "lookSensitivity": 0, "brightness": -40 }"#)
+        let s = try decode(PlayerSettings.self,
+                           #"{ "volume": 7, "mouseSensitivity": 0, "stickSensitivity": 80, "brightness": -40 }"#)
         #expect(s.volume == 1)
-        #expect(s.lookSensitivity == PlayerSettings.sensitivityRange.lowerBound)
+        #expect(s.mouseSensitivity == PlayerSettings.sensitivityRange.lowerBound)
+        #expect(s.stickSensitivity == PlayerSettings.sensitivityRange.upperBound)
         #expect(s.brightness == PlayerSettings.brightnessRange.lowerBound)
 
         var t = PlayerSettings()
         t.volume = -3
-        t.lookSensitivity = 99
+        t.mouseSensitivity = 99
+        t.stickSensitivity = .nan
         #expect(t.volume == 0)
-        #expect(t.lookSensitivity == PlayerSettings.sensitivityRange.upperBound)
+        #expect(t.mouseSensitivity == PlayerSettings.sensitivityRange.upperBound)
+        #expect(t.stickSensitivity == 1, "a NaN should fall back to the default, not poison the turn")
     }
 
-    @Test("Inverting look flips the vertical and nothing else")
-    func invert() {
+    /// **The point of the change**: one device's setting must not move the other's.
+    @Test("The mouse and the stick each have their own sensitivity and invert")
+    func perDevice() {
         var s = PlayerSettings()
-        s.lookSensitivity = 2
-        #expect(s.lookScale == SIMD2(2, 2))
-        s.invertLook = true
-        #expect(s.lookScale == SIMD2(2, -2))
+        s.mouseSensitivity = 2
+        #expect(s.mouseLookScale == SIMD2(2, 2))
+        #expect(s.stickLookScale == SIMD2(1, 1), "the mouse's sensitivity moved the stick's")
+        s.invertStick = true
+        #expect(s.stickLookScale == SIMD2(1, -1))
+        #expect(s.mouseLookScale == SIMD2(2, 2), "inverting the stick inverted the mouse")
+        s.stickSensitivity = 0.5
+        s.invertMouse = true
+        #expect(s.mouseLookScale == SIMD2(2, -2))
+        #expect(s.stickLookScale == SIMD2(0.5, -0.5))
+    }
+
+    /// A player who set 2.0 and inverted before 0.8.0 had that on both devices, and keeps it.
+    @Test("A file with one shared sensitivity gives it to both devices")
+    func sharedSettingMigrates() throws {
+        let s = try decode(PlayerSettings.self, #"{ "lookSensitivity": 2, "invertLook": true }"#)
+        #expect(s.mouseSensitivity == 2 && s.stickSensitivity == 2)
+        #expect(s.invertMouse && s.invertStick)
+    }
+
+    @Test("A device's own setting wins over the shared one")
+    func ownSettingWins() throws {
+        let s = try decode(PlayerSettings.self,
+                           #"{ "lookSensitivity": 2, "invertLook": true, "stickSensitivity": 0.7, "invertMouse": false }"#)
+        #expect(s.mouseSensitivity == 2 && s.stickSensitivity == 0.7)
+        #expect(!s.invertMouse && s.invertStick)
+    }
+
+    @Test("The shared keys are read but never written")
+    func sharedKeysNotWritten() throws {
+        var s = PlayerSettings()
+        s.mouseSensitivity = 1.5
+        s.invertStick = true
+        let text = String(decoding: try JSONEncoder().encode(s), as: UTF8.self)
+        #expect(!text.contains("lookSensitivity") && !text.contains("invertLook"), "\(text)")
+        #expect(try JSONDecoder().decode(PlayerSettings.self, from: Data(text.utf8)) == s)
+    }
+
+    /// The rates, through the camera — which is what a player feels. A mouse turns by its counts
+    /// times the mouse setting, whatever the frame; a full stick turns at the stick setting's rate.
+    @Test("Each device turns the view at the rate its own setting says")
+    func ratesThroughTheCamera() {
+        var s = PlayerSettings()
+        s.mouseSensitivity = 2
+        s.stickSensitivity = 0.5
+
+        var mouseCamera = Camera()
+        mouseCamera.look(mouseDelta: SIMD2(100, 0) * s.mouseLookScale)
+        #expect(abs(-mouseCamera.yaw - 100 * Camera.lookSensitivity * 2) < 1e-5)
+
+        var stickCamera = Camera()
+        for _ in 0..<60 { stickCamera.turn(rate: SIMD2(1, 0) * s.stickLookScale, deltaTime: 1.0 / 120) }
+        #expect(abs(-stickCamera.yaw - Camera.stickLookSpeed * 0.5 * 0.5) < 1e-4,
+                "half a second at full deflection, at half the stick's speed")
     }
 
     /// Saved, then read by a store that knows nothing but the name — which is what the next launch is.

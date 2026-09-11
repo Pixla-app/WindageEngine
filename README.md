@@ -1035,8 +1035,9 @@ step sound like stone, and what a moving platform will need to carry you.
 
 ## Keys a player can change (2026-09-10)
 
-`InputBindings` says which key does what; `PlayerSettings` holds that plus look sensitivity, invert
-look, volume and brightness; `SaveStore` keeps them. The sample has a settings screen on **O**.
+`InputBindings` says which key does what; `PlayerSettings` holds that plus a sensitivity and an invert
+**for the mouse and for the stick separately** (since 0.8.0), volume and brightness; `SaveStore` keeps
+them. The sample has a settings screen on **O**.
 
 ### The bug it found: Shift had never worked in the sample
 
@@ -1071,6 +1072,26 @@ default, an unknown one is ignored, a key name this build does not recognise cos
 binding, and a hand-edited file with two actions on one key keeps the first.
 
 Keys are stored **by name**, so the file reads `"forward" : "W"` rather than `13`.
+
+### A sensitivity per device, and an invert per device (0.8.0)
+
+**A mouse and a stick are different kinds of input, so one number cannot suit both.** A mouse reports a
+displacement and a stick a rate (`Camera.look(mouseDelta:)` against `Camera.turn(rate:deltaTime:)`);
+a player's comfortable setting for one says nothing about the other, and a single multiplier made a
+player who uses both choose which to leave wrong. Invert is split for the same reason: players who fly
+often invert a stick and not a mouse. `mouseLookScale` goes in front of the mouse path and
+`stickLookScale` in front of the stick's, and neither touches the other.
+
+**A file from before 0.8.0 has one `lookSensitivity` and one `invertLook`**, and both devices inherit
+them, since that is what the player had on both. They are read and never written; a device's own key
+wins where a file has both.
+
+**Proved in the sample by rates, not by reading code.** The scripted walk holds the look stick
+(`pad.lookRight:0.5`) and moves the mouse (`mousex:500`), and prints how far the view turned. At the
+defaults a half-second of full stick is 91.67° and 500 points of mouse is 63.03° — the constants,
+exactly. With the mouse at 2.0, the stick at 0.5 and the stick inverted, set through the settings screen
+from the virtual pad, they are 45.84°, 126.05°, and a stick-up that looks *down* while the mouse's
+vertical stays put. An old-style file at 1.5, inverted, turns both devices 1.5× with both flipped.
 
 ### No apply button
 
