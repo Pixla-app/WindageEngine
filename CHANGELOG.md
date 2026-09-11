@@ -12,6 +12,23 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.11.0] — 2026-09-11
+
+**A foot on every tread going down.** A minor version because it changes what the controller reports:
+more `.stride` events on a descent — that is the fix.
+
+### Fixed
+
+- **Coming down stairs sounded one footstep for four treads**, going up four. The tread rule counted
+  only a rise; a drop of more than 12 cm is a foot coming down too. From mirrored starts the descent
+  now sounds as many footsteps on the treads as the climb (was 0 against 4).
+
+### In the sample
+
+- **`WINDAGE_SAMPLE_FPS=1`** prints frames and simulation steps a second. Added to chase a scripted walk
+  that crawled — which turned out to be the window hidden behind others, where macOS throttles the
+  display timer the simulation runs on. Worth knowing before reading a slow scripted run as a slow game.
+
 ## [0.10.2] — 2026-09-11
 
 **A brazier that crackles.** The audio engine played one-shots only.

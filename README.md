@@ -1046,6 +1046,19 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### A foot on the way down, as on the way up (0.11.0)
+
+The climb has had a footfall on every tread since 0.6.9: at these speeds a stride is longer than a
+tread, so distance alone would float up the middle ones. **The descent never had it** — the rule counted
+only a rise, and four treads coming down sounded one footstep where going up sounded four. A step
+*down* a tread counts now too, from the same ground-following that reports the rise.
+
+**"One per tread" is not literal, and the test says what is**: a natural footstep just before a tread
+edge merges with that tread's (the guard that stops a tread ringing twice), going up as well as down.
+The invariant tested is **symmetry** — from mirrored starts, the same number coming down as going up
+(0 against 4 before; 4 and 4 after). On the ruins' stairs the walk down from the landing went from 3
+footsteps to 5 — wood, then stone, then dirt.
+
 ### Sounds that belong to a place (0.10.2)
 
 `AudioEngine.startLoop(_:at:volume:)`, `moveLoop`, `stopLoop` play a sound for as long as a thing is

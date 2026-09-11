@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-542 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+545 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,31 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a foot on every tread going down (0.11.0)
+
+**The tread rule counts a drop as well as a rise** — a one-word fix (`abs`) with a real reason behind
+it. Two tests: descending matches climbing from mirrored starts (**0 against 4 before, 4 and 4 after** —
+fails on the old rule, checked), and a slope going down keeps its ordinary stride.
+
+**"One per tread" is not literal**: a natural footstep just before a tread edge merges with that tread's,
+by the guard that stops a tread ringing twice — and it does so going up too (a climb from a different
+start sounds three). Symmetry is what the test holds.
+
+**Walked on the ruins' stairs**, up to the landing and straight back down, 60 frames a second throughout:
+
+| | up (ground → landing) | down (landing → ground) |
+|---|---|---|
+| old rule | 4 — dirt, stone, wood | **3** |
+| now | 4 — dirt, stone, wood | **5** — wood, stone, dirt |
+
+**A detour worth recording**: the first run crawled once the player was on the landing — a 0.6 s wait
+took over 20 s — and a profile showed the main thread waiting, not working. **`WINDAGE_SAMPLE_FPS=1`**
+(new) showed 60 frames a second at every viewpoint in photo mode and on the landing in a later run: the
+crawl was the window hidden behind others, where macOS throttles the display timer the simulation runs
+on. A slow scripted run is a hidden window until the frame count says otherwise.
+
+**Every game checked**: none uses the controller; all five build and pass.
 
 ## Done 2026-09-11 — a brazier that crackles (0.10.2)
 
@@ -1180,23 +1205,23 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
-   fixed on 2026-09-10 — and **coming down the same four sounds one** (measured: footfalls at the top
-   landing, one tread, and the ground). The descent floats. A step *down* a tread is a foot landing too,
-   the mirror of `footOnRise`. **Proved in the sample by** the scripted walk down the ruins' stairs
-   reporting a footstep per tread, stone on the treads and wood on the landing above.
-
-2. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
+1. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
    it spins under you while you stay put. A turning solid should carry the body round its centre and
    turn the view by the same angle — the settled shape of a based character — with `Surroundings`
    saying how far each solid turned and about where. **Proved in the sample by** a turntable in the
    courtyard and the scripted walk standing on it logging the feet circling the centre at the table's
    rate and the view turning by the table's angle.
 
-3. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
+2. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
    a player who wants the fire quieter has to turn down their own footsteps with it. An ambience
    setting that scales the loops and nothing else, on the settings screen. **Proved by** the offline
    render: the crackle at half ambience measuring 6 dB down while a footstep measures unchanged.
+
+3. **A jump keeps the platform's motion.** Jump from a rising lift and the body forgets the lift: the
+   jump is no higher than from the ground, and stepping off anything moving sideways stops dead in the
+   air. The carried motion should become the body's velocity at take-off. **Proved in the sample by** a
+   scripted jump from the ruins' lift near its fastest (about 0.54 m/s up) peaking near 1.17 m above the
+   deck rather than the ground jump's 0.99 m — the difference computed first, then measured.
 
 ## Parked — not next, and why
 

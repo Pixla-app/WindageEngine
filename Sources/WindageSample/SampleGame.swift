@@ -2389,7 +2389,23 @@ final class SampleGame: GameLoop {
     /// would turn three times as far. The engine's `InputState` says so and the sample obeys it —
     /// this is the sort of thing a consumer gets wrong when the engine only documents it in one
     /// game's source.
+    /// `WINDAGE_SAMPLE_FPS=1` prints frames and simulation steps per second — how a slowdown that
+    /// only shows as a scripted walk taking too long was first measured.
+    private static let reportsRate = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_FPS"] != nil
+    private var rateWindow = (start: CFAbsoluteTimeGetCurrent(), frames: 0, steps: 0)
+
     func beginFrame() {
+        if SampleGame.reportsRate {
+            rateWindow.frames += 1
+            let now = CFAbsoluteTimeGetCurrent()
+            if now - rateWindow.start >= 1 {
+                print(String(format: "WindageSample: %.0f frames a second, %.0f steps, camera (%.1f, %.1f, %.1f)",
+                             Double(rateWindow.frames) / (now - rateWindow.start),
+                             Double(rateWindow.steps) / (now - rateWindow.start),
+                             camera.position.x, camera.position.y, camera.position.z))
+                rateWindow = (now, 0, 0)
+            }
+        }
         input.pollFrame()
         handleMenuPad()
         let look = input.consumePendingLook()
@@ -2400,6 +2416,7 @@ final class SampleGame: GameLoop {
     }
 
     func step(deltaTime: Float) {
+        rateWindow.steps += 1
         previousCamera = camera
         previousBob = shownBob
         // **First, and whatever state the run is in** — a script that opens the settings screen

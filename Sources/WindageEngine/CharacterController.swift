@@ -587,7 +587,7 @@ public nonisolated struct CharacterController: Sendable {
         // The other axis still gets its turn.
     }
 
-    /// **A step up is a foot landing on something**, whatever the stride says.
+    /// **A step up — or down — is a foot landing on something**, whatever the stride says.
     ///
     /// At these speeds a stride is longer than a stair tread, so counting distance alone climbs four
     /// treads in two footsteps — which sounds like floating up the middle two.
@@ -605,8 +605,13 @@ public nonisolated struct CharacterController: Sendable {
     /// centimetres in one frame, on every tread. So ``setStridePhase(_:)`` puts the jump into
     /// ``bobCatchUp``, which eases out at the eye's own settling rate: the head bob follows a step the
     /// way the eye does.
-    private mutating func footOnRise(_ climb: Float) {
-        if climb > 0.12 && stridePhase > CharacterController.stepUpFootfall { setStridePhase(1) }
+    ///
+    /// > **Down as well, since 0.10.3.** The first version counted only a rise, so four treads climbed
+    /// > sounded four footsteps and the same four descended sounded one — measured, with the other
+    /// > three the body floating down. Stepping off a tread onto the one below is a foot coming down
+    /// > as surely as stepping up onto one; the ground-following reports it as a negative change.
+    private mutating func footOnRise(_ change: Float) {
+        if abs(change) > 0.12 && stridePhase > CharacterController.stepUpFootfall { setStridePhase(1) }
     }
 
     /// Moves the stride phase somewhere it did not walk to — a footfall on a step, the first step

@@ -549,6 +549,50 @@ struct CharacterEventTests {
         #expect(climbSteps >= 4, "\(climbSteps) footsteps for four treads")
     }
 
+    /// **The mirror of the climb**: descending the same four treads sounded one footstep until 0.10.3,
+    /// against the climb's four. Walked from mirrored starts — a metre short of the stairs either way —
+    /// so the stride arrives at the first tread edge in the same phase, down as well as up.
+    @Test("Coming down stairs sounds as many footsteps on the treads as going up")
+    func descendingMatchesClimbing() {
+        var treads: [BoundingBox] = []
+        for i in 0..<4 {
+            let near = -Float(i + 1), far = -Float(i + 2), top = 0.3 * Float(i + 1)
+            treads.append(BoundingBox(minimum: SIMD3<Float>(-3, 0, far), maximum: SIMD3<Float>(3, top, near)))
+        }
+        let landing = BoundingBox(minimum: SIMD3(-3, 0, -12), maximum: SIMD3(3, 1.2, -5))
+        let world = CharacterController.Surroundings(solids: treads + [landing])
+        func treadSteps(from start: SIMD3<Float>, yaw: Float) -> Int {
+            var c = CharacterController(feet: start)
+            var count = 0
+            for _ in 0..<240 {
+                let before = c.feet.y
+                c.step(yaw: yaw, input: MovementInput(forward: 1), deltaTime: step, in: world)
+                if abs(c.feet.y - before) > 0.1 && c.events.contains(where: { if case .stride = $0 { true } else { false } }) {
+                    count += 1
+                }
+            }
+            return count
+        }
+        let up = treadSteps(from: SIMD3(0, 0, 0), yaw: 0)
+        let down = treadSteps(from: SIMD3(0, 1.2, -6), yaw: .pi)
+        #expect(up >= 3, "the climb itself: \(up)")
+        #expect(down == up, "\(down) footsteps coming down four treads, \(up) going up")
+    }
+
+    /// A gentle slope is not stairs, in either direction: no extra footfalls going down one.
+    @Test("Walking down a slope keeps its ordinary stride")
+    func slopeDownIsNotStairs() {
+        let slope = CharacterController.Surroundings(groundHeight: { _, z in 0.15 * z })
+        var c = CharacterController(feet: SIMD3(0, 1.5, 10), tuning: CharacterController.Tuning())
+        var strides = 0
+        for _ in 0..<120 {
+            c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step, in: slope)
+            strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
+        }
+        // Six metres at 2.6 m a stride, from a first step at 0.6: two or three — not one per bump.
+        #expect(strides >= 2 && strides <= 3, "\(strides) footsteps walking six metres down a slope")
+    }
+
     @Test("Feet alternate")
     func feetAlternate() {
         var c = CharacterController(feet: .zero)
