@@ -138,28 +138,69 @@ struct SampleLevelContentTests {
         #expect(table.tags.contains("solid") && table.surface == "stone")
     }
 
-    /// **The slider's run is clear**: it pushes the player, and nothing else in the level can be
-    /// pushed — so the ground its box sweeps, end to end, must hold no other solid, and not the spawn.
-    /// Its box is taller than a step, so it is pushed against rather than stood on. `box.obj` is a
-    /// unit cube, centred on x and z, standing on y = 0.
-    @Test("The courtyard's slider is solid, taller than a step, and runs clear of everything")
-    func slider() throws {
-        let courtyard = try SampleLevel.bundled(0)
-        let slider = try #require(courtyard.placements.first { $0.tags.contains("slider") })
-        #expect(slider.tags.contains("solid") && slider.surface == "wood")
-        let half = slider.scale / 2
-        #expect(slider.scale > CharacterController.Tuning().stepHeight)
-        // The box at both ends of its run, and everything between.
-        let swept = (minX: slider.position.x - half, maxX: slider.position.x + SampleLevel.slideDistance + half,
-                     minZ: slider.position.z - half, maxZ: slider.position.z + half)
-        for other in courtyard.placements where other.tags.contains("solid") && other != slider {
-            // Generously: each other solid as a circle of its scaled half-diagonal plus a metre.
-            let reach = other.scale * 2
-            let clear = other.position.x + reach < swept.minX || other.position.x - reach > swept.maxX
-                || other.position.z + reach < swept.minZ || other.position.z - reach > swept.maxZ
-            #expect(clear, "\(other.mesh) at \(other.position) is in the slider's way")
+    /// **A mover's run is clear**: a slider or a piston pushes the player, and nothing else in a level
+    /// can be pushed — so the ground its box sweeps, end to end along its facing, holds no other solid
+    /// **that reaches above its base** (the landing a piston rides on does not), and not the spawn. Its
+    /// box is taller than a step, so it is pushed against rather than stood on. `box.obj` is a unit cube
+    /// centred on x and z, standing on y = 0; `step.obj` and `step_wood.obj` are 1 m tall.
+    @Test("Every slider and piston is solid, taller than a step, and runs clear of everything")
+    func movers() throws {
+        var found = 0
+        for index in SampleLevel.names.indices {
+            let level = try SampleLevel.bundled(index)
+            for mover in level.placements where mover.tags.contains("slider") || mover.tags.contains("piston") {
+                found += 1
+                #expect(mover.tags.contains("solid") && mover.surface == "wood")
+                #expect(mover.scale > CharacterController.Tuning().stepHeight)
+                let run = mover.tags.contains("piston") ? SampleLevel.pistonRun : SampleLevel.slideDistance
+                let facing = Level.turned(SIMD2(1, 0), by: mover.yaw)
+                let start = SIMD2(mover.position.x, mover.position.z), end = start + facing * run
+                let half = mover.scale / 2
+                let swept = (minX: min(start.x, end.x) - half, maxX: max(start.x, end.x) + half,
+                             minZ: min(start.y, end.y) - half, maxZ: max(start.y, end.y) + half)
+                for other in level.placements where other.tags.contains("solid") && other != mover {
+                    // How high it reaches, where that is known; anything else counts as tall.
+                    let tall: Float? = switch other.mesh {
+                    case "box": other.scale
+                    case "step", "step_wood": 1 + (other.tags.contains("lift") ? SampleLevel.liftRise : 0)
+                    case "turntable": 0.2
+                    default: nil
+                    }
+                    if let tall, other.position.y + tall <= mover.position.y + 1e-4 { continue }
+                    // Half its size across and along, where the mesh is known — a body's width more, since
+                    // a player squeezed between it and the mover is the case to avoid — and generously
+                    // otherwise, as a square of its scale either side plus half a metre.
+                    let body = CharacterController.Tuning().radius * 2
+                    let size: SIMD2<Float> = switch other.mesh {
+                    case "box": SIMD2(repeating: other.scale / 2 * Float(2).squareRoot())     // at any yaw
+                    case "step", "step_wood": SIMD2(1.5, 0.5) * other.scale
+                    case "turntable": SIMD2(2, 2)
+                    default: SIMD2(repeating: other.scale * 1.5)
+                    }
+                    let reach = size + (tall == nil ? 0.5 : body)
+                    let clear = other.position.x + reach.x < swept.minX || other.position.x - reach.x > swept.maxX
+                        || other.position.z + reach.y < swept.minZ || other.position.z - reach.y > swept.maxZ
+                    #expect(clear, "\(other.mesh) at \(other.position) is in the way of the \(level.name) mover at \(mover.position)")
+                }
+                for spawn in level.markers(ofKind: "spawn") {
+                    let dx = max(swept.minX - spawn.position.x, 0, spawn.position.x - swept.maxX)
+                    let dz = max(swept.minZ - spawn.position.z, 0, spawn.position.z - swept.maxZ)
+                    #expect((dx * dx + dz * dz).squareRoot() > 1, "the \(level.name) mover runs over the spawn")
+                }
+            }
         }
-        let spawn = try #require(courtyard.markers(ofKind: "spawn").first)
-        #expect(spawn.position.z - swept.maxZ > 1, "the slider runs over the spawn")
+        #expect(found == 2, "\(found) movers; the courtyard's slider and the ruins' piston make two")
+    }
+
+    /// The ruins' piston stops with its face just past the landing's south edge — so it pushes whoever
+    /// stands before it clean off at its full speed, then stops dead.
+    @Test("The ruins' piston ends just past the landing's edge")
+    func pistonEndsAtTheEdge() throws {
+        let ruins = try SampleLevel.bundled(1)
+        let piston = try #require(ruins.placements.first { $0.tags.contains("piston") })
+        let facing = Level.turned(SIMD2(1, 0), by: piston.yaw)
+        let face = piston.position.z + facing.y * SampleLevel.pistonRun - piston.scale / 2
+        #expect(abs(facing.y + 1) < 1e-5, "the piston should run along −z")
+        #expect(face < -1.5 && face > -1.6, "its face ends at z \(face), the landing's edge is −1.5")
     }
 }

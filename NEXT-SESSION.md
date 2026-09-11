@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-580 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+585 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,24 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a push is kept on leaving (0.14.0)
+
+**A push counts toward `groundVelocity` across** — shoved off an edge a body flies on; a jump while
+pushed takes it. **And a found fix in the same line**: the vertical part was the carry's whole
+displacement, so a carried body climbing a 0.3 m step read 36 m/s up (measured) — a jump then would
+have left at 42. Vertical is the ground's own motion now. Four tests, each failing without its half.
+
+**Proved in the ruins** by a new **piston** (`"piston"`, 1.5 m/s linear, `SampleLevel.pistonOffset`;
+movers run along their placement's yaw now) on the landing's east side, shoving the player off the south
+edge: before 0.050 m beyond (computed 0.050), after **0.512 m** (computed 0.512), landing z −2.315
+(computed −2.314). Frames of both, looking back from where they came down.
+
+**Placed after checking the documented walks**: a pusher across the landing's middle would have crossed
+the stairs walk (x 4.5), the regression 0.13.0 made in the courtyard; this one runs at x 5.1–6.0. The
+lift walk came out identical to 0.12.0 and the stairs walk as recorded. **The first design — an eased
+slider — was simulated first and dropped**: 0.219 m against 0.187 m, since a moving slider keeps pushing a
+falling body. Only a pusher that stops shows what is kept.
 
 ## Done 2026-09-11 — kept out of App Nap (0.13.2)
 
@@ -1379,28 +1397,26 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
-   1 m ledge by a block that stops at the edge, the body left at x 1.302 and landed at x 1.302 —
-   straight down, the speed forgotten: 0.12.0's "stops dead in the air", for a push instead of a carry.
-   A push should count toward ``groundVelocity`` as a carry does. **Proved by** a test landing it
-   1.5 × √(2·1/g) = 0.47 m further out, and in the ruins by a slider on the wooden landing pushing the
-   player off its 1.2 m edge, landing its speed × √(2·1.2/g) beyond it — computed first. (Checked on
-   the way and *not* broken: a crouched body pushed under a beam stays under it, and letting go mid-push
-   keeps it held down.)
-
-2. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
+1. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
    measured by, and nothing noticed until it was re-run by hand a version later. A `Tools/walks.sh` that
    runs each walk the handoff documents — the crate, the lift jump, the push, the turntable rim, the
-   stairs — hidden (0.12.2 lets it), and compares each end position with the one recorded, failing on
+   stairs, the piston — hidden (0.12.2 lets it), and compares each end position with the one recorded, failing on
    more than 2 cm. **Proved by** it passing now, and failing on purpose with the slider put back at z 8.
 
-3. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
+2. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
    own rule 0.13.0 is not finished — the sample never reads `pinnedBy`, and a capability is proved by
    the sample using it. A door that meets someone reverses; the slider should, the moment it pins the
    player against something. **Proved in the courtyard** by a crate set at the far end of the slider's
    run (the content test's clear-run check then allows that one stop) and a scripted walk standing the
    player against it, computed first: pinned when the gap closes to the body's width, the slider turning
    back that step, the player never pushed into the crate.
+
+3. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
+   1.5 m/s meeting a body mid-jump shoved it along, stopped, and the body — 0.29 s of flight still to
+   go — came down at x 0.214, exactly where the block left it: stopped dead in the air. Kept, it would
+   land 1.5 × 0.292 = 0.44 m further. A push in the air should add to ``airVelocity`` as one on the
+   ground adds to ``groundVelocity``. **Proved by** that test, and in the ruins by the player jumping in
+   front of the piston as it arrives — landing its speed × the rest of the flight beyond, computed first.
 
 ## Parked — not next, and why
 

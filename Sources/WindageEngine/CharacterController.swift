@@ -457,8 +457,9 @@ public nonisolated struct CharacterController: Sendable {
     /// turning the view would leave the player facing one fixed direction while the floor spins.
     public private(set) var turned: Float = 0
 
-    /// How fast the ground was carrying the body this step, metres a second — zero on still ground.
-    /// **What the body keeps when it leaves**: added to a jump, and the speed a step off an edge falls at.
+    /// How fast the ground was carrying the body this step, metres a second — and, across, anything
+    /// pushing it (0.14.0). Zero on still ground with nothing in the way. **What the body keeps when it
+    /// leaves**: added to a jump, and the speed a step off an edge — or a shove off one — falls at.
     public private(set) var groundVelocity = SIMD3<Float>.zero
 
     /// Across the ground plane, the speed kept from whatever the body left — carried on through the air
@@ -543,6 +544,7 @@ public nonisolated struct CharacterController: Sendable {
         // footsteps, the bob — is relative to it.
         carried = .zero
         turned = 0
+        var carriedUp: Float = 0
         if isGrounded, let solid = groundSolid {
             var carry = world.motion.indices.contains(solid) ? world.motion[solid] : .zero
             if world.turns.indices.contains(solid), world.turns[solid].radians != 0 {
@@ -558,13 +560,19 @@ public nonisolated struct CharacterController: Sendable {
             if carry != .zero {
                 let start = feet
                 feet.y += carry.y
+                carriedUp = carry.y
                 move(along: SIMD3(carry.x, 0, 0), in: world)
                 move(along: SIMD3(0, 0, carry.z), in: world)
                 carried = feet - start
             }
         }
         // How fast the ground was carrying the body — kept for the moment it leaves the ground.
-        groundVelocity = isGrounded && dt > 0 ? carried / dt : .zero
+        //
+        // **Up and down, the ground's own motion — never a step climbed on the way.** A carry that runs
+        // the body into a step lifts it 30 cm in one step, which as a speed is 36 m/s: measured, on the
+        // step a carried body climbed, and a jump pressed then would have left at 42 m/s. Across, what
+        // the carry actually achieved, which a wall can cut short.
+        groundVelocity = isGrounded && dt > 0 ? SIMD3(carried.x, carriedUp, carried.z) / dt : .zero
 
         // --- In the air, still going the way the ground was: a jump off a moving platform, a step off
         // its edge. Through collision, like any movement; a wall stops that part of it.
@@ -579,7 +587,16 @@ public nonisolated struct CharacterController: Sendable {
         // --- Pushed by whatever moved into the body — anything that moved or turned but is not
         // underfoot. Before the body's own walking, like the carry, and making no footsteps.
         pinnedBy = nil
+        let unpushed = SIMD2(feet.x, feet.z)
         push(in: world)
+        // **A push is kept on leaving, as a carry is** (0.14.0): shoved off an edge, a body flies on
+        // at the push's speed rather than dropping straight down — measured before, pushed off a ledge
+        // at 1.5 m/s it landed at the x it left from. Across only: a push that climbs a step has not
+        // thrown anyone upward.
+        if isGrounded && dt > 0 {
+            groundVelocity.x += (feet.x - unpushed.x) / dt
+            groundVelocity.z += (feet.z - unpushed.y) / dt
+        }
 
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
         let moving = input.forward != 0 || input.strafe != 0

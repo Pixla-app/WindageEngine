@@ -12,6 +12,45 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.14.0] — 2026-09-11
+
+**A body pushed off an edge keeps the push's speed.** Measured before: pushed off a 1 m ledge at 1.5 m/s
+by a block that stopped at the edge, it landed at the x it left from — 0.12.0's "stops dead in the air",
+for a push instead of a carry.
+
+### Changed
+
+- **A push counts toward `groundVelocity`, across**, as a carry does: shoved off an edge a body flies
+  on, and a jump while being pushed takes the push with it. On the ground nothing coasts — the speed
+  matters only on leaving.
+- **Fixed: a step climbed on the way is not upward speed.** `groundVelocity`'s vertical part is the
+  ground's own motion now, never the carry's whole displacement. Measured: on the step a carried body
+  climbed a 0.3 m ledge it read **36 m/s up**, and a jump pressed on that step would have left at 42.
+  A push climbing a step counts nothing upward either.
+
+### Measured
+
+Four tests; the two for the push fail without it (checked), the climb test fails with the old vertical
+(checked), and one guards that a stopped push leaves the body standing. **In the ruins**, a new piston —
+out at 1.5 m/s, stopping dead 5 cm past the landing's south edge — shoved the scripted player off the
+landing, computed first:
+
+| | left at | keeping | came down at | beyond |
+|---|---|---|---|---|
+| before | z −1.802 | 0 | z −1.852 (computed −1.852) | 0.050 m — the piston's last push |
+| after | z −1.802 | 1.500 m/s | z −2.315 (computed −2.314) | **0.512 m** (computed 0.512) |
+
+The ruins' lift walk from 0.12.0 came out identical, and the stairs walk as recorded.
+
+### In the sample
+
+- **A `"piston"` tag** — out and back at 1.5 m/s with no easing (`SampleLevel.pistonOffset`); sliders
+  and pistons now run along their placement's facing. One on the ruins' landing.
+- **The walk report says where the feet left the ground, what they kept, and where they came down.**
+- The content test checks every mover's run, in both levels, against the real size of each solid.
+
+**Consumers**: none of the five games uses the controller; build clean as ever.
+
 ## [0.13.2] — 2026-09-11
 
 **A hidden game keeps steady time as an app, too.** `runsWhileHidden` was measured in 0.12.2 on the

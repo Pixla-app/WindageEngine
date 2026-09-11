@@ -49,7 +49,7 @@ public nonisolated enum SampleLevel {
     }
 
     /// **The sample's sliding block**, the same way as the lift: a `"slider"` tag in the level, and
-    /// the movement here — 5 m along +x, eased over 4 s, waiting 1.5 s at each end. A block to be pushed
+    /// the movement here — 5 m along its facing (+x unturned), eased over 4 s, waiting 1.5 s at each end. A block to be pushed
     /// by, at up to 1.9 m/s in the middle of its run; the engine's part is the pushing.
     public static let slideDistance: Float = 5, slideTravel: Float = 4, slidePause: Float = 1.5
     public static var slideCycle: Float { 2 * (slideTravel + slidePause) }
@@ -59,7 +59,23 @@ public nonisolated enum SampleLevel {
         shuttle(at: t, distance: slideDistance, travel: slideTravel, pause: slidePause)
     }
 
-    /// Wait, go `distance` eased over `travel`, wait, come back: the one shape both movers have.
+    /// **The sample's piston** — a `"piston"` tag — which, unlike the slider, **does not ease**: out at
+    /// 1.5 m/s, a dead stop, three seconds' wait, back. A trap, and the jolt is its point. The ruins' one
+    /// runs 2.125 m from its rest on the landing to 5 cm past the landing's south edge, which is where it
+    /// shoves anyone standing in front of it off — at its full speed, so what they keep is plain.
+    public static let pistonSpeed: Float = 1.5, pistonRun: Float = 2.125, pistonPause: Float = 3
+    public static var pistonCycle: Float { 2 * (pistonRun / pistonSpeed + pistonPause) }
+
+    /// How far along its facing from where the level put it a piston stands, `t` seconds into its cycle.
+    public static func pistonOffset(at t: Float) -> Float {
+        let travel = pistonRun / pistonSpeed, p = pistonPause
+        if t < p { return 0 }
+        if t < p + travel { return pistonSpeed * (t - p) }
+        if t < 2 * p + travel { return pistonRun }
+        return max(0, pistonRun - pistonSpeed * (t - 2 * p - travel))
+    }
+
+    /// Wait, go `distance` eased over `travel`, wait, come back: the lift's shape and the slider's.
     static func shuttle(at t: Float, distance: Float, travel: Float, pause p: Float) -> Float {
         func ease(_ x: Float) -> Float { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
         if t < p { return 0 }

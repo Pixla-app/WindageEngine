@@ -1057,6 +1057,30 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### The speed a push leaves you with (0.14.0)
+
+0.12.0 made a body keep the speed of a floor it left; a push was not counted, so a body shoved off a
+ledge dropped straight down — measured, pushed at 1.5 m/s off a 1 m ledge it landed at the x it left
+from. **A push now counts toward `groundVelocity` across**, as a carry does: shoved off an edge a body
+flies on, and a jump while being pushed takes the push. On the ground nothing coasts.
+
+**And a climb is not a speed.** The carry's kept speed was its whole displacement, so a carry that ran
+the body up a step counted the step: 0.3 m in one step reads 36 m/s up — measured — and a jump pressed
+on that step would have left at 42 m/s. The vertical part is the ground's own motion now.
+
+**Shoved off the ruins' landing** by a new piston — out at 1.5 m/s, stopping dead 5 cm past the edge, so
+nothing but a kept speed carries anyone further — computed first:
+
+| | left at | keeping | came down | beyond where it left |
+|---|---|---|---|---|
+| before | z −1.802 | nothing | z −1.852 | 0.050 m — the piston's last few centimetres |
+| after | z −1.802 | 1.500 m/s | z −2.315 | **0.512 m**, computed 0.512 |
+
+**The first design was dropped for a number, not a feeling.** An eased slider pushing the player off the
+landing, simulated first, sent them 0.219 m with the fix and 0.187 m without — because a slider still
+moving keeps pushing a falling body. A difference of 3 cm proves nothing, so the pusher became a piston
+that stops at the edge.
+
 ### Kept out of App Nap (0.13.2)
 
 0.12.2's hidden clock was measured on the sample run from a terminal with its audio engine running, and

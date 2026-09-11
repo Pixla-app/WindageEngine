@@ -1762,3 +1762,89 @@ struct CharacterRoundSolidTests {
         #expect(Footprint(discOf: Volume(local: local, transform: tilted)) == nil)
     }
 }
+
+// MARK: - Leaving after a push
+
+@Suite("Character controller — the speed a push leaves you with")
+struct CharacterPushKeptTests {
+
+    private let r = CharacterController.Tuning().radius
+    private let g = CharacterController.Tuning().gravity
+
+    /// **The point of it.** Pushed at 1.5 m/s off a 1 m ledge, the body falls for √(2h/g) and goes
+    /// 1.5 m/s across the whole time: it lands that much further out, give or take one step's travel.
+    /// Before, it landed at the x it left from.
+    @Test("Pushed off a ledge, the body flies on at the push's speed")
+    func pushedOffALedge() {
+        var face: Float = -2
+        var c = CharacterController(feet: SIMD3(0, 1, 0))
+        let ledge = BoundingBox(minimum: SIMD3(-10, 0, -3), maximum: SIMD3(1, 1, 3))
+        var leftAt: Float?
+        for _ in 0..<480 {
+            // The pusher sits on the ledge and goes on a little past its edge, then stops.
+            let move: Float = face < 1.3 ? 1.5 * step : 0
+            face += move
+            var w = CharacterController.Surroundings(solids: [ledge, BoundingBox(minimum: SIMD3(face - 3, 1, -2), maximum: SIMD3(face, 2.5, 2))])
+            w.motion = [.zero, SIMD3(move, 0, 0)]
+            let wasGrounded = c.isGrounded
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            if wasGrounded && !c.isGrounded { leftAt = c.feet.x }
+        }
+        let flight = 1.5 * (2 * 1 / g).squareRoot()
+        let went = c.feet.x - (leftAt ?? .nan)
+        #expect(c.isGrounded && abs(c.feet.y) < 1e-4, "not down: \(c.feet)")
+        #expect(abs(went - flight) < 1.5 * step + 1e-3, "landed \(went) m past where it left, the push's speed carries it \(flight)")
+    }
+
+    @Test("A jump while being pushed takes the push with it")
+    func jumpWhilePushed() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        var kept: SIMD2<Float>?
+        for i in 0..<300 {
+            face += 1.5 * step
+            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))])
+            w.motion = [SIMD3(1.5 * step, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), jump: i == 240, deltaTime: step, in: w)
+            if i == 240 { kept = c.airVelocity }
+        }
+        #expect(kept.map { abs($0.x - 1.5) < 1e-3 && abs($0.y) < 1e-5 } ?? false, "jumped keeping \(String(describing: kept))")
+    }
+
+    @Test("On the ground, a push that stops leaves the body where it stopped")
+    func noCoasting() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        for _ in 0..<480 {
+            let move: Float = face < 1 ? 1.5 * step : 0
+            face += move
+            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))])
+            w.motion = [SIMD3(move, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+        }
+        #expect(abs(c.feet.x - (1 + r + 0.002)) < 0.002, "coasted to \(c.feet.x)")
+    }
+
+    /// A step climbed on the way is not the ground's speed: 0.3 m in one step would be 36 m/s up. A
+    /// jump pressed on the very step a carried body climbs rises as any jump from there does.
+    @Test("A jump on the step a carried body climbs is an ordinary jump")
+    func climbIsNotSpeed() {
+        var x: Float = 0
+        var c = CharacterController(feet: SIMD3(0, 0.5, 0))
+        let ledge = BoundingBox(minimum: SIMD3(1.0, 0, -3), maximum: SIMD3(4, 0.8, 3))
+        var apex: Float = 0, jumped = false
+        for _ in 0..<240 {
+            x += step
+            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(x - 5, 0, -2), maximum: SIMD3(x + 0.5, 0.5, 2)), ledge])
+            w.motion = [SIMD3(step, 0, 0), .zero]
+            // Pressed on the step whose carry runs it into the ledge — the body is 0.3 m short of the
+            // ledge's face at 1 m/s, so that is the step its box first reaches it.
+            let reaching = !jumped && c.feet.x + r + step >= 1.0
+            c.step(yaw: 0, input: MovementInput(), jump: reaching, deltaTime: step, in: w)
+            if reaching { jumped = true; #expect(c.feet.y > 0.79, "the jump step did not climb: \(c.feet.y)") }
+            apex = max(apex, c.feet.y)
+        }
+        let ordinary = 0.8 + CharacterController.Tuning().jumpSpeed * CharacterController.Tuning().jumpSpeed / (2 * g)
+        #expect(jumped && apex < ordinary + 0.05, "rose to \(apex), an ordinary jump from the ledge reaches \(ordinary)")
+    }
+}

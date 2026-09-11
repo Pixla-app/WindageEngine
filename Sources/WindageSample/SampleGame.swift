@@ -748,36 +748,47 @@ final class SampleGame: GameLoop {
     /// The level's sliders — placements tagged `"slider"` — as the lifts are: drawable, solid, where
     /// the level put it. They go back and forth along +x (`SampleLevel.slideOffset(at:)`), pushing
     /// whoever stands in the way.
-    private var sliders: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
-    private var slideClock: Float = 0
-    private var slideOffset: Float = 0
+    ///
+    /// **And pistons** — `"piston"` — which go the same way but do not ease (`SampleLevel.pistonOffset`).
+    /// Both go along their own facing: the placement's yaw turns the way they run.
+    private var sliders: [(drawable: Int, solid: Int?, base: matrix_float4x4, facing: SIMD2<Float>, piston: Bool)] = []
+    private var slideClock: Float = 0, slideOffset: Float = 0
+    private var pistonClock: Float = 0, pistonOffset: Float = 0
 
-    /// Moves every slider a step along its run. **After the lifts**, which set the whole of
-    /// `surroundings.motion`; a slider's entries are its own.
+    /// Moves every slider and piston a step along its run. **After the lifts**, which set the whole of
+    /// `surroundings.motion`; a mover's entries are its own.
     private func advanceSliders(_ dt: Float) {
         guard !sliders.isEmpty else { return }
         slideClock = (slideClock + dt).truncatingRemainder(dividingBy: SampleLevel.slideCycle)
-        let next = SampleLevel.slideOffset(at: slideClock)
-        placeSliders(offset: next, delta: next - slideOffset)
-        slideOffset = next
+        pistonClock = (pistonClock + dt).truncatingRemainder(dividingBy: SampleLevel.pistonCycle)
+        let slide = SampleLevel.slideOffset(at: slideClock), piston = SampleLevel.pistonOffset(at: pistonClock)
+        placeSliders(slide: slide, slideDelta: slide - slideOffset, piston: piston, pistonDelta: piston - pistonOffset)
+        slideOffset = slide
+        pistonOffset = piston
     }
 
-    private func placeSliders(offset: Float, delta: Float) {
+    private func placeSliders(slide: Float, slideDelta: Float, piston: Float, pistonDelta: Float) {
         if surroundings.motion.count != surroundings.solids.count {
             surroundings.motion = Array(repeating: .zero, count: surroundings.solids.count)
         }
         for slider in sliders {
+            let offset = slider.facing * (slider.piston ? piston : slide)
+            let delta = slider.facing * (slider.piston ? pistonDelta : slideDelta)
             var transform = slider.base
-            transform.columns.3.x += offset
+            transform.columns.3.x += offset.x
+            transform.columns.3.z += offset.y
             drawables[slider.drawable].transform = transform
             volumes[slider.drawable].transform = transform
             if let solid = slider.solid {
                 surroundings.solids[solid] = volumes[slider.drawable].worldBounds
                 surroundings.footprints[solid] = .init(of: volumes[slider.drawable])
-                surroundings.motion[solid] = SIMD3(delta, 0, 0)
+                surroundings.motion[solid] = SIMD3(delta.x, 0, delta.y)
             }
         }
     }
+
+    /// Where the feet last left the ground, for the report of where they came down.
+    private var leftGroundAt: SIMD3<Float>?
 
     /// Where the feet were before the last step — so a report can say how fast the body went.
     private var previousFeet = SIMD3<Float>.zero
@@ -1556,9 +1567,10 @@ final class SampleGame: GameLoop {
                 lifts.append((drawables.count - 1,
                               placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
             }
-            if placement.tags.contains("slider") {
+            if placement.tags.contains("slider") || placement.tags.contains("piston") {
                 sliders.append((drawables.count - 1,
-                                placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
+                                placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform,
+                                Level.turned(SIMD2(1, 0), by: placement.yaw), placement.tags.contains("piston")))
             }
         }
         // **The world box says how high each solid reaches; its footprint says where it stands.** With
@@ -1573,7 +1585,7 @@ final class SampleGame: GameLoop {
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
-        placeSliders(offset: slideOffset, delta: 0)
+        placeSliders(slide: slideOffset, slideDelta: 0, piston: pistonOffset, pistonDelta: 0)
         placeTurntables(turnedBy: 0)
         rebuildFigures()
         rebuildLanterns()
@@ -2711,6 +2723,19 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                // A scripted walk says where the feet left the ground and came down, and what they kept —
+                // the flight a push or a moving floor sends them on.
+                if scriptedWalk != nil && !wasAirborne && !body.isGrounded {
+                    leftGroundAt = body.feet
+                    print(String(format: "WindageSample:     left the ground at (%.3f, %.3f, %.3f), keeping (%.3f, %.3f) m/s",
+                                 body.feet.x, body.feet.y, body.feet.z, body.airVelocity.x, body.airVelocity.y))
+                }
+                if scriptedWalk != nil && wasAirborne && body.isGrounded, let from = leftGroundAt {
+                    print(String(format: "WindageSample:     came down at (%.3f, %.3f, %.3f), %.3f m across from where it left",
+                                 body.feet.x, body.feet.y, body.feet.z,
+                                 simd_distance(SIMD2(from.x, from.z), SIMD2(body.feet.x, body.feet.z))))
+                    leftGroundAt = nil
+                }
                 // A scripted walk says where the feet stepped onto a turntable — the one moment its
                 // outline shows: a square's corner lifts them before the rim, a disc at it.
                 if scriptedWalk != nil, body.groundSolid != wasOn,
