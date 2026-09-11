@@ -1484,3 +1484,145 @@ struct CharacterTurnedSolidTests {
         #expect(Footprint(of: Volume(local: local, transform: tilted)) == nil, "a tilted box has no rectangular plan")
     }
 }
+
+// MARK: - Something moving into you
+
+@Suite("Character controller — pushed by something that moves")
+struct CharacterPushedTests {
+
+    private let r = CharacterController.Tuning().radius
+
+    /// A 3 m slab, 1.5 m tall, its +x face at `face`.
+    private func slab(face: Float, z: Float = 0) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(face - 3, 0, z - 2), maximum: SIMD3(face, 1.5, z + 2))
+    }
+
+    /// **The point of it.** A slab sliding at 1 m/s into a body standing in its way: once it arrives,
+    /// the body keeps ahead of its face by its half-width and the clearance, every step, going at
+    /// the slab's speed. Before this, the slab ended 0.30 m into the body and the body was stuck.
+    @Test("A slab sliding into a body pushes it ahead of its face, at its speed")
+    func pushedAhead() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        var gaps: [Float] = [], speeds: [Float] = []
+        var footsteps = 0
+        for _ in 0..<360 {
+            face += step
+            var w = CharacterController.Surroundings(solids: [slab(face: face)])
+            w.motion = [SIMD3(step, 0, 0)]
+            let before = c.feet.x
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            if face > -r { gaps.append(c.feet.x - face); speeds.append((c.feet.x - before) / step) }
+            footsteps += c.events.filter { if case .stride = $0 { true } else { false } }.count
+            #expect(c.pinnedBy == nil)
+        }
+        #expect(!gaps.isEmpty)
+        let touching = r + 0.002
+        #expect(gaps.allSatisfy { $0 >= r - 0.001 && $0 <= touching + 1e-4 },
+                "the body was \(gaps.min()!)…\(gaps.max()!) m ahead of the face, touching is \(touching)")
+        let steady = speeds.dropFirst(2)
+        #expect(steady.allSatisfy { abs($0 - 1) < 1e-3 }, "pushed at \(steady.min()!)…\(steady.max()!) m/s, the slab goes 1")
+        #expect(c.feet.x > 1)
+        // Pushing is not walking.
+        #expect(footsteps == 0, "\(footsteps) footsteps being pushed")
+    }
+
+    @Test("Pushed is not stuck: the body walks away from the slab afterwards")
+    func walksAway() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        for _ in 0..<240 {
+            face += step
+            var w = CharacterController.Surroundings(solids: [slab(face: face)])
+            w.motion = [SIMD3(step, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+        }
+        let at = c.feet.x
+        let still = CharacterController.Surroundings(solids: [slab(face: face)])
+        for _ in 0..<60 { c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: still) }
+        // Half a second at a walk: the whole 3 m, nothing held back by the slab it was pushed by.
+        let walk = CharacterController.Tuning().walkSpeed * 0.5
+        #expect(abs((c.feet.x - at) - walk) < 1e-3, "walked \(c.feet.x - at) m away in half a second, a walk is \(walk)")
+    }
+
+    @Test("Pushed against a wall, the body stops at the wall and says what pins it")
+    func pinned() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        let wall = BoundingBox(minimum: SIMD3(1, 0, -3), maximum: SIMD3(2, 3, 3))
+        var firstPinned: Int?
+        for i in 0..<360 {
+            face += step
+            var w = CharacterController.Surroundings(solids: [slab(face: face), wall])
+            w.motion = [SIMD3(step, 0, 0), .zero]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            if c.pinnedBy != nil && firstPinned == nil { firstPinned = i }
+            #expect(c.feet.x + r <= 1 + 1e-4, "pushed \(c.feet.x + r - 1) m into the wall")
+        }
+        #expect(c.pinnedBy == 0, "pinned by \(String(describing: c.pinnedBy)), the slab is 0")
+        // Pinned once the gap closed: the slab reached the wall less the body's width.
+        let closes = Int(((1 - 2 * r) - (-2)) / step)
+        #expect(firstPinned.map { abs($0 - closes) <= 2 } ?? false, "first pinned at step \(String(describing: firstPinned)), the gap closes at \(closes)")
+    }
+
+    @Test("A slab sliding past, not into, leaves the body where it is")
+    func slidingPast() {
+        var face: Float = -2
+        var c = CharacterController(feet: SIMD3(0, 0, 2 + r + 0.05))
+        for _ in 0..<480 {
+            face += step
+            var w = CharacterController.Surroundings(solids: [slab(face: face)])
+            w.motion = [SIMD3(step, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+        }
+        #expect(abs(c.feet.x) < 1e-5 && abs(c.feet.z - (2 + r + 0.05)) < 1e-5, "moved to \(c.feet)")
+    }
+
+    /// A long arm turning about one end sweeps into the body: pushed round, never inside it.
+    @Test("An arm turning into a body pushes it round, never inside it")
+    func sweptByAnArm() {
+        typealias Footprint = CharacterController.Surroundings.Footprint
+        let rate: Float = .pi / 2, pivot = SIMD2<Float>(0, 0)
+        var angle: Float = 0
+        // A 4 m arm, 0.4 m wide, from the pivot out along +x; the body 2.5 m out, a little way round.
+        var c = CharacterController(feet: SIMD3(Level.turned(SIMD2(2.5, 0), by: 0.6).x, 0,
+                                                Level.turned(SIMD2(2.5, 0), by: 0.6).y))
+        func arm(_ a: Float) -> (BoundingBox, Footprint) {
+            let centre = pivot + Level.turned(SIMD2(2, 0), by: a)
+            let plan = Footprint(centre: centre, halfSize: SIMD2(2, 0.2), yaw: a)
+            let reach = Level.turned(SIMD2(2, 0), by: a), side = Level.turned(SIMD2(0, 0.2), by: a)
+            let ex = abs(reach.x) + abs(side.x), ez = abs(reach.y) + abs(side.y)
+            return (BoundingBox(minimum: SIMD3(centre.x - ex, 0, centre.y - ez), maximum: SIMD3(centre.x + ex, 1, centre.y + ez)), plan)
+        }
+        var deepest: Float = -1
+        for _ in 0..<120 {
+            angle += rate * step
+            let (box, plan) = arm(angle)
+            var w = CharacterController.Surroundings(solids: [box])
+            w.footprints = [plan]
+            w.turns = [.init(about: pivot, by: rate * step)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            // How far the body's square is into the arm, on the arm's own axes (the body's corners).
+            let local = Level.turned(SIMD2(c.feet.x, c.feet.z) - plan.centre, by: -angle)
+            let reachAcross = r * (abs(cos(angle)) + abs(sin(angle)))
+            deepest = max(deepest, min(2 + reachAcross - abs(local.x), 0.2 + reachAcross - abs(local.y)))
+        }
+        #expect(deepest <= 1e-3, "the arm went \(deepest) m into the body")
+        // Swept a quarter turn and more past where it stood, it is still 2.5 m out, and round with the arm.
+        let now = SIMD2(c.feet.x, c.feet.z)
+        #expect(abs(simd_length(now) - 2.5) < 0.2, "at radius \(simd_length(now))")
+    }
+
+    @Test("A slab low enough to step onto is stood on, not pushed against")
+    func lowSlabIsSteppedOn() {
+        var face: Float = -2
+        var c = CharacterController(feet: .zero)
+        for _ in 0..<240 {
+            face += step
+            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 0.2, 2))])
+            w.motion = [SIMD3(step, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+        }
+        #expect(abs(c.feet.y - 0.2) < 1e-4 && c.groundSolid == 0, "feet at \(c.feet.y), on \(String(describing: c.groundSolid))")
+    }
+}

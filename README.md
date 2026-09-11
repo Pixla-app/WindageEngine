@@ -1057,6 +1057,36 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### Pushed by something that moves (0.13.0)
+
+The carry moves a body standing *on* a solid. One moving *into* a body left it inside — measured: a slab
+sliding at 1 m/s ended with its face at the body's centre, 0.30 m in, and the body could not walk out,
+because every move starts by asking what the new position overlaps. **Now a body a moved or turned solid
+runs into is pushed**: along the way the solid went at the body's position (a turning arm pushes along
+its sweep, harder further out), just far enough to clear it, through collision with everything else,
+before the body's own walking and with no footsteps. A solid low enough to step onto is stood on
+instead, as it was.
+
+**Pushed into a wall, the body stays out of the wall** and `pinnedBy` names the solid. The controller
+does not decide what comes next: a door reverses, a crusher crushes, a lift waits — Doom's doors
+reverse and its crushers crush, and both are the game's machinery rather than the body's. A new event
+case would have said the same thing and broken every exhaustive `switch` on the events, so it is a
+property.
+
+**Pushed in the sample** by a block sliding 5 m along the courtyard (eased over 4 s), the scripted
+player standing in its path, computed first:
+
+| walk time | slider's face (computed) | feet ahead of it | feet's speed | slider's speed |
+|---|---|---|---|---|
+| 3.24 s | 3.768 (3.771) | 0.302 | 1.843 | 1.843 |
+| 3.74 s | 4.701 (4.703) | 0.302 | 1.849 | 1.849 |
+| 4.24 s | 5.577 (5.579) | 0.302 | 1.620 | 1.620 |
+| 4.74 s | 6.279 (6.281) | 0.302 | 1.157 | 1.157 |
+| 5.24 s | 6.690 (6.691) | 0.302 | 0.460 | 0.460 |
+
+Left at 7.05 m when it went back (computed 7.052). As it eased to a stop the last millimetre came in
+without a push — within the band a walk into a face stops in.
+
 ### A clock while the window is hidden (0.12.2)
 
 The simulation steps when the display link calls, and **a hidden window's display link does not call

@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-567 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+574 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,25 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — pushed by something that moves (0.13.0)
+
+**A moved or turned solid that runs into a body pushes it** — along its displacement at the body, just
+clear (2 mm), through collision with everything else, before walking, no footsteps; a low solid is stood
+on instead. **`pinnedBy`** when a push is stopped — a property, because a new `Event` case would break
+every exhaustive switch (the sample has one). **Minor**: worlds with motion now come out differently next
+to moving things, as 0.12.0 did for jumps.
+
+Six tests: four fail with the push off (checked), two are guards. **Pushed in the courtyard** by a new
+slider (`"slider"` tag, `SampleLevel.slideOffset`, 5 m eased over 4 s): its face within 3 mm of the
+computed curve at every sample, the feet 0.302 m ahead each time and at its speed to the mm/s (1.843,
+1.849, 1.620, 1.157, 0.460), left at 7.05 (computed 7.052) when it went back. Two frames: nose to its
+face mid-push; then it pulling away. A content test keeps its run clear of every other solid and the
+spawn.
+
+**Two faults in the measuring, not the feature**: the report's speed read 0 — the previous feet were
+stored where the report reads them, at the start of a step; and the first screenshots failed, the window
+looked up before macOS listed it.
 
 ## Done 2026-09-11 — a clock while the window is hidden (0.12.2)
 
@@ -1322,27 +1341,28 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
-   a solid. Measured 2026-09-11: a slab sliding at 1 m/s into a body standing beside it ended with its
-   face at the body's centre — **0.30 m inside it** — and the body was then stuck: a second of walking
-   away moved it 0.0 m, since every move starts from an overlap. A moving solid should push the body
-   ahead of it, through collision (and never through a wall — pinned is a separate, reported case).
-   **Proved in the sample by** a block sliding across the courtyard and a scripted walk standing in its
-   path: the body kept 0.30 m from the face every step and moving at the block's speed, computed first.
-
-2. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
+1. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
    disc, turning with it: four corners 0.83 m past the rim where a body steps up 0.2 m onto nothing.
    A round footprint — a disc, collided against the body's square as a rounded square, swept the same
    way — for solids that are round. **Proved in the sample by** walking at the table's centre along the
    line through one of its footprint's corners: the feet rise where the body's corner reaches the rim,
    not 0.83 m before it, computed first.
 
-3. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
+2. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
    executable started from a terminal — no App Nap in 87 s hidden. A shipped game is an `.app`, and App
    Nap is decided per app. Add `runsWhileHidden` to a minimal bundled build of the sample (or the one
    title with an app target, in its own repo), hide it for two minutes with the frame counter on, and
    either record that it holds 120 steps a second or add `ProcessInfo.beginActivity` to the switch and
    show that it then does.
+
+3. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
+   1 m ledge by a block that stops at the edge, the body left at x 1.302 and landed at x 1.302 —
+   straight down, the speed forgotten: 0.12.0's "stops dead in the air", for a push instead of a carry.
+   A push should count toward ``groundVelocity`` as a carry does. **Proved by** a test landing it
+   1.5 × √(2·1/g) = 0.47 m further out, and in the ruins by a slider on the wooden landing pushing the
+   player off its 1.2 m edge, landing its speed × √(2·1.2/g) beyond it — computed first. (Checked on
+   the way and *not* broken: a crouched body pushed under a beam stays under it, and letting go mid-push
+   keeps it held down.)
 
 ## Parked — not next, and why
 

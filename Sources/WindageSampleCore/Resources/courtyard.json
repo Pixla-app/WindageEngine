@@ -466,6 +466,21 @@
         "solid",
         "turntable"
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        1,
+        0,
+        8
+      ],
+      "scale" : 1.5,
+      "surface" : "wood",
+      "tags" : [
+        "solid",
+        "slider"
+      ]
     }
   ],
   "settings" : {},

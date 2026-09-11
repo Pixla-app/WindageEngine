@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.13.0] — 2026-09-11
+
+**Something moving into you pushes you out of its way.** The carry moved a body *standing on* a solid;
+one that moved *into* a body left it inside — measured, a slab at 1 m/s ended 0.30 m into a body, which
+was then stuck: every move out started from an overlap.
+
+### Changed
+
+- **A body a moved or turned solid runs into is pushed out of its way**, before its own walking: along
+  the way that solid went where the body stands, just clear of it, through collision with everything
+  else, making no footsteps. A turning arm pushes along its sweep. A solid low enough to step onto is
+  stood on instead, as before. **Only worlds reporting `motion` or `turns` change.**
+
+### Added
+
+- **`CharacterController.pinnedBy`** — the solid still in the body after a push was stopped by
+  something else, or nil. What happens then — a door reversing, a crusher crushing — is the game's.
+
+### Measured
+
+Six tests; four fail with the push switched off (the slab pushed at its speed, walking away after,
+pinned against a wall, a turning arm), two guard what must not change (a slab sliding past; a low slab
+stood on). **In the sample**, a new block sliding 5 m across the courtyard into the scripted player:
+its face at 3.768, 4.701, 5.577, 6.279, 6.690 m (computed 3.771, 4.703, 5.579, 6.281, 6.691), the feet
+0.302 m ahead of it at every one and going at its speed to the millimetre a second — 1.843, 1.849,
+1.620, 1.157, 0.460 — left at 7.05 when it went back.
+
+### In the sample
+
+- **A `"slider"` tag** and `SampleLevel.slideOffset(at:)`; one in the courtyard, clear of everything
+  (a content test says so). The walk report gives the slider's face, the gap and both speeds.
+
+**Consumers**: `CharacterController` gained a stored property — build clean.
+
 ## [0.12.2] — 2026-09-11
 
 **A clock while the window is hidden.** Additive: off by default, and hidden stays frozen until a game

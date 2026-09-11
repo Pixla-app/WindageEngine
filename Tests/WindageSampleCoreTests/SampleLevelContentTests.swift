@@ -137,4 +137,29 @@ struct SampleLevelContentTests {
         #expect(table.position.y + 0.2 <= CharacterController.Tuning().stepHeight)
         #expect(table.tags.contains("solid") && table.surface == "stone")
     }
+
+    /// **The slider's run is clear**: it pushes the player, and nothing else in the level can be
+    /// pushed — so the ground its box sweeps, end to end, must hold no other solid, and not the spawn.
+    /// Its box is taller than a step, so it is pushed against rather than stood on. `box.obj` is a
+    /// unit cube, centred on x and z, standing on y = 0.
+    @Test("The courtyard's slider is solid, taller than a step, and runs clear of everything")
+    func slider() throws {
+        let courtyard = try SampleLevel.bundled(0)
+        let slider = try #require(courtyard.placements.first { $0.tags.contains("slider") })
+        #expect(slider.tags.contains("solid") && slider.surface == "wood")
+        let half = slider.scale / 2
+        #expect(slider.scale > CharacterController.Tuning().stepHeight)
+        // The box at both ends of its run, and everything between.
+        let swept = (minX: slider.position.x - half, maxX: slider.position.x + SampleLevel.slideDistance + half,
+                     minZ: slider.position.z - half, maxZ: slider.position.z + half)
+        for other in courtyard.placements where other.tags.contains("solid") && other != slider {
+            // Generously: each other solid as a circle of its scaled half-diagonal plus a metre.
+            let reach = other.scale * 2
+            let clear = other.position.x + reach < swept.minX || other.position.x - reach > swept.maxX
+                || other.position.z + reach < swept.minZ || other.position.z - reach > swept.maxZ
+            #expect(clear, "\(other.mesh) at \(other.position) is in the slider's way")
+        }
+        let spawn = try #require(courtyard.markers(ofKind: "spawn").first)
+        #expect(spawn.position.z - swept.maxZ > 1, "the slider runs over the spawn")
+    }
 }

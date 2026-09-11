@@ -74,6 +74,11 @@ public nonisolated struct CharacterController: Sendable {
         /// *movement*: a solid put back at its start in one step must report no motion that step, or
         /// whoever leaves it next goes at the speed of the jump back.
         ///
+        /// **And a body it moves into is pushed out of its way** (0.13.0) — along the way it went, just
+        /// clear of it, through collision with everything else. Pushed into a wall, the body stays out
+        /// of the wall and ``CharacterController/pinnedBy`` names the solid; what a door or a crusher
+        /// does about that is the game's. A solid low enough to step onto is stood on instead.
+        ///
         /// Turning is ``turns``.
         public var motion: [SIMD3<Float>] = []
 
@@ -380,6 +385,14 @@ public nonisolated struct CharacterController: Sendable {
     /// game reads them after ``step(yaw:input:jump:crouching:deltaTime:in:)`` and before the next.
     public private(set) var events: [Event] = []
 
+    /// Which of the ``Surroundings/solids`` has the body pinned — pushed into something it cannot be
+    /// pushed through — this step, or nil.
+    ///
+    /// **What happens next is the game's.** A door that meets a player reverses; a crusher crushes; a
+    /// lift waits. The controller keeps the body out of the wall and says which solid is doing it; it
+    /// does not decide that a moving thing stops, because that is the game's machinery, not the body's.
+    public private(set) var pinnedBy: Int?
+
     /// Which of the ``Surroundings/solids`` the feet are on, or nil for the terrain or the air.
     ///
     /// **What a footstep needs to know to sound like anything** — stone steps and dirt are different
@@ -543,6 +556,11 @@ public nonisolated struct CharacterController: Sendable {
             if abs(feet.z - before.y) < abs(airVelocity.y * dt) * 0.5 { airVelocity.y = 0 }
         }
 
+        // --- Pushed by whatever moved into the body — anything that moved or turned but is not
+        // underfoot. Before the body's own walking, like the carry, and making no footsteps.
+        pinnedBy = nil
+        push(in: world)
+
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
         let moving = input.forward != 0 || input.strafe != 0
         if crouching && !wasCrouching && wasSprinting && moving && isGrounded {
@@ -670,12 +688,13 @@ public nonisolated struct CharacterController: Sendable {
 
     // MARK: - Across
 
-    private mutating func move(along delta: SIMD3<Float>, in world: Surroundings, sliding: Bool = true) {
+    private mutating func move(along delta: SIMD3<Float>, in world: Surroundings, sliding: Bool = true,
+                               ignoring pusher: Int? = nil) {
         guard delta != .zero else { return }
         let candidate = feet + delta
 
-        // What would be in the way, above the soles of the feet.
-        let obstructions = obstructing(at: candidate, in: world)
+        // What would be in the way, above the soles of the feet — not whatever is doing the pushing.
+        let obstructions = obstructing(at: candidate, in: world).filter { $0 != pusher }
         guard let rise = obstructions.map({ world.solids[$0].maximum.y }).max() else {
             feet = candidate
             return
@@ -686,7 +705,7 @@ public nonisolated struct CharacterController: Sendable {
         let climb = rise - feet.y
         if sliding, isGrounded, climb <= tuning.stepHeight {
             let raised = SIMD3(candidate.x, rise, candidate.z)
-            if obstructing(at: raised, in: world).isEmpty {
+            if obstructing(at: raised, in: world).allSatisfy({ $0 == pusher }) {
                 // The feet go up at once and the eye follows — see the type's notes on smoothing.
                 settling -= climb
                 feet = raised
@@ -720,9 +739,53 @@ public nonisolated struct CharacterController: Sendable {
             let rest = along * (1 - fraction)
             let tangent = rest - simd_dot(rest, face) * face
             if simd_length_squared(tangent) > 1e-12 {
-                move(along: SIMD3(tangent.x, 0, tangent.y), in: world, sliding: false)
+                move(along: SIMD3(tangent.x, 0, tangent.y), in: world, sliding: false, ignoring: pusher)
             }
         }
+    }
+
+    // MARK: - Pushed
+
+    /// Out of the way of every solid that moved into the body this step: along the way that solid
+    /// went where the body is, just far enough to clear it — the same two tolerances a blocked walk
+    /// keeps — and through collision with everything else. **Stopped by something else, the body stays
+    /// against it** and ``pinnedBy`` names the solid still in it.
+    ///
+    /// **Not the solid underfoot**, which carries the body instead. **Not one low enough to step
+    /// onto**, from the ground: that is stood on, the way walking into it would be, by the
+    /// ground-following that comes after.
+    private mutating func push(in world: Surroundings) {
+        let underfoot = isGrounded ? groundSolid : nil
+        let t = CharacterController.contactTolerance
+        for index in world.solids.indices where index != underfoot {
+            let going = displacement(of: index, at: feet, in: world)
+            guard going != .zero, obstructing(at: feet, in: world).contains(index) else { continue }
+            let solid = world.solids[index]
+            if isGrounded, solid.maximum.y - feet.y <= tuning.stepHeight { continue }
+            let across = SIMD2(going.x, going.z)
+            let from = SIMD2(feet.x, feet.z)
+            if simd_length_squared(across) > 1e-12,
+               let clear = contact(from: from, along: across, with: plan(of: index, in: world), clearance: 2 * t) {
+                let shove = across * max(0, clear.leaving)
+                move(along: SIMD3(shove.x, 0, 0), in: world, sliding: false, ignoring: index)
+                move(along: SIMD3(0, 0, shove.y), in: world, sliding: false, ignoring: index)
+            }
+            if obstructing(at: feet, in: world).contains(index) { pinnedBy = index }
+        }
+    }
+
+    /// How far the part of a solid at `position` went this step: its motion, then its turn about its
+    /// centre — so a turning arm pushes along its sweep, faster further out.
+    private func displacement(of index: Int, at position: SIMD3<Float>, in world: Surroundings) -> SIMD3<Float> {
+        var going = world.motion.indices.contains(index) ? world.motion[index] : .zero
+        if world.turns.indices.contains(index), world.turns[index].radians != 0 {
+            let turn = world.turns[index]
+            let moved = SIMD2(position.x + going.x, position.z + going.z)
+            let round = turn.centre + Level.turned(moved - turn.centre, by: turn.radians)
+            going.x = round.x - position.x
+            going.z = round.y - position.z
+        }
+        return going
     }
 
     // MARK: - Plans
@@ -773,13 +836,14 @@ public nonisolated struct CharacterController: Sendable {
     }
 
     /// How far along `delta` the body can go from `position` before it comes within `clearance` of
-    /// the plan, as a fraction of `delta` — negative if it already is — and the face it meets,
-    /// pointing out of the solid. Nil if the move never comes that close.
+    /// the plan, as a fraction of `delta` — negative if it already is — how far before it is that
+    /// clear of it again on the far side, and the face it meets, pointing out of the solid. Nil if the
+    /// move never comes that close.
     ///
     /// Per axis, the stretch of the move for which the two are that close; the contact is where the
     /// last of those stretches begins.
     private func contact(from position: SIMD2<Float>, along delta: SIMD2<Float>, with plan: Plan,
-                         clearance: Float) -> (fraction: Float, face: SIMD2<Float>)? {
+                         clearance: Float) -> (fraction: Float, leaving: Float, face: SIMD2<Float>)? {
         var enter = -Float.greatestFiniteMagnitude, leave = Float.greatestFiniteMagnitude
         var face = SIMD2<Float>.zero
         let offset = position - plan.centre
@@ -799,7 +863,7 @@ public nonisolated struct CharacterController: Sendable {
             leave = min(leave, last)
         }
         guard enter <= leave else { return nil }
-        return (enter, face)
+        return (enter, leave, face)
     }
 
     /// **A step up — or down — is a foot landing on something**, whatever the stride says.

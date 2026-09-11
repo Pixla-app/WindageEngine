@@ -37,20 +37,35 @@ public nonisolated enum SampleLevel {
     public static let liftRise: Float = 0.9, liftTravel: Float = 2.5, liftPause: Float = 1.5
     public static var liftCycle: Float { 2 * (liftTravel + liftPause) }
 
-    /// How far above where the level put it a lift stands, `t` seconds into its cycle: waiting at the
-    /// bottom, rising, waiting at the top, coming down. **Eased at both ends** — a lift that starts and
-    /// stops at full speed jolts whoever is on it, and in a first-person view a jolt is the camera.
     /// How fast the sample's turntables turn, radians a second — thirty degrees, a full turn in twelve
     /// seconds: slow enough to stand on and look about, fast enough to see it is turning.
     public static let turntableRate: Float = .pi / 6
 
+    /// How far above where the level put it a lift stands, `t` seconds into its cycle: waiting at the
+    /// bottom, rising, waiting at the top, coming down. **Eased at both ends** — a lift that starts and
+    /// stops at full speed jolts whoever is on it, and in a first-person view a jolt is the camera.
     public static func liftHeight(at t: Float) -> Float {
-        let p = liftPause, travel = liftTravel
+        shuttle(at: t, distance: liftRise, travel: liftTravel, pause: liftPause)
+    }
+
+    /// **The sample's sliding block**, the same way as the lift: a `"slider"` tag in the level, and
+    /// the movement here — 5 m along +x, eased over 4 s, waiting 1.5 s at each end. A block to be pushed
+    /// by, at up to 1.9 m/s in the middle of its run; the engine's part is the pushing.
+    public static let slideDistance: Float = 5, slideTravel: Float = 4, slidePause: Float = 1.5
+    public static var slideCycle: Float { 2 * (slideTravel + slidePause) }
+
+    /// How far along +x from where the level put it a slider stands, `t` seconds into its cycle.
+    public static func slideOffset(at t: Float) -> Float {
+        shuttle(at: t, distance: slideDistance, travel: slideTravel, pause: slidePause)
+    }
+
+    /// Wait, go `distance` eased over `travel`, wait, come back: the one shape both movers have.
+    static func shuttle(at t: Float, distance: Float, travel: Float, pause p: Float) -> Float {
         func ease(_ x: Float) -> Float { let x = min(max(x, 0), 1); return x * x * (3 - 2 * x) }
         if t < p { return 0 }
-        if t < p + travel { return liftRise * ease((t - p) / travel) }
-        if t < 2 * p + travel { return liftRise }
-        return liftRise * (1 - ease((t - 2 * p - travel) / travel))
+        if t < p + travel { return distance * ease((t - p) / travel) }
+        if t < 2 * p + travel { return distance }
+        return distance * (1 - ease((t - 2 * p - travel) / travel))
     }
 
     public static func fileName(_ index: Int) -> String {

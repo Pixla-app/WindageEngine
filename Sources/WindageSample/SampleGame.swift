@@ -733,6 +733,43 @@ final class SampleGame: GameLoop {
     /// The level's lifts — placements tagged `"lift"` — as rebuilt: which drawable each is (the same
     /// index in `volumes`), which solid if it is one, and where the level put it.
     private var lifts: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
+    /// The level's sliders — placements tagged `"slider"` — as the lifts are: drawable, solid, where
+    /// the level put it. They go back and forth along +x (`SampleLevel.slideOffset(at:)`), pushing
+    /// whoever stands in the way.
+    private var sliders: [(drawable: Int, solid: Int?, base: matrix_float4x4)] = []
+    private var slideClock: Float = 0
+    private var slideOffset: Float = 0
+
+    /// Moves every slider a step along its run. **After the lifts**, which set the whole of
+    /// `surroundings.motion`; a slider's entries are its own.
+    private func advanceSliders(_ dt: Float) {
+        guard !sliders.isEmpty else { return }
+        slideClock = (slideClock + dt).truncatingRemainder(dividingBy: SampleLevel.slideCycle)
+        let next = SampleLevel.slideOffset(at: slideClock)
+        placeSliders(offset: next, delta: next - slideOffset)
+        slideOffset = next
+    }
+
+    private func placeSliders(offset: Float, delta: Float) {
+        if surroundings.motion.count != surroundings.solids.count {
+            surroundings.motion = Array(repeating: .zero, count: surroundings.solids.count)
+        }
+        for slider in sliders {
+            var transform = slider.base
+            transform.columns.3.x += offset
+            drawables[slider.drawable].transform = transform
+            volumes[slider.drawable].transform = transform
+            if let solid = slider.solid {
+                surroundings.solids[solid] = volumes[slider.drawable].worldBounds
+                surroundings.footprints[solid] = .init(of: volumes[slider.drawable])
+                surroundings.motion[solid] = SIMD3(delta, 0, 0)
+            }
+        }
+    }
+
+    /// Where the feet were before the last step — so a report can say how fast the body went.
+    private var previousFeet = SIMD3<Float>.zero
+
     /// The level's turntables — placements tagged `"turntable"`: drawable, solid, where the level put
     /// it, and its yaw there. They turn about their own origin, which is their centre.
     private var turntables: [(drawable: Int, solid: Int?, position: SIMD3<Float>, yaw: Float, scale: Float)] = []
@@ -1461,6 +1498,7 @@ final class SampleGame: GameLoop {
         solidVolumes.removeAll(keepingCapacity: true)
         solidPlacements.removeAll(keepingCapacity: true)
         lifts.removeAll(keepingCapacity: true)
+        sliders.removeAll(keepingCapacity: true)
         turntables.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
@@ -1501,6 +1539,10 @@ final class SampleGame: GameLoop {
                 lifts.append((drawables.count - 1,
                               placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
             }
+            if placement.tags.contains("slider") {
+                sliders.append((drawables.count - 1,
+                                placement.tags.contains("solid") ? solidVolumes.count - 1 : nil, transform))
+            }
         }
         // **The world box says how high each solid reaches; its footprint says where it stands.** With
         // the box alone a crate at 45° held the player up three quarters of a metre short of its face,
@@ -1512,6 +1554,7 @@ final class SampleGame: GameLoop {
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
+        placeSliders(offset: slideOffset, delta: 0)
         placeTurntables(turnedBy: 0)
         rebuildFigures()
         rebuildLanterns()
@@ -2436,6 +2479,17 @@ final class SampleGame: GameLoop {
                         print(String(format: "WindageSample:     on the turntable (turned %.1f°): feet at %.1f° round its centre, radius %.2f m; view yaw %.1f°",
                                      turntableAngle * 180 / .pi, feetAngle, simd_length(offset), camera.yaw * 180 / .pi))
                     }
+                    if let slider = sliders.first, body.pinnedBy != nil || simd_distance(
+                        SIMD2(volumes[slider.drawable].worldBounds.centre.x, volumes[slider.drawable].worldBounds.centre.z),
+                        SIMD2(body.feet.x, body.feet.z)) < 3 {
+                        let box = volumes[slider.drawable].worldBounds
+                        let speed = (body.feet.x - previousFeet.x) / Float(engine.timestep.step)
+                        print(String(format: "WindageSample:     slider's face at x %.3f, feet %.3f m ahead of it, going %.3f m/s, the slider %.3f%@",
+                                     box.maximum.x, body.feet.x - box.maximum.x, speed,
+                                     surroundings.motion.indices.contains(slider.solid ?? -1)
+                                        ? surroundings.motion[slider.solid!].x / Float(engine.timestep.step) : 0,
+                                     body.pinnedBy != nil ? ", PINNED" : ""))
+                    }
                     if let near = nearestTurnedSolid() {
                         print(String(format: "WindageSample:     %@ turned %.1f° at (%.2f, %.2f): %.3f m from it, %@",
                                      near.name, near.yaw * 180 / .pi, near.centre.x, near.centre.y, near.gap,
@@ -2606,6 +2660,7 @@ final class SampleGame: GameLoop {
             // branch, so in photo mode every lift and turntable stood still — found by two frames of
             // the turntable 1.5 s apart that came out identical.
             advanceLifts(deltaTime)
+            advanceSliders(deltaTime)
             advanceTurntables(deltaTime)
             if isPhotoMode {
                 camera.advance(input.movement, deltaTime: deltaTime)
@@ -2614,6 +2669,7 @@ final class SampleGame: GameLoop {
                 // your feet does not slow the walk, and looking at the sky does not lift you off it.
                 let wasAirborne = !body.isGrounded
                 let fallSpeed = -body.verticalVelocity
+                previousFeet = body.feet
                 body.step(yaw: camera.yaw,
                           input: input.movement,
                           jump: input.isJumpHeld,
