@@ -412,8 +412,20 @@ final class SampleGame: GameLoop {
 
     /// **Where settings live, beside the progress file and separate from it** — resetting progress
     /// must not reset a player's keys, and the reverse.
-    private static let settingsStore = SaveStore<PlayerSettings>(container: "WindageSample", name: "settings")
-    private var settings = SampleGame.settingsStore.load() ?? PlayerSettings()
+    private static let settingsStore = SaveStore<PlayerSettings>(container: container, name: "settings")
+
+    /// **`WINDAGE_SAMPLE_CHECK=1`: run as a check** — `Tools/walks.py` does. No window (main.swift), no
+    /// keyboard, no sound, and **saves of its own, cleared at launch**: a walk presses keys by name, so a
+    /// player's rebinding would fail it for nothing to do with the engine, and a walk that collects a
+    /// crate would otherwise write their best times.
+    static let isCheck = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"] != nil
+    private static let container = isCheck ? "WindageSample-check" : "WindageSample"
+    private static let progressStore: SaveStore<SampleRun.Progress> = {
+        let store = isCheck ? SaveStore<SampleRun.Progress>(container: container, name: "progress") : SampleRun.sharedStore
+        if isCheck { store.clear(); settingsStore.clear() }
+        return store
+    }()
+    private var settings = SampleGame.isCheck ? PlayerSettings() : SampleGame.settingsStore.load() ?? PlayerSettings()
     private var menu: SettingsMenu?
 
     /// The game's own exposure, before the player's brightness. **The game's dial**: ACES lifts
@@ -954,7 +966,7 @@ final class SampleGame: GameLoop {
         levelPath = loaded.report
 
         run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position),
-                        levelName: loaded.level.name)
+                        levelName: loaded.level.name, store: SampleGame.progressStore)
 
         // Spawn where the level says, looking where it says.
         let spawn = loaded.level.markers(ofKind: "spawn").first
@@ -1173,7 +1185,7 @@ final class SampleGame: GameLoop {
         // exempts an app playing sound from App Nap, and a running `AVAudioEngine` is playing sound
         // whether or not anything is audible, so measuring whether a hidden game is napped needs the
         // sample without one: a game's worst case is the one with nothing playing.
-        audio = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SILENT"] == nil ? AudioEngine() : nil
+        audio = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SILENT"] == nil && !SampleGame.isCheck ? AudioEngine() : nil
         if let audio {
             // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
             // which for a SwiftPM executable is the executable itself and holds no resources — the
@@ -1762,7 +1774,7 @@ final class SampleGame: GameLoop {
         // A fresh run, sized from this level's objectives — and keeping the progress, which is the
         // player's rather than the level's.
         run = SampleRun(objectives: level.markers(ofKind: "objective").map(\.position),
-                        levelName: level.name)
+                        levelName: level.name, store: SampleGame.progressStore)
         rebuildEnvironment()
         print("WindageSample: '\(level.name)' — \(drawables.count) drawables from \(levelPath)")
     }

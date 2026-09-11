@@ -10,7 +10,10 @@ what changed recently and what is next.
 > describe the *shape* of the consumer instead. The reasoning is what is worth keeping; the product
 > name is coupling.
 
-**Run it:** `swift run WindageSample` · **Test it:** `swift test`
+**Run it:** `swift run WindageSample` · **Test it:** `swift test` · **Walk it:** `python3 Tools/walks.py`
+— every documented walk, run invisibly, failing on more than 2 cm from its record. **Run it before
+committing anything that touches the sample's levels or the controller**, and add an item's proof walk
+to `Tools/walks.json` when it is measured.
 
 **Reproduce a screenshot:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_CAMERA=-4,20,4,0,-62 swift run
 WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degrees. **A camera placed
@@ -62,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-585 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+586 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +78,22 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the documented walks are a check (0.14.1)
+
+**`Tools/walks.json`** (six walks — crate, lift jump, stairs and jump, push, turntable rim, piston — with
+21 expectations: feet after segments, highest points, report numbers) and **`Tools/walks.py`** (runs them,
+fails on > 2 cm). All six hold, ~60 s. **Proved by failing**: slider back at (1, 8) → the crate walk fails
+on (3.22, 5.28), the deflection found by hand, and the push walk fails too; exit 1. Restored.
+
+**Checked, not guessed, on the way**: the stairs walk was labelled "0.6" from memory — `git log -S` found
+it at **0.6.6**, and the README's version of it went on to a jump that peaked at 0.97; the check uses that
+whole walk now.
+
+**`WINDAGE_SAMPLE_CHECK=1`** runs the sample invisibly: accessory app (a regular one became frontmost at
+launch with no `activate` — measured), window never shown, silent, saves in `WindageSample-check`, cleared.
+That needed **an engine fix (0.14.1)**: the hidden clock waited for a first frame, which a never-shown
+window never gets — it starts at the timer's first tick now. One test, failing on the old clock by 10 s.
 
 ## Done 2026-09-11 — a push is kept on leaving (0.14.0)
 
@@ -1397,13 +1416,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
-   measured by, and nothing noticed until it was re-run by hand a version later. A `Tools/walks.sh` that
-   runs each walk the handoff documents — the crate, the lift jump, the push, the turntable rim, the
-   stairs, the piston — hidden (0.12.2 lets it), and compares each end position with the one recorded, failing on
-   more than 2 cm. **Proved by** it passing now, and failing on purpose with the slider put back at z 8.
-
-2. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
+1. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
    own rule 0.13.0 is not finished — the sample never reads `pinnedBy`, and a capability is proved by
    the sample using it. A door that meets someone reverses; the slider should, the moment it pins the
    player against something. **Proved in the courtyard** by a crate set at the far end of the slider's
@@ -1411,12 +1424,20 @@ below, never in this list.
    player against it, computed first: pinned when the gap closes to the body's width, the slider turning
    back that step, the player never pushed into the crate.
 
-3. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
+2. **Airborne, a push is kept too.** A push counts only while grounded. Measured 2026-09-11: a block at
    1.5 m/s meeting a body mid-jump shoved it along, stopped, and the body — 0.29 s of flight still to
    go — came down at x 0.214, exactly where the block left it: stopped dead in the air. Kept, it would
    land 1.5 × 0.292 = 0.44 m further. A push in the air should add to ``airVelocity`` as one on the
    ground adds to ``groundVelocity``. **Proved by** that test, and in the ruins by the player jumping in
    front of the piston as it arrives — landing its speed × the rest of the flight beyond, computed first.
+
+3. **The walks check what a walk hears and bobs, not only where it ends.** `Tools/walks.py` checks
+   positions and a few report numbers; the walk report also carries footsteps and their surfaces, and
+   the head bob's size — measured once and now unguarded: 0.8.1's bob (2.8 cm up and down at a walk, 4.7
+   at a sprint, 1.4 crouched) and 0.11.0's walk down the ruins' stairs (5 footsteps — wood, stone,
+   dirt — where the old tread rule gave 3). Recover those walks' scripts from git (`git log -S`), add
+   them with their numbers. **Proved by** the check passing, and failing with the tread rule's `abs`
+   taken out (5 → 3).
 
 ## Parked — not next, and why
 

@@ -12,6 +12,31 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.14.1] — 2026-09-11
+
+**The documented walks run as a check.** 0.13.0's slider was put across the walk 0.12.1 was measured by,
+and nothing noticed until it was re-run by hand. The walks are data now, and one command runs them all.
+
+### Fixed
+
+- **A game keeping time hidden keeps it from the start, too.** `runsWhileHidden`'s timer waited for the
+  display link's first frame before crediting any time, so a window that opened hidden — never shown —
+  never ran at all. The clock starts at the timer's first tick when no frame has come, and the first
+  frame after that counts the host clock since the last tick. One test; it fails on the old clock by all
+  ten seconds.
+
+### In the sample
+
+- **`Tools/walks.json` and `Tools/walks.py`** — every walk the docs measure a feature by (the crate, the
+  lift jump, the stairs and jump, the push, the turntable rim, the piston), with what each recorded:
+  feet after named segments, the highest point, numbers from the report. `python3 Tools/walks.py` runs
+  them and fails on more than 2 cm. **All six hold**, 21 expectations, in about a minute. With the
+  slider put back where 0.13.0 had it, it fails the crate walk on the very deflection found by hand —
+  (3.22, 5.28) for (3.21, −0.13) — and the push walk too.
+- **`WINDAGE_SAMPLE_CHECK=1`** — how the walks run: no window, never the keyboard (an accessory app — a
+  regular one was made frontmost at launch with no `activate` at all, measured), no sound, and saves of
+  its own, cleared, so a player's rebinding cannot fail a walk and a walk cannot write their best times.
+
 ## [0.14.0] — 2026-09-11
 
 **A body pushed off an edge keeps the push's speed.** Measured before: pushed off a 1 m ledge at 1.5 m/s

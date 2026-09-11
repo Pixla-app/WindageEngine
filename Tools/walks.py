@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Run every walk the handoff documents, and fail on any that no longer does what it was measured doing.
+
+A walk proves a feature once, the day it is measured; after that it is a claim in a document, and a
+change to a level can quietly make it false — 0.13.0's slider was put across the walk 0.12.1 was measured
+by, and nothing noticed until it was re-run by hand a version later. So the walks are data
+(Tools/walks.json) and this runs them all.
+
+Each runs as a check (WINDAGE_SAMPLE_CHECK=1): no window, no keyboard, no sound, and its own saves,
+cleared — so it runs while somebody works, and a player's rebinding cannot fail it. The engine keeps time
+with the window never shown (FrameRenderer.runsWhileHidden, from its first tick), so a walk takes its own
+length and a few seconds to start.
+
+    python3 Tools/walks.py            every walk
+    python3 Tools/walks.py piston     the walks whose names contain "piston"
+
+Exit status 0 when every expectation holds, 1 otherwise. Positions are compared to the walk report's two
+decimals, so a feet expectation allows the tolerance plus half a centimetre of rounding.
+"""
+import json, os, pathlib, re, subprocess, sys, threading, time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+SAMPLE = ROOT / ".build/debug/WindageSample"
+WALK_LINE = re.compile(r"walk '([^']+)' → feet \(([-0-9.]+), ([-0-9.]+), ([-0-9.]+)\), highest ([-0-9.]+)")
+
+
+def run(walk):
+    """The sample's log for one walk: launched as a check, stopped half a second after the last segment
+    reports — the lines that follow it (footsteps, a gap) arrive in that time."""
+    env = dict(os.environ, WINDAGE_SAMPLE_CHECK="1", WINDAGE_SAMPLE_LEVEL=str(walk["level"]),
+               WINDAGE_SAMPLE_WALK=walk["script"])
+    last = f"walk '{walk['script'].split()[-1]}'"
+    seconds = sum(float(t.split(":")[1]) for t in walk["script"].split()
+                  if not t.startswith(("yaw:", "pitch:", "mousex:", "mousey:")))
+    process = subprocess.Popen([str(SAMPLE)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines = []
+    reader = threading.Thread(target=lambda: lines.extend(iter(process.stdout.readline, "")), daemon=True)
+    reader.start()
+    deadline, finished = time.time() + seconds + 30, None
+    while time.time() < deadline:
+        if finished is None and any(last in l for l in list(lines)):
+            finished = time.time()
+        if finished is not None and time.time() > finished + 0.5:
+            break
+        time.sleep(0.05)
+    process.kill()
+    process.wait()
+    return [l.rstrip("\n") for l in lines]
+
+
+def check(walk, lines, tolerance):
+    """Each expectation against the log: what it wanted, what it got, and whether that holds."""
+    results = []
+    segments = [(m.group(1), [float(m.group(i)) for i in (2, 3, 4)], float(m.group(5)))
+                for m in (WALK_LINE.search(l) for l in lines) if m]
+    for want in walk["expect"]:
+        if "after" in want:
+            hits = [s for s in segments if s[0] == want["after"]]
+            n = want.get("occurrence", len(hits) if want.get("last") else 1)
+            got = hits[n - 1] if len(hits) >= n else None
+            if "feet" in want:
+                ok = got is not None and all(abs(a - b) <= tolerance + 0.005 for a, b in zip(got[1], want["feet"]))
+                results.append((f"feet after '{want['after']}'" + (f" #{n}" if "occurrence" in want else ""),
+                                want["feet"], got[1] if got else None, ok))
+            if "highest" in want:
+                ok = got is not None and abs(got[2] - want["highest"]) <= tolerance + 0.005
+                results.append((f"highest in '{want['after']}' #{n}", want["highest"], got[2] if got else None, ok))
+        else:
+            hits = [l for l in lines if want["line"] in l]
+            line = (hits[-1] if want.get("last") else hits[0]) if hits else None
+            m = re.search(want["pattern"], line) if line else None
+            value = float(m.group(1)) if m else None
+            ok = value is not None and abs(value - want["value"]) <= tolerance
+            results.append((f"'{want['line']}'", want["value"], value, ok))
+    return results
+
+
+def main():
+    spec = json.loads((ROOT / "Tools/walks.json").read_text())
+    names = sys.argv[1:]
+    walks = [w for w in spec["walks"] if not names or any(n in w["name"] for n in names)]
+    built = subprocess.run(["swift", "build", "--product", "WindageSample"], cwd=ROOT, capture_output=True, text=True)
+    if built.returncode != 0:
+        print(built.stdout[-2000:], built.stderr[-2000:])
+        return 1
+    failed = 0
+    for walk in walks:
+        started = time.time()
+        lines = run(walk)
+        results = check(walk, lines, spec["tolerance"])
+        bad = [r for r in results if not r[3]]
+        failed += bool(bad)
+        print(f"{'ok  ' if not bad else 'FAIL'} {walk['name']:<16} {len(results) - len(bad)}/{len(results)}"
+              f"  ({time.time() - started:.1f} s; recorded {walk['recorded']})")
+        for what, wanted, got, ok in results:
+            if not ok:
+                print(f"       {what}: wanted {wanted}, got {got}")
+    print(f"{len(walks) - failed} of {len(walks)} walks as recorded")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

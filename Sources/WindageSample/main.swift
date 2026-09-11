@@ -72,7 +72,9 @@ if ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_MEASURE_AUDIO"] != nil {
 }
 
 let application = NSApplication.shared
-application.setActivationPolicy(.regular)
+// As a check (below) an accessory: a regular app is made active when it finishes launching, whatever
+// it asks for — measured, the frontmost app became this one with no `activate` call at all.
+application.setActivationPolicy(SampleGame.isCheck ? .accessory : .regular)
 
 guard let device = MTLCreateSystemDefaultDevice() else {
     print("WindageSample: no Metal device")
@@ -121,7 +123,14 @@ game.viewportChanged(width: Int(view.drawableSize.width), height: Int(view.drawa
 // Reported so an automated check can capture *this* window rather than the whole screen.
 print("WindageSample: window \(window.windowNumber)")
 
-window.makeKeyAndOrderFront(nil)
+// **As a check the window is never shown, and never takes the keyboard** — `Tools/walks.py` runs walks
+// while somebody works, and a window that jumps in front takes their next keystroke. A walk needs no
+// pictures; the engine keeps time with no frames at all (`runsWhileHidden`, from its first tick).
+if SampleGame.isCheck {
+    // Not shown.
+} else {
+    window.makeKeyAndOrderFront(nil)
+    application.activate(ignoringOtherApps: true)
+}
 window.makeFirstResponder(view)
-application.activate(ignoringOtherApps: true)
 application.run()

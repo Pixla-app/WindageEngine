@@ -1,0 +1,200 @@
+{
+  "about": "The walks the handoff and README document, each with what it measured. Tools/walks.py runs them all as a check. A walk's numbers are the ones recorded when it was measured; change one only with the reason, in the CHANGELOG, that the world it walks through changed.",
+  "tolerance": 0.02,
+  "walks": [
+    {
+      "name": "crate",
+      "recorded": "0.12.1 — a turned crate stops you at its face",
+      "level": 0,
+      "script": "wait:0.5 yaw:-14.84 w:2.0915 wait:0.2 yaw:-44.16 w:0.25 w:0.25 w:0.25 w:0.25 w:0.5 w:0.5 wait:0.3",
+      "expect": [
+        {
+          "after": "w:2.0915",
+          "feet": [
+            3.21,
+            0.0,
+            -0.13
+          ]
+        },
+        {
+          "after": "wait:0.3",
+          "feet": [
+            5.18,
+            0.0,
+            -2.16
+          ]
+        },
+        {
+          "line": "box turned 45.8",
+          "pattern": ": ([-0-9.]+) m from it",
+          "value": 0.0,
+          "last": true
+        }
+      ]
+    },
+    {
+      "name": "lift jump",
+      "recorded": "0.12.0 — a jump keeps the platform's motion",
+      "level": 1,
+      "script": "wait:0.5 d:1.25 w:0.8 space:0.05 wait:1.2 wait:4.3 w:0.2 wait:1.1 wait:1.35 space:0.05 wait:1.2 wait:1.5",
+      "expect": [
+        {
+          "after": "wait:1.2",
+          "occurrence": 1,
+          "highest": 0.97
+        },
+        {
+          "after": "wait:1.35",
+          "feet": [
+            7.5,
+            0.75,
+            0.0
+          ]
+        },
+        {
+          "after": "wait:1.2",
+          "occurrence": 2,
+          "highest": 1.9
+        },
+        {
+          "after": "wait:1.5",
+          "feet": [
+            7.5,
+            1.2,
+            0.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stairs and jump",
+      "recorded": "0.6.6 — a body with feet: the README's walk",
+      "level": 1,
+      "script": "d:0.75 w:1.0 w:0.4 wait:1 space:0.05 wait:1.2",
+      "expect": [
+        {
+          "after": "w:1.0",
+          "feet": [
+            4.5,
+            1.2,
+            0.0
+          ]
+        },
+        {
+          "after": "wait:1",
+          "feet": [
+            4.5,
+            0.0,
+            -2.4
+          ]
+        },
+        {
+          "after": "wait:1.2",
+          "highest": 0.97
+        }
+      ]
+    },
+    {
+      "name": "push",
+      "recorded": "0.13.1 — pushed by the courtyard's slider, at its place since 0.13.1",
+      "level": 0,
+      "script": "wait:0.3 yaw:69.44 w:1.424 yaw:90 wait:2.516 wait:0.5 wait:0.5 wait:0.5 wait:1.5",
+      "expect": [
+        {
+          "after": "w:1.424",
+          "feet": [
+            -8.01,
+            0.0,
+            9.0
+          ]
+        },
+        {
+          "line": "slider's face at x",
+          "pattern": "face at x ([-0-9.]+)",
+          "value": -7.423
+        },
+        {
+          "line": "slider's face at x",
+          "pattern": "feet ([-0-9.]+) m ahead",
+          "value": 0.302
+        },
+        {
+          "after": "wait:1.5",
+          "feet": [
+            -5.95,
+            0.0,
+            9.0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "turntable rim",
+      "recorded": "0.13.1 — round solids are round",
+      "level": 0,
+      "script": "wait:0.3 yaw:18.435 w:0.52705 yaw:45 wait:1.63 w:1.0 wait:0.5",
+      "expect": [
+        {
+          "after": "w:0.52705",
+          "feet": [
+            -1.0,
+            0.0,
+            9.01
+          ]
+        },
+        {
+          "line": "stepped onto the turntable",
+          "pattern": "turntable ([0-9.]+) m",
+          "value": 2.418
+        },
+        {
+          "after": "w:1.0",
+          "feet": [
+            -5.28,
+            0.2,
+            4.82
+          ]
+        }
+      ]
+    },
+    {
+      "name": "piston",
+      "recorded": "0.14.0 — a body pushed off an edge keeps the push's speed",
+      "level": 1,
+      "script": "wait:0.5 d:0.75 w:1.1 d:0.175 wait:1.0 wait:1.0 wait:1.5",
+      "expect": [
+        {
+          "after": "d:0.175",
+          "feet": [
+            5.55,
+            1.2,
+            -0.6
+          ]
+        },
+        {
+          "line": "left the ground",
+          "pattern": "keeping \\([-0-9.]+, ([-0-9.]+)\\)",
+          "value": -1.5
+        },
+        {
+          "line": "came down at",
+          "pattern": "came down at \\([-0-9.]+, [-0-9.]+, ([-0-9.]+)\\)",
+          "value": -2.315
+        },
+        {
+          "line": "came down at",
+          "pattern": "([0-9.]+) m across",
+          "value": 0.512
+        },
+        {
+          "after": "wait:1.5",
+          "feet": [
+            5.55,
+            0.0,
+            -2.31
+          ]
+        }
+      ]
+    }
+  ]
+}

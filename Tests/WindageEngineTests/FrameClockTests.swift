@@ -79,4 +79,19 @@ struct FrameClockTests {
         let wentBy = (resume + 3 - frame) - 100
         #expect(abs(credited - wentBy) < 1e-6, "credited \(credited) s of \(wentBy) s")
     }
+
+    /// A window opened hidden gets no frame. The timer's first tick starts the clock, and it keeps the
+    /// wall clock from there — where it used to wait for a first frame that never came.
+    @Test("With no frame ever, the timer keeps time from its first tick")
+    func startedHidden() {
+        var clock = FrameClock()
+        #expect(clock.tick(now: 50) == nil, "the first tick only starts the clock")
+        let credited = ticks(&clock, from: 50 + tick, seconds: 10)
+        let lastTick = 50 + tick + (10 / tick - 1).rounded() * tick
+        #expect(abs(credited - (lastTick - 50)) < 1e-6, "credited \(credited) s of \(lastTick - 50) s")
+        // Shown at last: the first frame counts from the last tick on the host clock, not its stamp's lead.
+        let shown = lastTick + frame
+        #expect(abs(clock.frame(presented: shown + lead, now: shown) - frame) < 1e-6)
+        #expect(abs(clock.frame(presented: shown + frame + lead, now: shown + frame) - frame) < 1e-6)
+    }
 }

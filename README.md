@@ -1057,6 +1057,30 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### The walks are a check (0.14.1)
+
+Every feature here was proved by a scripted walk, the day it was measured. After that a walk is a claim
+in a document, and a change to a level can make it false without failing a single test — 0.13.0's slider
+was put across the walk 0.12.1 was measured by, and it was found by re-running that walk by hand a
+version later. So the walks are data, `Tools/walks.json`, each with what it measured, and
+
+```
+python3 Tools/walks.py
+```
+
+runs them all and fails on anything more than 2 cm from its record. Six walks, 21 expectations, about a
+minute. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
+
+**They run as a check — `WINDAGE_SAMPLE_CHECK=1` — so they can run while somebody works**: the window is
+never shown, the keyboard never taken, nothing played aloud, and the saves are the check's own, cleared
+at launch. Two things that made it work: the sample runs as an *accessory* app, because a regular one is
+made frontmost when it finishes launching whether or not it asks; and the engine's hidden clock starts
+at its first tick when no frame comes, where it had waited for a frame that a never-shown window never
+gets.
+
+**A walk's recorded numbers change only with a reason in the CHANGELOG** — the world it walks through
+changed, and the new numbers were measured and explained. A walk that fails is otherwise a regression.
+
 ### The speed a push leaves you with (0.14.0)
 
 0.12.0 made a body keep the speed of a floor it left; a push was not counted, so a body shoved off a
