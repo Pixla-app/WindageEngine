@@ -1626,3 +1626,139 @@ struct CharacterPushedTests {
         #expect(abs(c.feet.y - 0.2) < 1e-4 && c.groundSolid == 0, "feet at \(c.feet.y), on \(String(describing: c.groundSolid))")
     }
 }
+
+// MARK: - Something round
+
+@Suite("Character controller — round solids")
+struct CharacterRoundSolidTests {
+
+    private typealias Footprint = CharacterController.Surroundings.Footprint
+    private let r = CharacterController.Tuning().radius
+    private let root2 = Float(2).squareRoot()
+
+    private func world(_ box: BoundingBox, _ plan: Footprint?) -> CharacterController.Surroundings {
+        var w = CharacterController.Surroundings(solids: [box])
+        w.footprints = [plan]
+        return w
+    }
+
+    /// A 4 m table 0.2 m high at the origin, its box the square round it.
+    private let table = BoundingBox(minimum: SIMD3(-2, 0, -2), maximum: SIMD3(2, 0.2, 2))
+
+    /// Walks from `start` at `yaw` until the feet rise, returning how far from the origin the body's
+    /// centre was then — or nil if they never did.
+    private func whereItRises(from start: SIMD2<Float>, yaw: Float, in w: CharacterController.Surroundings) -> Float? {
+        var c = CharacterController(feet: SIMD3(start.x, 0, start.y))
+        for _ in 0..<240 {
+            c.step(yaw: yaw, input: MovementInput(forward: 1), deltaTime: step, in: w)
+            if c.feet.y > 0.1 { return simd_length(SIMD2(c.feet.x, c.feet.z)) }
+        }
+        return nil
+    }
+
+    /// **The point of it.** Coming at a round table along a diagonal, the body's corner leads, and the
+    /// feet should rise as it reaches the rim: R + r√2 from the centre, give or take one step's
+    /// travel. Its square rises them 0.83 m sooner — at its own corner, 2√2 + r√2 out.
+    @Test("Walking at a round table along a diagonal steps up at its rim, not its square's corner")
+    func risesAtTheRim() {
+        let start = SIMD2<Float>(-4, -4)
+        let yaw: Float = -3 * .pi / 4                  // walking along (+x, +z)
+        let oneStep = CharacterController.Tuning().walkSpeed * step
+        let rim = 2 + r * root2
+        let round = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(centre: .zero, radius: 2)))
+        #expect(round.map { $0 <= rim + 1e-3 && $0 >= rim - oneStep - 1e-3 } ?? false,
+                "rose at \(String(describing: round)) m out, the rim is \(rim)")
+        let square = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(centre: .zero, halfSize: SIMD2(2, 2), yaw: 0)))
+        let corner = (2 + r) * root2
+        #expect(square.map { $0 <= corner + 1e-3 && $0 >= corner - oneStep - 1e-3 } ?? false,
+                "its square rose it at \(String(describing: square)) m, its corner is \(corner)")
+    }
+
+    @Test("Past a round table's rim, where its square's corner is, there is nothing to stand on")
+    func noAirPastTheRim() {
+        // At (1.8, 1.8) the body's nearest corner is 2.12 m out: off the table, inside its square.
+        func drop(_ plan: Footprint) -> Float {
+            var c = CharacterController(feet: SIMD3(1.8, 1, 1.8))
+            for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(table, plan)) }
+            return c.feet.y
+        }
+        #expect(drop(Footprint(centre: .zero, radius: 2)) == 0, "stood on air past the rim")
+        #expect(abs(drop(Footprint(centre: .zero, halfSize: SIMD2(2, 2), yaw: 0)) - 0.2) < 1e-4,
+                "its square should have held it up — the test is not testing anything")
+        // Just inside the rim it stands: the corner at 1.98 m.
+        var c = CharacterController(feet: SIMD3(1.1, 1, 1.1))
+        for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(table, Footprint(centre: .zero, radius: 2))) }
+        #expect(abs(c.feet.y - 0.2) < 1e-4)
+    }
+
+    /// A column 1 m across and 3 m tall. Face on, the body's flat face meets it: R + r from its centre.
+    private let column = BoundingBox(minimum: SIMD3(-0.5, 0, -0.5), maximum: SIMD3(0.5, 3, 0.5))
+
+    @Test("Walking square at a column stops with the body's face against it")
+    func stopsAtAColumn() {
+        var c = CharacterController(feet: SIMD3(-3, 0, 0))
+        for _ in 0..<120 {
+            c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, Footprint(centre: .zero, radius: 0.5)))
+        }
+        let out = -c.feet.x
+        #expect(out >= 0.5 + r - 0.001 && out <= 0.5 + r + 0.002 && abs(c.feet.z) < 1e-5, "stopped at \(c.feet)")
+    }
+
+    /// **Off centre by more than the body's half-width**, its corner meets the curve and it glances
+    /// off round the column, never into it — where the column's box would hold it for good. By less,
+    /// the column's nearest point meets the body's flat face and it stops, as at a wall: that is a box
+    /// body's nature, and the type's notes say so.
+    @Test("Walking at a column off centre slides round it")
+    func slidesRoundAColumn() {
+        let plan = Footprint(centre: .zero, radius: 0.5)
+        var held = CharacterController(feet: SIMD3(-3, 0, 0.2))
+        for _ in 0..<240 { held.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, plan)) }
+        #expect(abs(held.feet.x + 0.5 + r) < 0.003, "0.2 m off centre, face on, it should stop at the column: \(held.feet)")
+        var c = CharacterController(feet: SIMD3(-3, 0, 0.4))
+        var deepest: Float = -1
+        for _ in 0..<240 {
+            c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, plan))
+            // The column's centre against the body's square, measured here.
+            let q = abs(SIMD2(c.feet.x, c.feet.z)), out = simd_max(q - r, .zero)
+            let beyond = simd_length_squared(out) > 0 ? simd_length(out) : max(q.x - r, q.y - r)
+            deepest = max(deepest, 0.5 - beyond)
+        }
+        #expect(c.feet.x > 3, "stuck at \(c.feet)")
+        #expect(deepest <= 1e-3, "went \(deepest) m into the column")
+        var boxed = CharacterController(feet: SIMD3(-3, 0, 0.4))
+        for _ in 0..<240 { boxed.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, nil)) }
+        #expect(boxed.feet.x < -0.5, "its box should have held it — the test is not testing anything")
+    }
+
+    @Test("A round column sliding into a body pushes it, never into it")
+    func pushedByAColumn() {
+        var x: Float = -3
+        var c = CharacterController(feet: SIMD3(0, 0, 0.3))
+        var deepest: Float = -1
+        for _ in 0..<360 {
+            x += step
+            let box = BoundingBox(minimum: SIMD3(x - 0.5, 0, -0.5), maximum: SIMD3(x + 0.5, 3, 0.5))
+            var w = world(box, Footprint(centre: SIMD2(x, 0), radius: 0.5))
+            w.motion = [SIMD3(step, 0, 0)]
+            c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
+            let q = abs(SIMD2(c.feet.x - x, c.feet.z)), out = simd_max(q - r, .zero)
+            let beyond = simd_length_squared(out) > 0 ? simd_length(out) : max(q.x - r, q.y - r)
+            deepest = max(deepest, 0.5 - beyond)
+        }
+        #expect(deepest <= 1e-3, "the column went \(deepest) m into the body")
+        #expect(c.feet.x > 0.5, "not pushed: \(c.feet)")
+    }
+
+    @Test("A disc from a volume: the circle its plan's square holds; none for a tilted one")
+    func discOfAVolume() {
+        let local = BoundingBox(minimum: SIMD3(-2, 0, -2), maximum: SIMD3(2, 0.2, 2))
+        let placed = Volume(local: local, transform: Level.transform(yaw: 0.7, scale: 1.5, at: SIMD3(-5, 0, 5)))
+        let disc = Footprint(discOf: placed)
+        #expect(disc?.radius == 3)
+        #expect(disc.map { simd_distance($0.centre, SIMD2(-5, 5)) < 1e-5 } ?? false)
+        let tilt: Float = 0.3
+        let tilted = matrix_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, cos(tilt), sin(tilt), 0),
+                                               SIMD4(0, -sin(tilt), cos(tilt), 0), SIMD4(0, 0, 0, 1)))
+        #expect(Footprint(discOf: Volume(local: local, transform: tilted)) == nil)
+    }
+}

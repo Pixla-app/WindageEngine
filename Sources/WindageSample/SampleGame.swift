@@ -463,6 +463,16 @@ final class SampleGame: GameLoop {
     /// coals as bright as white paper. **The game owns the strength**, as it owns a collected crate's,
     /// and it lives in a table rather than in a check for one name so the next glowing thing is a line.
     private static let glowStrength: [String: Float] = ["brazier": 2.5]
+
+    /// **Which meshes are round** — collided as the disc inside their box, not the box. A box cannot
+    /// say it holds a circle, so the game that made the mesh says it. The turntable's square let a body
+    /// step up onto air 0.83 m past its rim.
+    private static let roundMeshes: Set<String> = ["turntable"]
+
+    /// A solid's plan: its disc if its mesh is round, else its turned rectangle.
+    private func footprint(of volume: Volume, mesh: String) -> CharacterController.Surroundings.Footprint? {
+        SampleGame.roundMeshes.contains(mesh) ? .init(discOf: volume) : .init(of: volume)
+    }
     /// Drawable index to its glow strength, rebuilt with the level.
     private var glowingDrawables: [Int: Float] = [:]
 
@@ -795,7 +805,8 @@ final class SampleGame: GameLoop {
             volumes[table.drawable].transform = transform
             if let solid = table.solid {
                 surroundings.solids[solid] = volumes[table.drawable].worldBounds
-                surroundings.footprints[solid] = .init(of: volumes[table.drawable])
+                surroundings.footprints[solid] = footprint(of: volumes[table.drawable],
+                                                           mesh: level.placements[solidPlacements[solid]].mesh)
                 turns[solid] = .init(about: SIMD2(table.position.x, table.position.z), by: step)
             }
         }
@@ -1550,7 +1561,9 @@ final class SampleGame: GameLoop {
         // every one has a footprint.
         surroundings = CharacterController.Surroundings(groundHeight: { _, _ in 0 },
                                                         solids: solidVolumes.map(\.worldBounds))
-        surroundings.footprints = solidVolumes.map(CharacterController.Surroundings.Footprint.init(of:))
+        surroundings.footprints = zip(solidVolumes, solidPlacements).map {
+            footprint(of: $0, mesh: level.placements[$1].mesh)
+        }
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
@@ -1815,6 +1828,9 @@ final class SampleGame: GameLoop {
     /// key to both and hoping they do not collide is how an editor ends up walking the camera into a
     /// wall while you are trying to move a crate.
     // MARK: - Keys in
+
+    /// Whether a scripted walk is playing — and so the real keyboard and mouse are not listened to.
+    var isScripted: Bool { scriptedWalk?.isRunning == true }
 
     /// A key went down. **The game gets first refusal, then `InputState`** — a key the editor or the
     /// settings screen takes must not also walk the player.
@@ -2670,6 +2686,7 @@ final class SampleGame: GameLoop {
                 let wasAirborne = !body.isGrounded
                 let fallSpeed = -body.verticalVelocity
                 previousFeet = body.feet
+                let wasOn = body.groundSolid
                 body.step(yaw: camera.yaw,
                           input: input.movement,
                           jump: input.isJumpHeld,
@@ -2677,6 +2694,14 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                // A scripted walk says where the feet stepped onto a turntable — the one moment its
+                // outline shows: a square's corner lifts them before the rim, a disc at it.
+                if scriptedWalk != nil, body.groundSolid != wasOn,
+                   let table = turntables.first(where: { $0.solid != nil && $0.solid == body.groundSolid }) {
+                    let from = SIMD2(body.feet.x - table.position.x, body.feet.z - table.position.z)
+                    print(String(format: "WindageSample:     stepped onto the turntable %.3f m from its centre, the table turned %.1f°",
+                                 simd_length(from), turntableAngle * 180 / .pi))
+                }
                 // **The view turns with whatever turned the feet.** The controller carries the body round
                 // a turntable and says how far; the camera is the game's, so the game adds it — or the
                 // player faces one fixed way while the floor spins under them.

@@ -471,9 +471,9 @@
       "anchor" : "absolute",
       "mesh" : "box",
       "position" : [
-        1,
+        -12,
         0,
-        8
+        9
       ],
       "scale" : 1.5,
       "surface" : "wood",

@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-574 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+580 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,28 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — round solids are round (0.13.1)
+
+**`Footprint.radius`**, `Footprint(centre:radius:)`, `Footprint(discOf:)`; a disc collided as a rounded
+square against the body's square (slabs and corner circles, entering at the first). The sample marks
+`turntable` round (`SampleGame.roundMeshes`). Six tests; three fail with discs as their squares. A box
+body meets a column face on and **stops** — honest, pinned by a test.
+
+**The proof had to be timed.** At the first timing the square had turned 41°, a flat side facing the
+approach, and square and disc agreed (2.418 both) — computed before running, and the walk given a wait
+so the square's corner pointed along it. Then: square **3.068 m** (computed 3.068), disc **2.418 m**
+(computed 2.418). Frames of both at the step up.
+
+**A regression of mine, found by the rule of re-running old walks**: 0.13.0's slider sat across the
+0.12.1 crate walk (ended (3.22, 5.28), not (3.21, −0.13)). Moved to x −12, z 9; the crate walk
+reproduces again, and the push re-measured there matches. **A new placement in a level re-runs the walks
+documented for that level.**
+
+**And a scripted walk ignores the real keyboard.** Two runs stood at the spawn with every report
+printing; four reruns did not. The window takes the keyboard when it opens, and a real Tab puts the game
+in its editor — reproduced with System Events (walk frozen at (−0.74, 9.77)), gone with the guard. That
+it was the cause of those two is likely, not proven.
 
 ## Done 2026-09-11 — pushed by something that moves (0.13.0)
 
@@ -1341,21 +1363,14 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
-   disc, turning with it: four corners 0.83 m past the rim where a body steps up 0.2 m onto nothing.
-   A round footprint — a disc, collided against the body's square as a rounded square, swept the same
-   way — for solids that are round. **Proved in the sample by** walking at the table's centre along the
-   line through one of its footprint's corners: the feet rise where the body's corner reaches the rim,
-   not 0.83 m before it, computed first.
-
-2. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
+1. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
    executable started from a terminal — no App Nap in 87 s hidden. A shipped game is an `.app`, and App
    Nap is decided per app. Add `runsWhileHidden` to a minimal bundled build of the sample (or the one
    title with an app target, in its own repo), hide it for two minutes with the frame counter on, and
    either record that it holds 120 steps a second or add `ProcessInfo.beginActivity` to the switch and
    show that it then does.
 
-3. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
+2. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
    1 m ledge by a block that stops at the edge, the body left at x 1.302 and landed at x 1.302 —
    straight down, the speed forgotten: 0.12.0's "stops dead in the air", for a push instead of a carry.
    A push should count toward ``groundVelocity`` as a carry does. **Proved by** a test landing it
@@ -1363,6 +1378,12 @@ below, never in this list.
    player off its 1.2 m edge, landing its speed × √(2·1.2/g) beyond it — computed first. (Checked on
    the way and *not* broken: a crouched body pushed under a beam stays under it, and letting go mid-push
    keeps it held down.)
+
+3. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
+   measured by, and nothing noticed until it was re-run by hand a version later. A `Tools/walks.sh` that
+   runs each walk the handoff documents — the crate, the lift jump, the push, the turntable rim, the
+   stairs — hidden (0.12.2 lets it), and compares each end position with the one recorded, failing on
+   more than 2 cm. **Proved by** it passing now, and failing on purpose with the slider put back at z 8.
 
 ## Parked — not next, and why
 

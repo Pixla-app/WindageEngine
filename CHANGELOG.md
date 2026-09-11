@@ -12,6 +12,38 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.13.1] — 2026-09-11
+
+**Round solids are round.** Additive: nothing is round until a game says so.
+
+### Added
+
+- **`Surroundings.Footprint.radius`**, **`Footprint(centre:radius:)`** and **`Footprint(discOf: Volume)`**
+  — a disc, for a solid that is round; `discOf` is the disc a round mesh's box holds, the box being the
+  square round it. Collided as the body's square grown by the disc — a rounded square — so a body meets
+  it with its flat face square on and with its corner glancingly, and slides round from a corner.
+
+### Measured
+
+Six tests: three fail with discs taken as their squares, three are guards (face on at a column; a
+column pushing; a disc from a volume). **In the courtyard**, walking at the turntable along a diagonal
+timed for its square's corner to point along it: the feet rose **3.068 m** from its centre with the
+square (computed 3.068, the table turned 86.8°) and **2.418 m** with the disc (computed 2.418; the rim is
+2.424). A frame of each at that moment — the square's shows the player 0.2 m up with ground still ahead
+of them before the rim.
+
+### Fixed in the sample
+
+- **The slider sat across the 0.12.1 crate walk.** Put at z 8 in 0.13.0, it deflected that walk to
+  (3.22, 5.28) instead of (3.21, −0.13). Moved west, to x −12; the crate walk reproduces 0.12.1 exactly
+  again, and the push was measured again there — the same curve to 2 mm, the feet 0.302 m ahead.
+- **A scripted walk ignores the real keyboard and clicks**, as it already ignored the mouse. The window
+  takes the keyboard when it opens; one real Tab during a walk put it in the editor and froze the
+  walk for good — reproduced with System Events, and gone with the guard. Two walks had stood at the
+  spawn this way, probably.
+
+**Consumers**: `Footprint` gained a stored property — build clean.
+
 ## [0.13.0] — 2026-09-11
 
 **Something moving into you pushes you out of its way.** The carry moved a body *standing on* a solid;

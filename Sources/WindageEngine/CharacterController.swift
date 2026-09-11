@@ -118,7 +118,7 @@ public nonisolated struct CharacterController: Sendable {
         /// ``Footprint/init(of:)`` makes one from a ``Volume``.
         public var footprints: [Footprint?] = []
 
-        /// A rectangle on the ground plane, turned about its centre: a solid's plan.
+        /// A solid's plan on the ground plane: a rectangle turned about its centre — or a disc.
         ///
         /// Only a turn **about the vertical**, which is every turn a level placement has. A tilted box
         /// has no rectangular plan, and keeps its world box.
@@ -128,11 +128,31 @@ public nonisolated struct CharacterController: Sendable {
             public var halfSize: SIMD2<Float>
             /// Positive the way a placement's yaw is (``Level/turned(_:by:)``).
             public var yaw: Float
+            /// **Round, of this radius**, for a solid that is — a turntable, a column, a barrel. Nil for
+            /// a rectangle. A disc's rectangle is the square round it, and standing on that square's
+            /// corners is standing on air: 0.83 m past the rim of a 4 m turntable.
+            public var radius: Float?
 
             public init(centre: SIMD2<Float>, halfSize: SIMD2<Float>, yaw: Float) {
                 self.centre = centre
                 self.halfSize = halfSize
                 self.yaw = yaw
+            }
+
+            /// A disc. Turning it changes nothing, so it has no yaw.
+            public init(centre: SIMD2<Float>, radius: Float) {
+                self.centre = centre
+                self.halfSize = SIMD2(radius, radius)
+                self.yaw = 0
+                self.radius = radius
+            }
+
+            /// The disc a volume's plan holds — **for something round**, whose box is the square round
+            /// it: the disc touching that square's sides. Nil for a tilted volume, as a plan is. Whether
+            /// a thing is round is the game's to know; a box cannot say.
+            public init?(discOf volume: Volume) {
+                guard let plan = Footprint(of: volume) else { return nil }
+                self.init(centre: plan.centre, radius: min(plan.halfSize.x, plan.halfSize.y))
             }
 
             /// The plan of a volume whose transform turns it about the vertical — scaled, turned and
@@ -744,6 +764,65 @@ public nonisolated struct CharacterController: Sendable {
         }
     }
 
+    /// The same, for a disc of radius `reach` about the origin and the body's square at `offset` from
+    /// it. **The body's square grown by the disc is a rounded square** — flat along the square's sides,
+    /// a quarter circle round each corner — and the move is a ray against it: two slabs, four circles,
+    /// entering at the first and leaving at the last, since the whole is convex. Meeting a flat side
+    /// is meeting the disc with the body's face, square to the world; meeting a corner is meeting it
+    /// with the body's corner, and the face is the radius through it — the one a slide goes round.
+    private func contact(from offset: SIMD2<Float>, along delta: SIMD2<Float>,
+                         disc reach: Float) -> (fraction: Float, leaving: Float, face: SIMD2<Float>)? {
+        let r = tuning.radius
+        var enter = Float.greatestFiniteMagnitude, leave = -Float.greatestFiniteMagnitude
+        var face = SIMD2<Float>.zero
+        func take(_ first: Float, _ last: Float, _ normal: SIMD2<Float>) {
+            if first < enter { enter = first; face = normal }
+            leave = max(leave, last)
+        }
+        // The two slabs: the square widened by the reach along one axis at a time.
+        for (half, axis) in [(SIMD2(r + reach, r), 0), (SIMD2(r, r + reach), 1)] {
+            var first = -Float.greatestFiniteMagnitude, last = Float.greatestFiniteMagnitude
+            var normal = SIMD2<Float>.zero
+            var hit = true
+            for a in 0..<2 {
+                if abs(delta[a]) < 1e-12 {
+                    if abs(offset[a]) >= half[a] { hit = false }
+                    continue
+                }
+                let t0 = (-half[a] - offset[a]) / delta[a], t1 = (half[a] - offset[a]) / delta[a]
+                if min(t0, t1) > first {
+                    first = min(t0, t1)
+                    var n = SIMD2<Float>.zero
+                    n[a] = offset[a] + first * delta[a] > 0 ? 1 : -1
+                    normal = n
+                }
+                last = min(last, max(t0, t1))
+            }
+            if hit, first <= last {
+                if normal == .zero { normal[axis] = offset[axis] >= 0 ? 1 : -1 }
+                take(first, last, normal)
+            }
+        }
+        // The four corners: a circle of the reach round each corner of the body's square.
+        let a = simd_length_squared(delta)
+        for corner in [SIMD2<Float>(r, r), SIMD2(-r, r), SIMD2(r, -r), SIMD2(-r, -r)] {
+            let from = offset - corner
+            if a < 1e-12 {
+                if simd_length_squared(from) < reach * reach { take(-.greatestFiniteMagnitude, .greatestFiniteMagnitude, .zero) }
+                continue
+            }
+            let b = simd_dot(from, delta), c = simd_length_squared(from) - reach * reach
+            let disc = b * b - a * c
+            guard disc >= 0 else { continue }
+            let root = disc.squareRoot()
+            let first = (-b - root) / a, last = (-b + root) / a
+            let at = from + first * delta
+            take(first, last, simd_length_squared(at) > 0 ? simd_normalize(at) : .zero)
+        }
+        guard enter <= leave, enter < .greatestFiniteMagnitude else { return nil }
+        return (enter, leave, face)
+    }
+
     // MARK: - Pushed
 
     /// Out of the way of every solid that moved into the body this step: along the way that solid
@@ -798,10 +877,16 @@ public nonisolated struct CharacterController: Sendable {
         var along: SIMD2<Float>
         var half: SIMD2<Float>
         var isSquare: Bool
+        /// A disc of this radius, and then `across`, `along` and `half` are unused.
+        var radius: Float? = nil
     }
 
     private func plan(of index: Int, in world: Surroundings) -> Plan {
         if world.footprints.indices.contains(index), let footprint = world.footprints[index] {
+            if let radius = footprint.radius {
+                return Plan(centre: footprint.centre, across: SIMD2(1, 0), along: SIMD2(0, 1),
+                            half: SIMD2(radius, radius), isSquare: false, radius: radius)
+            }
             let c = cos(footprint.yaw), s = sin(footprint.yaw)
             return Plan(centre: footprint.centre, across: SIMD2(c, -s), along: SIMD2(s, c),
                         half: footprint.halfSize, isSquare: false)
@@ -828,6 +913,14 @@ public nonisolated struct CharacterController: Sendable {
     /// How deep the body's footprint, centred at `position`, is into the plan — the least overlap on
     /// any separating axis. **Negative when they are apart**, and then no deeper than the gap.
     private func depth(at position: SIMD2<Float>, into plan: Plan) -> Float {
+        if let radius = plan.radius {
+            // The disc's centre against the body's square: how far outside the square it is (or, inside,
+            // how far in from its nearest side, as a negative), and the radius less that.
+            let q = abs(position - plan.centre), r = tuning.radius
+            let outside = simd_max(q - r, .zero)
+            let beyond = simd_length_squared(outside) > 0 ? simd_length(outside) : max(q.x - r, q.y - r)
+            return radius - beyond
+        }
         var least = Float.greatestFiniteMagnitude
         for axis in separatingAxes(plan) {
             least = min(least, reach(plan, on: axis) - abs(simd_dot(position - plan.centre, axis)))
@@ -844,6 +937,9 @@ public nonisolated struct CharacterController: Sendable {
     /// last of those stretches begins.
     private func contact(from position: SIMD2<Float>, along delta: SIMD2<Float>, with plan: Plan,
                          clearance: Float) -> (fraction: Float, leaving: Float, face: SIMD2<Float>)? {
+        if let radius = plan.radius {
+            return contact(from: position - plan.centre, along: delta, disc: radius + clearance)
+        }
         var enter = -Float.greatestFiniteMagnitude, leave = Float.greatestFiniteMagnitude
         var face = SIMD2<Float>.zero
         let offset = position - plan.centre

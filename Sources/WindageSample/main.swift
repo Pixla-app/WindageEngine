@@ -28,15 +28,26 @@ final class SampleView: MTKView {
     //
     // **Where each goes is the game's decision, not the view's**, so the scripted walk can send keys
     // down exactly the same path and test what a keyboard would.
+    //
+    // **Not while a script plays**, which presses its own keys down this same path. The window takes
+    // the keyboard when it opens, so whatever is typed elsewhere at that moment arrives here — and a
+    // Tab puts the game in its editor, where the movement keys move the editor: two scripted walks
+    // stood at the spawn for their whole length that way (2026-09-11), with every report printing.
     override func keyDown(with event: NSEvent) {
+        guard game?.isScripted != true else { return }
         game?.keyPressed(event.keyCode, command: event.modifierFlags.contains(.command))
     }
-    override func keyUp(with event: NSEvent) { game?.keyReleased(event.keyCode) }
+    override func keyUp(with event: NSEvent) {
+        guard game?.isScripted != true else { return }
+        game?.keyReleased(event.keyCode)
+    }
     override func flagsChanged(with event: NSEvent) {
+        guard game?.isScripted != true else { return }
         game?.modifiersChanged(event.keyCode, flags: event.modifierFlags.rawValue)
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard game?.isScripted != true else { return }
         game?.mousePressed()
     }
     override func mouseMoved(with event: NSEvent) { deliver(event) }

@@ -1057,6 +1057,28 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### Something round (0.13.1)
+
+A round thing's box is the square round it, and a turned footprint of that box turns the square with
+it: a 4 m turntable held a body up 0.2 m on air at four corners 0.83 m past its rim. **A footprint can
+be a disc** — `Footprint(centre:radius:)`, or `Footprint(discOf:)` for the disc a round mesh's box
+holds; which meshes are round is the game's to know, since a box cannot say. The body's square against
+a disc is a rounded square: square on, the body's flat face meets the disc and stops, as at a wall; off
+centre by more than its half-width, its corner meets the curve and it slides round. Standing, headroom
+and pushing use the same test.
+
+**Walked at the courtyard's turntable** along a diagonal, timed so its square's corner points along it
+when the body arrives — computed first:
+
+| | feet rose, from the centre | computed |
+|---|---|---|
+| its square | **3.068 m** — 0.65 m before the rim | 3.068 m (the table at 86.8°) |
+| its disc | **2.418 m** — the step reaching the rim | 2.418 m (rim 2.424) |
+
+**A box body against a column, face on, stops dead** — the column's nearest point meets the body's flat
+face. That is the cost the type's notes name for a box body, and the test pins it down, rather than
+pretending a box glances off a curve.
+
 ### Pushed by something that moves (0.13.0)
 
 The carry moves a body standing *on* a solid. One moving *into* a body left it inside — measured: a slab
@@ -1086,6 +1108,9 @@ player standing in its path, computed first:
 
 Left at 7.05 m when it went back (computed 7.052). As it eased to a stop the last millimetre came in
 without a push — within the band a walk into a face stops in.
+
+> **The slider has since moved west (0.13.1)**: at z 8 it sat across the crate walk measured for 0.12.1,
+> which it deflected. Pushed again at x −12, the same curve came out to 2 mm, the feet 0.302 m ahead.
 
 ### A clock while the window is hidden (0.12.2)
 
