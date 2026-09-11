@@ -1057,6 +1057,26 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### The same jump at any step rate (0.16.0)
+
+The fixed timestep exists so results do not depend on the frame rate — but the *step* rate is a game's
+own choice, and a jump was integrated a step at a time using the velocity each step ended at. That loses
+½g·dt² a step, and the jump's height with it:
+
+| steps a second | 30 | 60 | 120 | 240 |
+|---|---|---|---|---|
+| apex | 0.890 m | 0.940 m | 0.966 m | 0.979 m |
+
+A game at 60 jumped 2.6 cm lower than one at 120, and missed a ledge it cleared. Gravity is constant, so a
+step of flight has an exact answer — `y + v·dt − ½g·dt²` — and that is what it takes now: **0.992 m at
+every rate**, the height a 6.3 m/s jump reaches, less only what sampling once a step can miss of the top
+(2.8 mm at 30 a second, 0.2 at 120). The same reasoning as the landing spring, which has been stepped by
+its closed form since it was written: approximate nothing that has an answer.
+
+**Jumps are higher by what the old integration lost**, so the walks' recorded heights were re-recorded:
+0.97 → 0.99 m from the ground, 1.90 → 1.92 off the lift. Which makes 0.12.0's lift jump **1.17 m** above
+the deck — exactly the figure it was computed to before it was measured.
+
 ### A push in mid-air (0.15.0)
 
 0.14.0 kept a push for a body that left the ground afterwards; a body already in the air was moved while
@@ -1308,6 +1328,9 @@ no motion that step, or whoever leaves it next leaves at the speed of the jump b
 | from the ground | 0.00 | 0.97 | 0.97 | 0.99, less the stepper's 2.5 cm |
 | from the lift, before | 0.75 | 1.72 | 0.97 | — the lift forgotten |
 | from the lift, after | 0.75 | 1.90 | **1.15** | 6.84²/2g = 1.17, less 2.5 cm |
+
+> **Since 0.16.0 a step of flight is exact**, and these are 0.99 and 1.92 — the lift jump rising the
+> computed 1.17 m, with no stepper's shortfall to subtract.
 
 ### Something that turns underfoot (0.11.1)
 

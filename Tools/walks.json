@@ -1,5 +1,5 @@
 {
-  "about": "The walks the handoff and README document, each with what it measured. Tools/walks.py runs them all as a check. A walk's numbers are the ones recorded when it was measured; change one only with the reason, in the CHANGELOG, that the world it walks through changed.",
+  "about": "The walks the handoff and README document, each with what it measured. Tools/walks.py runs them all as a check. A walk's numbers are the ones recorded when it was measured; change one only with the reason, in the CHANGELOG, that the world it walks through changed. Jump heights were re-recorded at 0.16.0, when a step of flight became exact: they rose by the Euler error the old integration lost (0.97 → 0.99 at the ground, 1.90 → 1.92 off the lift).",
   "tolerance": 0.02,
   "walks": [
     {
@@ -174,7 +174,7 @@
         {
           "after": "wait:1.2",
           "occurrence": 1,
-          "highest": 0.97
+          "highest": 0.99
         },
         {
           "after": "wait:1.35",
@@ -191,7 +191,7 @@
         {
           "after": "wait:1.2",
           "occurrence": 2,
-          "highest": 1.9
+          "highest": 1.92
         },
         {
           "after": "wait:1.5",
@@ -227,7 +227,7 @@
         },
         {
           "after": "wait:1.2",
-          "highest": 0.97
+          "highest": 0.99
         }
       ]
     },

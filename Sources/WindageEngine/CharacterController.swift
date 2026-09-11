@@ -1122,8 +1122,15 @@ public nonisolated struct CharacterController: Sendable {
             airVelocity = SIMD2(groundVelocity.x, groundVelocity.z)
         }
 
+        // **Stepped by the exact answer, not by the velocity it ends at** (0.16.0). Gravity is constant,
+        // so a step of flight has one: y + v·dt − ½g·dt². Taking the new velocity across the whole step
+        // loses that half every step, and a jump's height then depended on how often a game steps —
+        // measured, apex 0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240, where the
+        // height a 6.3 m/s jump reaches is 0.992. A game at 60 missed a ledge one at 120 cleared. The
+        // same reasoning as the landing spring's closed form: approximate nothing that has an answer.
+        let rising = verticalVelocity
         verticalVelocity -= tuning.gravity * dt
-        var next = feet.y + verticalVelocity * dt
+        var next = feet.y + (rising - 0.5 * tuning.gravity * dt) * dt
 
         if verticalVelocity > 0 {
             // A head against the underside of something stops the rise there.

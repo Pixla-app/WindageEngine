@@ -1937,3 +1937,46 @@ struct CharacterAirPushTests {
         #expect(run.landed <= r + 0.05 - r + 1e-3, "went through the wall to \(run.landed)")
     }
 }
+
+// MARK: - However often a game steps
+
+@Suite("Character controller — the same at any step rate")
+struct CharacterStepRateTests {
+
+    private let tuning = CharacterController.Tuning()
+
+    /// A jump, stepped at `rate` a second: the highest the feet were, and how long they were off the
+    /// ground.
+    private func jump(at rate: Float) -> (apex: Float, airborne: Float) {
+        let dt = 1 / rate
+        var c = CharacterController(feet: .zero)
+        var apex: Float = 0, air = 0
+        for i in 0..<Int(rate * 2) {
+            c.step(yaw: 0, input: MovementInput(), jump: i == 1, deltaTime: dt, in: CharacterController.Surroundings())
+            apex = max(apex, c.feet.y)
+            if !c.isGrounded { air += 1 }
+        }
+        return (apex, Float(air) * dt)
+    }
+
+    /// **The point of it.** v²/2g, whatever the rate: 0.9923 m for a 6.3 m/s jump at this gravity. The
+    /// feet are only looked at once a step, so the highest *seen* can be half a step past the top —
+    /// ½g(dt/2)² below it, 2.8 mm at 30 a second — and no more. Before: 0.890 m at 30, 0.940 at 60,
+    /// 0.966 at 120, 0.979 at 240.
+    @Test("A jump rises the same however often the game steps", arguments: [Float(30), 60, 120, 240])
+    func sameApex(rate: Float) {
+        let exact = tuning.jumpSpeed * tuning.jumpSpeed / (2 * tuning.gravity)
+        let sampling = 0.5 * tuning.gravity * (1 / rate / 2) * (1 / rate / 2)
+        let apex = jump(at: rate).apex
+        #expect(apex <= exact + 1e-5 && apex >= exact - sampling - 1e-5,
+                "at \(rate) steps a second the apex was \(apex), the height a \(tuning.jumpSpeed) m/s jump reaches is \(exact)")
+    }
+
+    /// And it is in the air for 2v/g, within a step: the flight a game's timing is built around.
+    @Test("A jump lasts the same however often the game steps", arguments: [Float(30), 60, 120, 240])
+    func sameFlight(rate: Float) {
+        let exact = 2 * tuning.jumpSpeed / tuning.gravity
+        let airborne = jump(at: rate).airborne
+        #expect(abs(airborne - exact) <= 1 / rate + 1e-5, "at \(rate) a second it was airborne \(airborne) s, the flight is \(exact)")
+    }
+}

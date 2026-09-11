@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-594 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+596 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,18 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the same jump at any step rate (0.16.0)
+
+**A step of flight is stepped by its exact answer** (`y + v·dt − ½g·dt²`), not by the velocity the step
+ends at, which lost ½g·dt² a step. Apex **0.992 m at 30, 60, 120 and 240 steps a second** (less the
+sampling: 2.8 mm at 30), where it was 0.890 / 0.940 / 0.966 / 0.979. Two tests over four rates; all eight
+cases fail on the old integration.
+
+**The walks' jump heights re-recorded** — 0.97 → 0.99 and 1.90 → 1.92 — which makes 0.12.0's lift jump
+rise the **1.17 m** it was computed to. Nothing else moved. **`Tools/walks.py --record`** (new) prints
+what each walk gives now: the check's 2 cm tolerance would have let this change pass unseen, and did
+until I looked.
 
 ## Done 2026-09-11 — the walk check hears footsteps and sees the head bob (0.15.1)
 
@@ -1459,15 +1471,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A jump rises the same at any step rate.** The fixed timestep keeps results independent of *frame*
-   rate, but a game chooses its *step* rate, and the jump is integrated a step at a time. Measured
-   2026-09-11: apex **0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240** — the exact
-   answer is 0.992 (6.3² / 2·20). A game at 60 jumps 2.6 cm lower than one at 120 and misses a ledge the
-   other clears. Gravity is constant, so a step has an exact answer (y += v·dt − ½g·dt², as the landing
-   spring was made exact). **Proved by** a test giving 0.992 at all four rates, and the walk check —
-   whose recorded 0.97 and 1.90 apexes will move up by the Euler error, each change measured and explained.
-
-2. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
+1. **The walk check runs its walks side by side.** Eight walks take about 85 s one after another, and
    every item adds one; a check that is slow is a check that gets skipped. Each walk is its own process
    and its result is fixed by the step count, not the clock, so they can run at once. **Proved by** the
    eleven finishing in under 30 s with every number the same as run singly — and the deliberate failure
@@ -1475,13 +1479,24 @@ below, never in this list.
    on a slab sliding at 1.5 m/s takes the same 6.33 m/s impact as on still ground and moves with the slab
    from the next step, relative speed 0.0.)
 
-3. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
+2. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
    the same way and is unguarded. 0.8.0: at defaults the stick turned the view 91.67° right and 45.84° up,
    the mouse 63.03° and 25.21°, and set on the settings screen (mouse 2.0, stick 0.5 inverted) 45.84°,
    −22.92°, 126.05°, 50.42°. 0.9.0: the stick at 20% drifted 2.26° at the default dead zone and not at all
    at 26%; at 50%, 18.11° and 9.64°. Recover those walks (`pad.lookRight:0.5`, `mousex:500`,
    `pad.lookRight@0.2:1`), read the `look '…' → view turned` lines. **Proved by** the check passing, and
    failing with the mouse's look scale doubled.
+
+3. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
+   exact; the landing still reports `verticalVelocity` after the step that crossed the ground, which is
+   the speed a little *below* it. Measured 2026-09-11, a fall from exactly 1 m (exact impact 6.3246 m/s):
+   **6.667 m/s at 30 steps a second**, 6.333 at 60, 120 and 240. A game at 30 lands 5% harder than the
+   ground it hit — and the impact drives the landing's loudness, its dust and the camera's dip. Solve the
+   crossing within the step (the same quadratic the exact flight uses) and report the speed there.
+   **Proved by** 6.3246 at all four rates, and in the sample by the landing dust and dip of the ruins'
+   drop, unchanged at 120 where the error is 1 mm/s. (Checked on the way and left alone: the eye's
+   settling after a step up varies by 2 mm across those rates — an exponential approximated per step, and
+   nobody can see 2 mm.)
 
 ## Parked — not next, and why
 

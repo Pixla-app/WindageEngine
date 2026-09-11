@@ -12,6 +12,35 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.16.0] — 2026-09-11
+
+**A jump rises the same however often a game steps.** The fixed timestep keeps results independent of the
+*frame* rate; the *step* rate is a game's own choice, and the jump was integrated a step at a time by the
+velocity each step ended at, which loses ½g·dt² every step.
+
+### Changed
+
+- **A step of flight is stepped by its exact answer** — `y + v·dt − ½g·dt²`, gravity being constant — the
+  same reasoning as the landing spring's closed form. **Jumps are higher and flights longer**, by what
+  the old integration lost: at 120 steps a second an apex of 0.966 m becomes 0.992.
+
+### Measured
+
+| steps a second | 30 | 60 | 120 | 240 |
+|---|---|---|---|---|
+| before | 0.890 m | 0.940 m | 0.966 m | 0.979 m |
+| after | 0.992 m at every rate — the height a 6.3 m/s jump reaches, less the sampling (2.8 mm at 30, 0.2 at 120) | | | |
+
+Two tests over four rates each, the apex and the flight; all eight cases fail on the old integration.
+
+### The walks' recorded numbers
+
+Re-recorded, deliberately: **the ground jump 0.97 → 0.99 m** (two walks) and **the jump from the ruins'
+lift 1.90 → 1.92**. That makes 0.12.0's lift jump rise **1.17 m** above the deck — the analytic figure it
+was computed to, where the old stepper cost it 2.5 cm. Nothing else moved: the piston and air-push
+landings are the same to the millimetre. **`Tools/walks.py --record`** prints what every walk gives now,
+for reading such changes off — the check's 2 cm tolerance is wide enough to let one hide.
+
 ## [0.15.1] — 2026-09-11
 
 **The walk check hears footsteps and sees the head bob.** Additive; no engine change.

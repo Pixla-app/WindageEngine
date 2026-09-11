@@ -13,6 +13,11 @@ length and a few seconds to start.
 
     python3 Tools/walks.py            every walk
     python3 Tools/walks.py piston     the walks whose names contain "piston"
+    python3 Tools/walks.py --record   every expectation with what the walk gives now
+
+**A recorded number is changed deliberately, with its reason in the CHANGELOG** — the world the walk goes
+through changed, and this is what it does now. `--record` is for reading those off; it writes nothing.
+The tolerance is wide enough (2 cm) to let a real change hide, which is the point of looking.
 
 Exit status 0 when every expectation holds, 1 otherwise. Positions are compared to the walk report's two
 decimals, so a feet expectation allows the tolerance plus half a centimetre of rounding. Footsteps and
@@ -101,7 +106,8 @@ def check(walk, lines, tolerance):
 
 def main():
     spec = json.loads((ROOT / "Tools/walks.json").read_text())
-    names = sys.argv[1:]
+    names = [a for a in sys.argv[1:] if a != "--record"]
+    recording = "--record" in sys.argv
     walks = [w for w in spec["walks"] if not names or any(n in w["name"] for n in names)]
     built = subprocess.run(["swift", "build", "--product", "WindageSample"], cwd=ROOT, capture_output=True, text=True)
     if built.returncode != 0:
@@ -117,8 +123,8 @@ def main():
         print(f"{'ok  ' if not bad else 'FAIL'} {walk['name']:<16} {len(results) - len(bad)}/{len(results)}"
               f"  ({time.time() - started:.1f} s; recorded {walk['recorded']})")
         for what, wanted, got, ok in results:
-            if not ok:
-                print(f"       {what}: wanted {wanted}, got {got}")
+            if not ok or recording:
+                print(f"    {'   ' if ok else '!! '}{what}: recorded {wanted}, now {got}")
     print(f"{len(walks) - failed} of {len(walks)} walks as recorded")
     return 1 if failed else 0
 
