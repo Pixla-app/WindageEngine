@@ -720,6 +720,7 @@ final class SampleGame: GameLoop {
         levelIndex = SampleGame.startingLevel
         let loaded = SampleLevel.load(levelIndex)
         editor = LevelEditor(level: loaded.level)
+        addKind = 0                                         // each level has its own kinds
         levelPath = loaded.report
 
         run = SampleRun(objectives: loaded.level.markers(ofKind: "objective").map(\.position),
@@ -1687,10 +1688,68 @@ final class SampleGame: GameLoop {
         case 33: editor.raiseLight(by: -LevelEditor.lampRaise); reportLamp()         // [
         case 47: editor.brightenLight(by: LevelEditor.lampBrighten); reportLamp()    // .
         case 43: editor.brightenLight(by: 1 / LevelEditor.lampBrighten); reportLamp() // ,
+        // Adding: t steps through the kinds of thing this level already has, i drops one.
+        case 17:                                             // t — the next kind to add
+            let kinds = addableKinds
+            guard !kinds.isEmpty else { return true }
+            addKind = (addKind + 1) % kinds.count
+            print("WindageSample: next to add is \(kindName(kinds[addKind]))")
+            return true
+        case 34: addUnderCrosshair()                         // i — insert it at the crosshair
         default: return false
         }
         rebuild()
         return true
+    }
+
+    /// Which of `addableKinds` the next **i** adds.
+    private var addKind = 0
+
+    /// What the editor can add here: **one of each kind of thing the level already has** — the
+    /// engine's `Level.kinds` — less the floor and the objectives. An objective crate is a crate *and*
+    /// a marker the run counts; adding the crate alone makes one that glows and can never be taken.
+    private var addableKinds: [Level.Placement] {
+        level.kinds.filter { !$0.tags.contains("ground") && !$0.tags.contains("objective") }
+    }
+
+    private func kindName(_ kind: Level.Placement) -> String {
+        // The lamp's brightness in the name, because two braziers whose lamps differ are two kinds —
+        // and a palette that shows "brazier with its lamp" twice cannot be told apart.
+        kind.mesh + (kind.light.map { String(format: " with a lamp at %.0f", $0.colour.max()) } ?? "")
+            // **"scale", not "×"**: the HUD's font is printable ASCII, and a "×" is silently dropped —
+            // the line read "box at 2.4" the first time it was drawn.
+            + (kind.scale == 1 ? "" : String(format: ", scale %.1f", kind.scale))
+    }
+
+    /// Drops the chosen kind **where the crosshair meets the ground**, which is what "put one there"
+    /// means with no mouse cursor to put anything under. Not on whatever the crosshair touches first:
+    /// a crate dropped onto the side of a pillar is a crate inside it.
+    private func addUnderCrosshair() {
+        let kinds = addableKinds
+        guard !kinds.isEmpty else { return }
+        let kind = kinds[min(addKind, kinds.count - 1)]
+        let origin = camera.position, direction = camera.forward
+        // The sample's ground is the plane y = 0. Looking level or up, the crosshair never meets it.
+        guard direction.y < -0.01 else {
+            print("WindageSample: aim at the ground to add something")
+            return
+        }
+        let distance = -origin.y / direction.y
+        guard distance < 60 else {
+            print("WindageSample: that ground is \(Int(distance)) m away — come closer to add something")
+            return
+        }
+        let hit = origin + direction * distance
+        editor.add(kind, at: SIMD2(hit.x, hit.z))
+        rebuild()
+        let index = editor.selection!
+        let at = level.transform(of: level.placements[index], on: SampleGame.ground).columns.3
+        var line = String(format: "WindageSample: added %@ #%d at (%.2f, %.2f, %.2f), the crosshair met the ground at (%.2f, 0, %.2f)",
+                          kindName(kind), index, at.x, at.y, at.z, hit.x, hit.z)
+        if let lamp = level.carriedLights(on: SampleGame.ground).first(where: { $0.placement == index })?.light {
+            line += String(format: "; lamp at (%.2f, %.2f, %.2f)", lamp.position.x, lamp.position.y, lamp.position.z)
+        }
+        print(line)
     }
 
     /// The lamp the editor gives something that has none: warm, hanging a little above the top of
@@ -2867,10 +2926,12 @@ final class SampleGame: GameLoop {
                 "\($0.mesh)  yaw \(Int($0.yaw * 180 / .pi))°  scale \(String(format: "%.2f", $0.scale))"
                     + ($0.light.map { String(format: "  lamp %.0f", $0.colour.max()) } ?? "")
             }
-            _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")",
+            let kinds = addableKinds
+            let adding = kinds.isEmpty ? "" : "   i adds \(kindName(kinds[min(addKind, kinds.count - 1)]))"
+            _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")\(adding)",
                          x: margin, y: y + body * 1.4, pointSize: body, color: gold)
             _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete"
-                         + " · l lamp · [ ] lamp height · , . lamp brightness",
+                         + " · l lamp · [ ] lamp height · , . lamp brightness · t kind · i add",
                          x: margin, y: viewportSize.y - margin - hint * 1.4, pointSize: hint, color: white)
             _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · ⌘⌫ revert to shipped · tab back to walking",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)

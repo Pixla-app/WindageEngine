@@ -227,6 +227,47 @@ struct LevelEditorTests {
         #expect(editor.level.carriedLights(on: Level.Ground(heightAt: { _, _ in 0 })).contains { $0.placement == editor.selection })
     }
 
+    // MARK: - Adding by kind
+
+    private var mixedLevel: Level {
+        let lamp = PunctualLight(position: SIMD3(0, 1.8, 0), colour: SIMD3(60, 36, 18), range: 14)
+        return Level(name: "mixed", placements: [
+            Level.Placement(mesh: "box", position: SIMD3(1, 0, 1), scale: 2, tags: ["solid"], surface: "wood"),
+            Level.Placement(mesh: "step", position: SIMD3(4, -0.7, 4), anchor: .absolute, tags: ["solid"], surface: "stone"),
+            Level.Placement(mesh: "box", position: SIMD3(5, 0, 9), yaw: 1, scale: 2, tags: ["solid"], surface: "wood"),
+            Level.Placement(mesh: "step", position: SIMD3(4, -0.4, 3), anchor: .absolute, tags: ["solid"], surface: "stone"),
+            Level.Placement(mesh: "brazier", position: SIMD3(-4, 0, -10), tags: ["solid"], light: lamp, surface: "metal"),
+            Level.Placement(mesh: "brazier", position: SIMD3(3, 0, -2), tags: ["solid"]),
+        ])
+    }
+
+    /// Where a thing is and which way it faces do not make it a different kind; its lamp does.
+    @Test("A level's kinds are one of each thing, ignoring where each is")
+    func kinds() {
+        let kinds = mixedLevel.kinds
+        #expect(kinds.map(\.mesh) == ["box", "step", "brazier", "brazier"],
+                "\(kinds.map(\.mesh)) — two crates in different places and turns are one kind, a lit brazier and a cold one are two")
+        #expect(kinds.allSatisfy { $0.position.x == 0 && $0.position.z == 0 && $0.yaw == 0 })
+        #expect(kinds[1].position.y == -0.7, "the height is part of what a sunk tread is — kept from the first")
+        #expect(kinds[2].light != nil && kinds[3].light == nil)
+    }
+
+    @Test("Adding a kind brings everything but the place, and undoes")
+    func addAKind() {
+        var editor = LevelEditor(level: mixedLevel)
+        let brazier = editor.level.kinds[2]
+        editor.add(brazier, at: SIMD2(7, -3))
+        let added = editor.selected!
+        #expect(added.position == SIMD3(7, 0, -3))
+        #expect(added.tags == ["solid"] && added.surface == "metal" && added.scale == 1)
+        #expect(added.light == brazier.light)
+        let lamps = editor.level.carriedLights(on: Level.Ground(heightAt: { _, _ in 0 }))
+        #expect(lamps.contains { $0.placement == editor.selection && abs($0.light.position.x - 7) < 1e-4 },
+                "the added brazier should light where it stands")
+        editor.undo()
+        #expect(editor.level == mixedLevel)
+    }
+
     @Test("Adding puts a placement where it was asked for and selects it")
     func adding() {
         var editor = self.editor()

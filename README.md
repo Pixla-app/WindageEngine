@@ -1892,6 +1892,26 @@ brightening 45 → 56.7 → 71.4 → 90.0 — each the prediction. A frame diffe
 without it shows the new pool of light on the ground under the crate, with the green crates' shadows
 cut out of it.
 
+### Adding more of what a level already has (0.9.2)
+
+`Level.kinds` is one of each kind of thing in a level — two placements are the same kind when all but
+*where* they are matches: mesh, scale, anchor, tags, lamp, surface. `LevelEditor.add(_:at:)` drops
+another of a kind at a point on the ground, bringing everything but the place: a brazier arrives lit,
+solid and made of metal, where `add(mesh:at:)` — which knows a name and nothing else — would bring a
+cold, walk-through one. **The height comes with the kind**, because under an anchor `y` is part of what
+a thing is; `x`, `z` and the yaw are only where the first one happened to be put.
+
+**Not prefabs**: a prefab is authored once and instanced; this is a question asked of a level that
+already exists, and needs no format of its own. A lamp is part of a kind, so the ruins' two braziers —
+one orange at 60, one yellow at 55 — are two kinds, which is correct and which the palette has to say
+("brazier with a lamp at 60").
+
+In the sample, **t** steps through the kinds and **i** drops one **where the crosshair meets the
+ground** — not on whatever the crosshair touches first, which would put a crate inside a pillar. The
+floor and objective crates are left out: an objective is a crate *and* a marker the run counts.
+**Driven**: a brazier and a crate landed at the crosshair's ground point to the centimetre, the
+brazier's lamp 1.8 m over it, lighting the ground with embers rising.
+
 > **Three things running the sample found that its own tests could not.** The `"solid"` tag was in
 > the level file and nothing read it, so you walked through every wall — a file saying something
 > untrue is worse than a file not saying it. `BoundingBox` had ray and segment tests but no

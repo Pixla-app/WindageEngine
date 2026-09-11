@@ -12,6 +12,24 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.9.2] — 2026-09-11
+
+**Adding from the editor.** `LevelEditor.add` had existed since the editor did, knew only a mesh's name,
+and nothing in the sample called it.
+
+### Added
+
+- **`Level.kinds`** — one of each kind of thing in a level, first appearance first. Same kind = same
+  everything but `x`, `z` and yaw; the height comes from the first of each.
+- **`LevelEditor.add(_:at:yaw:)`** — another of a kind at a ground point, with its height, scale, tags,
+  surface and lamp. Undoable.
+
+### In the sample
+
+- **t** steps through the level's kinds (less the floor and objectives) and **i** adds one where the
+  crosshair meets the ground; the editor's line shows what **i** will add, lamp brightness included.
+- **Fixed before it shipped**: the palette's names used "×", which the HUD's ASCII font drops.
+
 ## [0.9.1] — 2026-09-11
 
 **What things are made of, from the level file.** A footstep knew which solid it was on and nothing

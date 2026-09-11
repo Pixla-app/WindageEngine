@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-519 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+521 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,26 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — adding from the editor (0.9.2)
+
+**`Level.kinds`** (one of each kind of thing — all but `x`, `z`, yaw) and **`LevelEditor.add(_:at:yaw:)`**
+(another of a kind, with its height, scale, tags, surface and lamp). Two tests. In the sample **t** steps
+through the kinds and **i** drops one where the crosshair meets the ground.
+
+**Driven in the ruins**, scripted, with the drop points computed from the camera first:
+
+| added | predicted ground point | landed | lamp |
+|---|---|---|---|
+| brazier (lamp at 60) | (−2.74, 0, −1.52) | (−2.74, 0.00, −1.52) | (−2.74, 1.80, −1.52) |
+| crate, scale 2.4 | (0.88, 0, −0.28) | (0.88, 0.00, −0.28) | — |
+
+The frame shows the new brazier lit — a pool on the ground, embers off its coals — and the crate
+selected. **Two things the run found**: the ruins' braziers have differently coloured lamps, so they are
+two kinds and my key count was one short (the palette now names the lamp's brightness so the two can be
+told apart); and the palette's "×" was dropped by the HUD's ASCII font.
+
+**Every game checked**: none uses `LevelEditor` or `Level.kinds`; all five build and pass.
 
 ## Done 2026-09-11 — what things are made of, from the level file (0.9.1)
 
@@ -1077,25 +1097,25 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Dropping a new thing in from the editor.** `LevelEditor.add` has existed since the editor did,
-   and nothing in the sample calls it: a level can be rearranged but never added to without editing
-   the file. A key that cycles through the meshes the level already uses and drops one where the
-   crosshair meets the ground — a brazier arriving with its lamp, through `add(…, light:)`. **Proved in
-   the sample by** a scripted edit that adds a brazier and a crate, the log placing each where the
-   crosshair was, and the brazier's lamp lighting the ground around it.
-
-2. **Standing up under something low.** A crouched player can stand up into a ceiling: the controller
+1. **Standing up under something low.** A crouched player can stand up into a ceiling: the controller
    raises the body's height with no check above it, so under a lintel the head ends up inside the stone.
    Stay crouched until there is room, and stand the moment there is. **Proved in the sample by** a low
    lintel added to the ruins and a scripted crouch-walk under it that lets go of crouch halfway — the
    log reporting the eye held at crouch height until the body is clear, and standing after.
 
-3. **Standing on something that moves.** The controller stands on boxes that never move: ride a lift
+2. **Standing on something that moves.** The controller stands on boxes that never move: ride a lift
    and the lift leaves without you, or pushes up through your feet. `groundSolid` already says which
    box is underfoot; what is missing is carrying the body by that box's motion each step — up, down and
    across — and not at all once the feet leave it. **Proved in the sample by** a lift in the ruins
    rising a floor and back, and the scripted walk standing on it logging the feet rising with it to the
    centimetre and staying on it when it turns round.
+
+3. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
+   ("loops arrive when a title needs them") — but a looping sound at a place is settled shape, and the
+   ruins' braziers are silent fire. A looped, positioned voice carried by a placement the way its lamp
+   is, so it moves and copies with it. **Proved in the sample by** rendering the mix offline
+   (`AVAudioEngine`'s manual rendering) with the listener at 2, 8 and 20 m from a brazier and measuring
+   the crackle's level fall with distance — measured, since this session cannot listen.
 
 ## Parked — not next, and why
 

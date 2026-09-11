@@ -84,6 +84,34 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     /// The game's word, like ``Placement/surface``.
     public var groundSurface: String?
 
+    /// One of each kind of thing in the level, in the order each first appears — **a level's own
+    /// vocabulary**, for an editor to add more of.
+    ///
+    /// Two placements are the same kind when everything but *where* they are matches: mesh, scale,
+    /// anchor, tags, lamp and surface. A brazier with its lamp and a bare one are two kinds; two crates
+    /// at different spots are one. **The height is kept from the first of each kind**, because `y` is
+    /// part of what a placement is under an anchor — a tread sunk to its step — while `x`, `z` and the
+    /// yaw are only where it happened to be put, and come back zeroed.
+    ///
+    /// > **Not prefabs.** A prefab is a thing authored once and instanced; this is a question asked of
+    /// > a level that already exists — what is in it — and it needs no format of its own.
+    public var kinds: [Placement] {
+        var found: [Placement] = []
+        for placement in placements {
+            var kind = placement
+            kind.position.x = 0
+            kind.position.z = 0
+            kind.yaw = 0
+            let isNew = !found.contains { other in
+                var y = other
+                y.position.y = kind.position.y
+                return y == kind
+            }
+            if isNew { found.append(kind) }
+        }
+        return found
+    }
+
     /// What is under the feet: the surface of the placement stood on, or the ground's when that is
     /// `nil`. **The one question a footstep asks**, answered from the level rather than from a guess.
     ///

@@ -119,6 +119,20 @@ public nonisolated struct LevelEditor {
         selection = level.placements.count - 1
     }
 
+    /// Add another of a kind of thing — one of ``Level/kinds`` — at a point on the ground, and select it.
+    ///
+    /// **Everything but the place comes with it**: its height under its anchor, scale, tags, surface
+    /// and lamp. That is the difference from ``add(mesh:at:tags:light:)``, which knows only a mesh — a
+    /// brazier added by name arrives cold and walk-through; one added by kind arrives lit and solid.
+    public mutating func add(_ kind: Level.Placement, at point: SIMD2<Float>, yaw: Float = 0) {
+        record()
+        var placement = kind
+        placement.position = SIMD3(point.x, kind.position.y, point.y)
+        placement.yaw = yaw
+        level.placements.append(placement)
+        selection = level.placements.count - 1
+    }
+
     // MARK: - The selection's lamp
     //
     // **A lamp belongs to a placement** — see ``Level/Placement/light`` — so these edit the selection's
