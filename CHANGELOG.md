@@ -12,6 +12,69 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.8] — 2026-09-10
+
+**Keys a player can change, and settings that are still there next time.** The sample has a settings
+screen on **O**: the eight movement keys, look sensitivity, invert look, volume and brightness, saved
+the moment anything changes.
+
+### Added
+
+- **`KeyCode`** — a physical key, stored by name so a settings file says `"forward" : "W"`.
+- **`InputBindings`** — which key does what, with swap-on-conflict and a refused set.
+- **`PlayerSettings`** — bindings, look sensitivity, invert look, volume, brightness.
+- **`InputState.bindings`** and **`InputState.flagsChanged(keyCode:modifierFlags:)`**.
+- **`AudioEngine.masterVolume`**.
+
+### Changed
+
+- **`InputState` reads every rebindable key through `bindings`.** The standard layout is the old
+  hard-coded one, so nothing changes until a game changes it. `setSprinting(_:)` still works and
+  combines with the bound sprint key.
+
+### Fixed — in the sample, and it was shipped
+
+**Shift did nothing, while the screen said "shift sprint".** macOS sends Shift, Control, Option and
+Command as a change of modifier flags, never as a key press, and the sample's window did not listen for
+that event. Modifiers are keys now: the window forwards `flagsChanged`, `InputState` treats a modifier
+like any other key, and sprint can be bound to anything including Control. The on-screen hint is built
+from the bindings, so it cannot print a key that does not work again.
+
+**The em dash never rendered in the sample's HUD** — "PAUSED — p to resume" has shown a gap since the
+HUD existed, and the engine said so in the log every run. It was not in the font atlas's extra
+characters.
+
+### Decisions
+
+- **A key in use is swapped, not stolen.** Taking W for jump gives forward jump's old key; stealing it
+  would leave a player who cannot walk and does not know why.
+- **Escape, Tab and the arrows are refused**, and a game adds its own always-on keys. Escape is the way
+  out — bound to anything, the player cannot get their pointer back or reach the screen that would undo
+  it. A key the game consumes first is a key a binding never sees.
+- **One key per action.** A secondary slot doubles every rule above and can arrive when a title asks.
+- **Tolerant decoding, field by field.** `SaveStore` returns nothing for a file it cannot decode, and
+  for settings nothing means everything reset — a player loses eight rebound keys because a later build
+  added a ninth. A missing field takes its default, an unknown one is ignored, a key name this build
+  does not know costs only that binding.
+- **No apply button.** Every change is written at once; a screen that can be closed without saving is
+  one a player closes without saving.
+- **The tone-map curve is not a setting.** `M` still cycles it for comparison; a player's dial is
+  brightness, which adds to the game's own exposure.
+
+### Verified by driving it
+
+`WINDAGE_SAMPLE_WALK` now presses and releases **real keys through the same path a keyboard does**,
+game first and then `InputState` — it used to hand the controller a movement directly, which tested
+the body and skipped everything in front of it, the Shift bug included. Two launches of the sample:
+
+1. Open settings, rebind forward to I, close. I walks **6.05 m** in a second; W does nothing; I with
+   Shift sprints **18.15 m**. The file on disk reads `"forward" : "I"`.
+2. **Quit and relaunch**: the log reads `forward I`; I still walks, W still does not. Reset to
+   defaults from the screen, and W walks again.
+
+The refusal ("P is one of this game's own keys") and the swap ("Jump is W — Forward moved to Space")
+were both seen on screen.
+
 ## [0.6.7] — 2026-09-10
 
 **Particles.** Embers rise off the ruins' braziers and the figures' lanterns, a collected crate

@@ -144,6 +144,7 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
 or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** · **particles** ·
+**rebindable keys and saved player settings** ·
 **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
@@ -168,7 +169,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | ~~**Particles**~~ | **Done 2026-09-10.** `ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer` — embers, a pickup burst and landing dust in the sample. See below. |
 | ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
 | **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
-| **Input rebinding, settings persistence** | Small, unglamorous, and the difference between a demo and something shippable. |
+| ~~**Input rebinding, settings persistence**~~ | **Done 2026-09-10.** `InputBindings`, `PlayerSettings` and `KeyCode`; the sample has a settings screen that saves as you change it. See below. |
 
 **Contested — defer, and say so rather than pretending they are unwanted.**
 
@@ -916,6 +917,58 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## Keys a player can change (2026-09-10)
+
+`InputBindings` says which key does what; `PlayerSettings` holds that plus look sensitivity, invert
+look, volume and brightness; `SaveStore` keeps them. The sample has a settings screen on **O**.
+
+### The bug it found: Shift had never worked in the sample
+
+**macOS does not send Shift as a key press.** Shift, Control, Option and Command arrive as a change of
+*modifier flags*, and a window that forwards `keyDown` and `keyUp` alone has no Shift at all. The
+sample shipped like that with "shift sprint" printed on its screen. Rebinding is what found it,
+because it made every key go through one path — and a modifier had no path.
+
+So modifiers are keys: a window forwards `flagsChanged` to `InputState.flagsChanged(keyCode:
+modifierFlags:)`, which reads the **device-specific bit** for the physical key — the generic Shift flag
+is set while *either* Shift is down, so releasing the left one with the right still held would read as
+still pressed. Sprint, or crouch, can then be bound to Control like anything else. The sample's
+on-screen hint is now built from the bindings, so it cannot advertise a key that does nothing.
+
+### The rules
+
+- **A key already in use is swapped, not stolen.** Taking W for jump gives forward jump's old key. The
+  alternative leaves a player who cannot walk and does not know why.
+- **Escape, Tab and the arrows are refused.** Escape is the way out: bound to jump, the player cannot
+  release the pointer or reach the screen that would undo it. Tab and the arrows are the engine's
+  generic *next* and *step*.
+- **A game adds its own always-on keys to the refused set** — in the sample P, R, N, M and O. A key the
+  game consumes first is a key a binding never sees; jump on P would pause the game.
+- **One key per action.** A secondary slot doubles every rule above.
+
+### Tolerant, field by field
+
+`SaveStore` returns nothing for a file it cannot decode, which for progress is the right failure and
+for settings is a terrible one: **nothing means every setting reset**, so a player loses eight rebound
+keys because a later build added a ninth. Both types decode field by field — a missing field takes its
+default, an unknown one is ignored, a key name this build does not recognise costs only that one
+binding, and a hand-edited file with two actions on one key keeps the first.
+
+Keys are stored **by name**, so the file reads `"forward" : "W"` rather than `13`.
+
+### No apply button
+
+Every change is saved the moment it is made. A settings screen that can be closed without saving is
+one a player closes without saving, and then finds their keys back the way they were.
+
+### The scripted walk presses real keys now
+
+`WINDAGE_SAMPLE_WALK` used to hand the controller a movement directly. That tested the body and
+skipped everything in front of it — the bindings, the menu, and the Shift that did not work. It now
+presses and releases keys down the same path a keyboard does, so a script can open the settings
+screen, rebind a key, close it and walk with the new key. Two launches proved the round trip: rebind
+forward to I and walk with it; quit; relaunch; I still walks and W does not.
 
 ## Particles (2026-09-10)
 

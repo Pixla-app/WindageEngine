@@ -18,7 +18,10 @@ this way flies** — a screenshot position is a viewpoint, not somewhere to stan
 pull it to the floor before the first frame.
 
 **Walk it without a keyboard:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
-swift run WindageSample` — keys and seconds, and the log says where the feet ended each segment.
+swift run WindageSample` — key names and seconds, **pressed through the same path a keyboard uses**,
+and the log says where the feet ended each segment. `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
+rebinds forward to I. **A script that changes settings writes the real settings file** in Application
+Support; delete it afterwards.
 
 ---
 
@@ -53,7 +56,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-415 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+440 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -63,9 +66,28 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, `Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
-`ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, **`ParticleSystem`
-and `ParticleRenderer`**, and — for the lamps that cast —
+`ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
+and `ParticleRenderer`, **`InputBindings` and `PlayerSettings`**, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — keys a player can change (0.6.8)
+
+**`KeyCode`, `InputBindings`, `PlayerSettings`**, `InputState.bindings` and `flagsChanged`, and
+`AudioEngine.masterVolume`. The sample has a settings screen on **O** — eight keys, look sensitivity,
+invert look, volume, brightness, reset — saved the instant anything changes.
+
+**It found that Shift had never worked in the sample.** macOS sends modifiers as a flags change, not a
+key press, and the window never listened. Modifiers are keys now, read by their device-specific bit;
+the on-screen hint is built from the bindings so it cannot lie again. **And the em dash never rendered**
+in the HUD — the engine had been saying so in the log every run.
+
+**Rules**: a key in use is swapped, not stolen; Escape, Tab and the arrows are refused, plus the game's
+own always-on keys; one key per action; decoding tolerant field by field, because a settings file that
+fails to decode is every setting reset.
+
+**The scripted walk presses real keys now**, through the path a keyboard takes. Two launches: rebind
+forward to I in the screen, walk 6.05 m with I, W does nothing, Shift sprints 18.15 m; quit, relaunch,
+I still walks. Reset from the screen puts W back. The test settings file was deleted afterwards.
 
 ## Done 2026-09-10 — particles (0.6.7)
 
@@ -797,20 +819,22 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Input rebinding and settings that persist.** Keys a player can change, and settings —
-   bindings, mouse sensitivity, tone map, volume — saved and loaded through `SaveStore`. **Proved in
-   the sample by** rebinding a key, quitting, and finding it still rebound.
-
-2. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
+1. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
    with how hard it was; the sample plays them through `AudioEngine`, which is already positional.
    A body that walks silently reads as a camera on a rail. **Proved in the sample by** walking,
    sprinting and dropping off the steps and hearing the difference, and by the stride count in a
    scripted walk.
 
-3. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
+2. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
    them, so their embers rise out of thin air. A brazier mesh with an emissive map, placed from the
-   level like everything else — small, but it is the gap the particles made obvious. **Proved in the
-   sample by** a screenshot where the embers visibly come off something.
+   level like everything else. **Proved in the sample by** a screenshot where the embers visibly come
+   off something.
+
+3. **Gamepad rebinding.** The keyboard is rebindable now and the pad is not: its layout is the
+   console convention written into `InputState`, with reserved buttons on purpose. The same
+   `InputBindings` shape with a button per action, and the settings screen showing whichever device
+   is connected. **Proved in the sample by** a rebound button in the settings file surviving a
+   relaunch — the pad itself cannot be scripted, so the input path is tested in the package.
 
 ## Parked — not next, and why
 
@@ -821,6 +845,8 @@ below, never in this list.
 - **Soft shadows (PCSS or variance maps).** Fixed-radius filtering everywhere today. Nothing in the
   sample looks wrong for want of it.
 - **LOD and instancing.** Needed once a scene is larger than the sample's. Nothing in it is yet.
+- **A second key per action.** One per action answers "can I put this where my hand is". A secondary
+  slot doubles every rule in `InputBindings` and waits for a title that asks.
 - **Soft particles and sorting.** Particles are cut off hard where they meet a surface, and matter is
   drawn unsorted. Neither shows at the sample's sizes and opacities; dense smoke would show both.
 - **Standing up under something low.** The controller lets a crouched player stand up into a

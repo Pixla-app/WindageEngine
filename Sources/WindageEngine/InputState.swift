@@ -49,15 +49,28 @@ public final class InputState {
     /// macOS virtual key codes. These are physical positions, not letters — the codes below are the
     /// QWERTY WASD cluster and stay in the same place on an AZERTY keyboard, which is what a game
     /// wants.
+    ///
+    /// **Only the keys nothing may rebind are named here.** Everything a player can move lives in
+    /// ``bindings``.
     private enum Key {
-        static let w: UInt16 = 13, a: UInt16 = 0, s: UInt16 = 1, d: UInt16 = 2
-        static let space: UInt16 = 49, c: UInt16 = 8, escape: UInt16 = 53
-        static let tab: UInt16 = 48, b: UInt16 = 11
+        static let escape: UInt16 = 53, tab: UInt16 = 48
         static let up: UInt16 = 126, down: UInt16 = 125, left: UInt16 = 123, right: UInt16 = 124
     }
 
     private var pressedKeys: Set<UInt16> = []
+    /// Shift as reported by a window that forwards modifier flags itself — see ``setSprinting(_:)``.
     private var sprintingFromKeyboard = false
+
+    /// Which key does what. **Everything the keyboard drives reads through this**, so a rebinding
+    /// takes effect on the next key event with nothing else to update. See ``InputBindings``.
+    public var bindings = InputBindings.standard
+
+    private func held(_ action: InputBindings.Action) -> Bool {
+        pressedKeys.contains(bindings[action].rawValue)
+    }
+
+    /// The sprint key, however it arrived.
+    private var sprintKeyHeld: Bool { sprintingFromKeyboard || held(.sprint) }
 
     /// Stick-click sprint latches on and stays on. See ``SprintLatch``.
     private var sprintLatch = SprintLatch()
@@ -160,9 +173,9 @@ public final class InputState {
         // check, resting a finger on `C` would strobe the crouch at the repeat rate.
         let wasDown = pressedKeys.contains(keyCode)
         pressedKeys.insert(keyCode)
-        if keyCode == Key.c && !wasDown { toggleCrouch() }
+        if keyCode == bindings[.crouch].rawValue && !wasDown { toggleCrouch() }
         if keyCode == Key.tab && !wasDown { pendingNext += 1 }
-        if keyCode == Key.b && !wasDown { toggleBrace() }
+        if keyCode == bindings[.brace].rawValue && !wasDown { toggleBrace() }
 
         // Arrows step once per press — and again on key repeat, which is what makes holding one
         // down run a turret up rather than requiring forty presses.
@@ -175,6 +188,19 @@ public final class InputState {
         }
     }
     public func keyUp(_ keyCode: UInt16) { pressedKeys.remove(keyCode) }
+
+    /// A modifier key changed: forward every `flagsChanged` event here with its key code and raw
+    /// flags.
+    ///
+    /// **macOS never sends Shift, Control, Option or Command as key presses** — only as a change of
+    /// flags — so a window that forwards `keyDown` and `keyUp` alone silently has no Shift at all. The
+    /// sample shipped a release like that, with "shift sprint" printed on screen. Routed through
+    /// here, a modifier is a key like any other, and can be bound to anything.
+    public func flagsChanged(keyCode: UInt16, modifierFlags: UInt) {
+        let key = KeyCode(keyCode)
+        guard key.isModifier else { return }
+        if key.isDown(inModifierFlags: modifierFlags) { keyDown(keyCode) } else { keyUp(keyCode) }
+    }
 
     /// Presses of **Tab** since the game last took them.
     ///
@@ -192,6 +218,11 @@ public final class InputState {
     public func toggleCrouch() {
         isCrouching.toggle()
     }
+    /// Sprint held, for a window that reads Shift from its own modifier flags.
+    ///
+    /// **Prefer ``flagsChanged(keyCode:modifierFlags:)``**, which makes Shift a key like any other
+    /// and so rebindable. This remains for a window that already does it this way, and the two
+    /// combine: either one held is sprinting.
     public func setSprinting(_ sprinting: Bool) {
         sprintingFromKeyboard = sprinting
     }
@@ -215,7 +246,7 @@ public final class InputState {
     /// Held rather than latched here, where sprint is latched: holding L3 is awkward *while
     /// steering*, and a player taking a precision shot is standing still.
     public var isSteadying: Bool {
-        sprintingFromKeyboard || steadyingFromPad
+        sprintKeyHeld || steadyingFromPad
     }
 
     /// Jump: **Space**, or Cross on a pad. **Held state, not a press** — a controller that jumps
@@ -226,7 +257,7 @@ public final class InputState {
     /// flies: `C` pulls that axis down, so holding Space and C together reads as zero there and would
     /// swallow a jump taken from a crouch.
     public var isJumpHeld: Bool {
-        pressedKeys.contains(Key.space) || (gamepad?.buttonA.isPressed ?? false)
+        held(.jump) || (gamepad?.buttonA.isPressed ?? false)
     }
 
     private var steadyingFromPad = false
@@ -279,7 +310,7 @@ public final class InputState {
     /// > key doing nothing. Tests missed it because they drove this type directly and never ran
     /// > `pollFrame`; only stepping the real input path in the running game showed it.
     private func standIfSprinting() {
-        let requested = sprintingFromKeyboard || sprintLatch.isEngaged
+        let requested = sprintKeyHeld || sprintLatch.isEngaged
         defer { sprintWasRequested = requested }
         guard requested, !sprintWasRequested else { return }
         isCrouching = false
@@ -419,13 +450,13 @@ public final class InputState {
     public var movement: MovementInput {
         var input = MovementInput()
 
-        if pressedKeys.contains(Key.w) { input.forward += 1 }
-        if pressedKeys.contains(Key.s) { input.forward -= 1 }
-        if pressedKeys.contains(Key.d) { input.strafe += 1 }
-        if pressedKeys.contains(Key.a) { input.strafe -= 1 }
-        if pressedKeys.contains(Key.space) { input.vertical += 1 }
-        if pressedKeys.contains(Key.c) { input.vertical -= 1 }
-        input.sprint = sprintingFromKeyboard
+        if held(.forward) { input.forward += 1 }
+        if held(.back) { input.forward -= 1 }
+        if held(.right) { input.strafe += 1 }
+        if held(.left) { input.strafe -= 1 }
+        if held(.jump) { input.vertical += 1 }
+        if held(.crouch) { input.vertical -= 1 }
+        input.sprint = sprintKeyHeld
 
         if let gamepad {
             let stick = StickResponse.shaped(

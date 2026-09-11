@@ -99,83 +99,113 @@ final class SampleGame: GameLoop {
     }
 
     /// See `scriptedWalk`.
+    ///
+    /// **Keys, pressed and released through the same path a keyboard uses** — `keyPressed`, which
+    /// gives the game first refusal and then `InputState`. It used to hand the body a movement
+    /// directly, which tested the controller and skipped everything in front of it: the bindings,
+    /// the menu, and the Shift that was never wired up.
     private struct ScriptedWalk {
-        struct Keys {
-            var movement = MovementInput()
-            var jump = false
-            var crouch = false
+        struct Segment {
+            let label: String
+            let keys: [KeyCode]
+            let seconds: Float
+            var yaw: Float? = nil
+            var pitch: Float? = nil
+            var isLook: Bool { yaw != nil || pitch != nil }
         }
-        private let segments: [(label: String, keys: Keys, seconds: Float, look: (yaw: Float?, pitch: Float?))]
+        enum Event {
+            case begin(Segment)
+            case end(Segment, report: String?)
+        }
+
+        private let segments: [Segment]
         private var index = 0
         private var elapsed: Float = 0
         private var peak: Float = -.greatestFiniteMagnitude
+        private var begun = false
 
         init?(_ script: String?) {
             guard let script, !script.isEmpty else { return nil }
-            var parsed: [(String, Keys, Float, (yaw: Float?, pitch: Float?))] = []
+            var parsed: [Segment] = []
             for token in script.split(whereSeparator: \.isWhitespace) {
                 let parts = token.split(separator: ":")
-                guard parts.count == 2, let seconds = Float(parts[1]) else {
+                guard parts.count == 2, let number = Float(parts[1]) else {
                     print("WindageSample: WINDAGE_SAMPLE_WALK wants keys:seconds — ignoring '\(token)'")
                     continue
                 }
                 // `yaw:` and `pitch:` take degrees and no time: they turn the view, which is the
                 // one thing a replayed walk otherwise cannot do, since it ignores the mouse.
                 if parts[0] == "yaw" || parts[0] == "pitch" {
-                    let radians = radians_from_degrees(seconds)
-                    parsed.append((String(token), Keys(), 0,
-                                   parts[0] == "yaw" ? (radians, nil) : (nil, radians)))
+                    let radians = radians_from_degrees(number)
+                    parsed.append(parts[0] == "yaw"
+                        ? Segment(label: String(token), keys: [], seconds: 0, yaw: radians)
+                        : Segment(label: String(token), keys: [], seconds: 0, pitch: radians))
                     continue
                 }
-                var keys = Keys()
-                for key in parts[0].split(separator: "+") {
-                    switch key {
-                    case "w": keys.movement.forward += 1
-                    case "s": keys.movement.forward -= 1
-                    case "d": keys.movement.strafe += 1
-                    case "a": keys.movement.strafe -= 1
-                    case "shift": keys.movement.sprint = true
-                    case "space": keys.jump = true
-                    case "c": keys.crouch = true
-                    case "wait": break
-                    default: print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(key)'")
+                var keys: [KeyCode] = []
+                for name in parts[0].split(separator: "+") where name != "wait" {
+                    if let key = KeyCode(named: String(name)) {
+                        keys.append(key)
+                    } else {
+                        print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(name)'")
                     }
                 }
-                parsed.append((String(token), keys, seconds, (nil, nil)))
+                parsed.append(Segment(label: String(token), keys: keys, seconds: number))
             }
             guard !parsed.isEmpty else { return nil }
             segments = parsed
         }
 
-        /// Any turns due now, consumed. Call before ``keys``.
-        mutating func takeLook() -> (yaw: Float?, pitch: Float?) {
-            var result: (yaw: Float?, pitch: Float?) = (nil, nil)
-            while index < segments.count, segments[index].seconds == 0 {
-                let look = segments[index].look
-                result.yaw = look.yaw ?? result.yaw
-                result.pitch = look.pitch ?? result.pitch
+        var isRunning: Bool { index < segments.count }
+
+        /// What happens this step, in order: a segment whose time is up ends — its keys come up —
+        /// and the next begins — its keys go down. **Checked before the body moves**, so a segment of
+        /// n seconds holds its keys for exactly the steps that fit in n.
+        mutating func advance(by seconds: Float, body: CharacterController) -> [Event] {
+            var events: [Event] = []
+            while index < segments.count {
+                let segment = segments[index]
+                if !begun {
+                    begun = true
+                    elapsed = 0
+                    peak = body.feet.y
+                    events.append(.begin(segment))
+                }
+                peak = max(peak, body.feet.y)
+                guard elapsed >= segment.seconds else {
+                    elapsed += seconds
+                    break
+                }
+                let f = body.feet
+                let report = segment.isLook ? nil : String(
+                    format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@",
+                    segment.label, f.x, f.y, f.z, peak, body.isGrounded ? "on the ground" : "in the air")
+                events.append(.end(segment, report: report))
                 index += 1
+                begun = false
             }
-            return result
+            return events
         }
+    }
 
-        /// The keys held right now, or nil once the script has run out — at which point the keyboard
-        /// has the player back.
-        var keys: Keys? { index < segments.count ? segments[index].keys : nil }
-
-        mutating func advance(by seconds: Float, body: CharacterController) {
-            guard index < segments.count else { return }
-            elapsed += seconds
-            peak = max(peak, body.feet.y)
-            guard elapsed >= segments[index].seconds else { return }
-            let f = body.feet
-            print(String(format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@",
-                         segments[index].label, f.x, f.y, f.z, peak,
-                         body.isGrounded ? "on the ground" : "in the air"))
-            index += 1
-            elapsed = 0
-            peak = -.greatestFiniteMagnitude
+    /// The settings screen's state while it is open.
+    private struct SettingsMenu {
+        enum Row: Equatable {
+            case bind(InputBindings.Action)
+            case sensitivity, invert, volume, brightness, reset
         }
+        static let rows: [Row] = InputBindings.Action.allCases.map { .bind($0) }
+            + [.sensitivity, .invert, .volume, .brightness, .reset]
+
+        var selected = 0
+        /// The action waiting for a key, while the screen says "press a key".
+        var capturing: InputBindings.Action?
+        /// What the last change did — "Jump swapped with Forward", "P is the pause key".
+        var message: String?
+        /// Whether opening the screen paused the run, so closing it only resumes what it paused.
+        var pausedTheRun = false
+
+        var row: Row { SettingsMenu.rows[selected] }
     }
 
     /// One lamp as the shader reads it: **`w` carries the range**, so a `float3` and a scalar pack
@@ -330,6 +360,24 @@ final class SampleGame: GameLoop {
     /// Which lights have a tile this frame, recomputed with the light set.
     private var shadowCasters: [(lightIndex: Int, caster: ShadowAtlas.Caster)] = []
 
+    // MARK: - Settings
+
+    /// **Where settings live, beside the progress file and separate from it** — resetting progress
+    /// must not reset a player's keys, and the reverse.
+    private static let settingsStore = SaveStore<PlayerSettings>(container: "WindageSample", name: "settings")
+    private var settings = SampleGame.settingsStore.load() ?? PlayerSettings()
+    private var menu: SettingsMenu?
+
+    /// The game's own exposure, before the player's brightness. **The game's dial**: ACES lifts
+    /// midtones by about a fifth, and half a stop down puts a scene authored before there was a curve
+    /// back where it was.
+    private static let baseExposure: Float = -0.5
+
+    /// Keys this game takes before `InputState` sees them, whatever it is doing — so they cannot be
+    /// bound to anything, or the binding would never fire. Tab and Escape are refused by the engine.
+    private static let reservedKeys: Set<KeyCode> = ["P", "R", "N", "M", "O"].compactMap(KeyCode.init(named:))
+        .reduce(into: []) { $0.insert($1) }
+
     // MARK: - Particles
 
     /// Embers, a burst for a collected crate, and dust when the player lands.
@@ -451,9 +499,11 @@ final class SampleGame: GameLoop {
     /// something anybody else can repeat. A script is: the same keys for the same seconds from the
     /// same spawn reach the same place, and the log says where that was.
     ///
-    /// `WINDAGE_SAMPLE_WALK="d:0.75 w:1.6 w+space:0.1"` — segments of keys and seconds, keys joined
-    /// with `+` from `w a s d shift space c`, or `wait` for none. `yaw:90` and `pitch:-40` turn the
-    /// view to that many degrees, taking no time. Each segment's end is printed with where the feet are,
+    /// `WINDAGE_SAMPLE_WALK="d:0.75 w:1.6 w+space:0.1"` — segments of key names and seconds, joined
+    /// with `+`: any name `KeyCode(named:)` knows, `shift` included, or `wait` for none. **Held for
+    /// the segment and released at its end, through `keyPressed`** — the game's keys, the settings
+    /// screen and the bindings all see them exactly as they would a keyboard's. `yaw:90` and
+    /// `pitch:-40` turn the view to that many degrees, taking no time. Each segment's end is printed with where the feet are,
     /// the highest they got during it, and whether they are on the ground.
     private var scriptedWalk = ScriptedWalk(ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_WALK"])
 
@@ -808,7 +858,7 @@ final class SampleGame: GameLoop {
         // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
         // default, and a character it does not carry draws nothing at all — which is how these
         // hints spent several sessions reading "S save  Z undo" with the ⌘ silently missing.
-        hud = HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•"])
+        hud = HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•", "—"])
 
         audio = AudioEngine()
         if let audio {
@@ -856,6 +906,13 @@ final class SampleGame: GameLoop {
 
         rebuild()
         print("WindageSample: '\(level.name)' — \(drawables.count) drawables from \(levelPath)")
+
+        // **The player's settings, from last time.** Applied here rather than read at each use, so
+        // the three things they reach — the bindings, the mixer and the exposure — are set once.
+        engine.toneMapping = ToneMapping(curve: .aces, exposureStops: SampleGame.baseExposure)
+        applySettings()
+        print("WindageSample: settings from \(SampleGame.settingsStore.url.path) — forward "
+              + "\(settings.bindings[.forward].name), jump \(settings.bindings[.jump].name)")
     }
 
     /// Loads the rigged figure: one mesh, one skeleton, two clips, all from one USD file.
@@ -1422,7 +1479,41 @@ final class SampleGame: GameLoop {
     /// **Consumed keys never reach `InputState`**, so `D` nudges rather than strafing. Routing every
     /// key to both and hoping they do not collide is how an editor ends up walking the camera into a
     /// wall while you are trying to move a crate.
+    // MARK: - Keys in
+
+    /// A key went down. **The game gets first refusal, then `InputState`** — a key the editor or the
+    /// settings screen takes must not also walk the player.
+    func keyPressed(_ code: UInt16, command: Bool) {
+        // Escape is the settings screen's first — it cancels a capture or closes the screen — and
+        // otherwise the pointer's, which it releases. Never a binding: see `InputBindings.fixed`.
+        if code == KeyCode.escape.rawValue {
+            if !handleKey(code, command: false) { input.setMouseCaptured(false) }
+            return
+        }
+        if handleKey(code, command: command) { return }
+        input.keyDown(code)
+    }
+
+    func keyReleased(_ code: UInt16) { input.keyUp(code) }
+
+    /// A modifier changed — Shift, Control, Option, Command. **A key like any other once it gets
+    /// here**, which is what lets the settings screen bind one and `InputState` sprint on one.
+    func modifiersChanged(_ code: UInt16, flags: UInt) {
+        let key = KeyCode(code)
+        if menu != nil {
+            // Captured on the way down; everything else a modifier does is swallowed while the
+            // screen is open, or a held Shift would carry a sprint out of it.
+            if key.isDown(inModifierFlags: flags), let action = menu?.capturing { bind(action, to: key) }
+            if !key.isDown(inModifierFlags: flags) { input.flagsChanged(keyCode: code, modifierFlags: flags) }
+            return
+        }
+        input.flagsChanged(keyCode: code, modifierFlags: flags)
+    }
+
     func handleKey(_ code: UInt16, command: Bool) -> Bool {
+        if menu != nil { return handleMenuKey(KeyCode(code)) }
+        if code == KeyCode.escape.rawValue { return false }
+        if code == KeyCode(named: "O")!.rawValue && !isEditing { openMenu(); return true }
         if code == 48 {                                     // tab — in and out of edit mode
             isEditing.toggle()
             input.setMouseCaptured(!isEditing)
@@ -1495,6 +1586,180 @@ final class SampleGame: GameLoop {
     /// **`clamp` is the one worth pressing.** It is what a renderer does with no tone mapping at all,
     /// and on a lit scene the sunlit faces go flat: everything above 1 becomes the same white, so a
     /// bright surface and a *very* bright surface arrive identical.
+    // MARK: - Settings screen
+
+    private func drawSettings(_ menu: SettingsMenu, on hud: HUDRenderer, scale: Float) {
+        let size = 22 * scale, line = size * 1.55
+        let width = 700 * scale
+        let height = line * Float(SettingsMenu.rows.count + 5)
+        let left = (viewportSize.x - width) / 2, top = (viewportSize.y - height) / 2
+        let white = UIColor(srgb: SIMD4(1, 1, 1, 0.95))
+        let dim = UIColor(srgb: SIMD4(1, 1, 1, 0.55))
+        let gold = UIColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
+
+        hud.rect(x: left, y: top, width: width, height: height, color: UIColor(srgb: SIMD4(0.05, 0.06, 0.08, 0.86)))
+        var y = top + line * 1.2
+        _ = hud.text("SETTINGS", x: left + size, y: y, pointSize: size * 1.3, color: white)
+        y += line * 1.3
+
+        for (index, row) in SettingsMenu.rows.enumerated() {
+            let selected = index == menu.selected
+            let (label, value): (String, String) = switch row {
+            case .bind(let action):
+                (action.title, menu.capturing == action ? "press a key..." : settings.bindings[action].name)
+            case .sensitivity: ("Look sensitivity", String(format: "%.1f", settings.lookSensitivity))
+            case .invert: ("Invert look", settings.invertLook ? "on" : "off")
+            case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
+            case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
+            case .reset: ("Reset to defaults", "")
+            }
+            let colour = selected ? gold : white
+            _ = hud.text((selected ? "> " : "  ") + label, x: left + size, y: y, pointSize: size, color: colour)
+            _ = hud.text(value, x: left + width * 0.58, y: y, pointSize: size, color: colour)
+            y += line
+        }
+
+        y += line * 0.4
+        if menu.capturing != nil {
+            _ = hud.text("press the key you want · esc cancels", x: left + size, y: y, pointSize: size * 0.8, color: gold)
+        } else if let message = menu.message {
+            _ = hud.text(message, x: left + size, y: y, pointSize: size * 0.8, color: gold)
+        }
+        y += line
+        _ = hud.text("up/down choose · return change · left/right adjust · o close",
+                     x: left + size, y: y, pointSize: size * 0.75, color: dim)
+    }
+
+    private func openMenu() {
+        var opened = SettingsMenu()
+        // **Paused while it is open**, or the clock runs out behind a screen of key bindings.
+        if run.mode == .playing {
+            run.togglePause()
+            opened.pausedTheRun = true
+        }
+        menu = opened
+        input.setMouseCaptured(false)
+    }
+
+    private func closeMenu() {
+        if menu?.pausedTheRun == true && run.mode == .paused { run.togglePause() }
+        menu = nil
+    }
+
+    /// Every key while the screen is open. **Always consumed**, so nothing typed into a settings
+    /// screen walks the player behind it.
+    private func handleMenuKey(_ key: KeyCode) -> Bool {
+        guard var current = menu else { return false }
+        if let action = current.capturing {
+            if key == .escape {
+                current.capturing = nil
+                current.message = nil
+                menu = current
+            } else {
+                bind(action, to: key)
+            }
+            return true
+        }
+
+        let count = SettingsMenu.rows.count
+        switch key {
+        case .escape, KeyCode(named: "O")!:
+            closeMenu()
+            return true
+        case .up: current.selected = (current.selected + count - 1) % count
+        case .down: current.selected = (current.selected + 1) % count
+        case .left: adjust(current.row, by: -1)
+        case .right: adjust(current.row, by: 1)
+        case .return:
+            switch current.row {
+            case .bind(let action):
+                current.capturing = action
+                current.message = nil
+            case .invert, .sensitivity, .volume, .brightness:
+                adjust(current.row, by: 1)
+            case .reset:
+                settings = PlayerSettings()
+                current.message = "Everything back to the defaults"
+                saveAndApplySettings()
+            }
+        default:
+            break
+        }
+        menu = current
+        return true
+    }
+
+    private func bind(_ action: InputBindings.Action, to key: KeyCode) {
+        let outcome = settings.bindings.bind(action, to: key, reserving: SampleGame.reservedKeys)
+        switch outcome {
+        case .bound:
+            menu?.message = "\(action.title) is \(key.name)"
+        case .swapped(let other):
+            menu?.message = "\(action.title) is \(key.name) — \(other.title) moved to "
+                + settings.bindings[other].name
+        case .refused:
+            menu?.message = InputBindings.fixed.contains(key)
+                ? "\(key.name) cannot be bound"
+                : "\(key.name) is one of this game's own keys"
+        }
+        menu?.capturing = nil
+        saveAndApplySettings()
+    }
+
+    private func adjust(_ row: SettingsMenu.Row, by steps: Int) {
+        let step = Float(steps)
+        switch row {
+        case .sensitivity: settings.lookSensitivity = ((settings.lookSensitivity + 0.1 * step) * 10).rounded() / 10
+        case .invert: settings.invertLook.toggle()
+        case .volume: settings.volume = ((settings.volume + 0.1 * step) * 10).rounded() / 10
+        case .brightness: settings.brightness += 0.25 * step
+        case .bind, .reset: return
+        }
+        saveAndApplySettings()
+    }
+
+    /// Written the moment anything changes. **There is no "apply" button**: a settings screen that can
+    /// be closed without saving is one a player closes without saving, and then finds their keys
+    /// back the way they were.
+    private func saveAndApplySettings() {
+        applySettings()
+        do {
+            try SampleGame.settingsStore.save(settings)
+        } catch {
+            print("WindageSample: settings not saved — \(error)")
+        }
+    }
+
+    private func applySettings() {
+        input.bindings = settings.bindings
+        audio?.masterVolume = settings.volume
+        engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
+    }
+
+    /// Plays the scripted walk's keys this step. See `ScriptedWalk`.
+    private func runScript(_ deltaTime: Float) {
+        guard scriptedWalk?.isRunning == true else { return }
+        for event in scriptedWalk!.advance(by: deltaTime, body: body) {
+            switch event {
+            case .begin(let segment):
+                if let yaw = segment.yaw { camera.yaw = yaw }
+                if let pitch = segment.pitch { camera.pitch = pitch }
+                for key in segment.keys {
+                    if let flag = key.modifierFlag {
+                        modifiersChanged(key.rawValue, flags: flag)
+                    } else {
+                        keyPressed(key.rawValue, command: false)
+                    }
+                }
+            case .end(let segment, let report):
+                for key in segment.keys {
+                    if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
+                }
+                if let report { print(report) }
+            }
+        }
+    }
+
     private func cycleToneMapping() {
         let curves = ToneMapping.Curve.allCases
         let next = curves[((curves.firstIndex(of: engine.toneMapping.curve) ?? 0) + 1) % curves.count]
@@ -1532,12 +1797,15 @@ final class SampleGame: GameLoop {
         // **A scripted walk holds its heading.** Otherwise whatever the mouse is doing over the
         // window steers it, and the same script ends somewhere different each time — which was the
         // first thing it did.
-        if scriptedWalk?.keys == nil { camera.look(mouseDelta: look) }
+        if scriptedWalk?.isRunning != true { camera.look(mouseDelta: look * settings.lookScale) }
     }
 
     func step(deltaTime: Float) {
         previousCamera = camera
-        camera.turn(rate: input.lookRate, deltaTime: deltaTime)
+        // **First, and whatever state the run is in** — a script that opens the settings screen
+        // pauses the run, and one that only advanced while playing would wait for ever.
+        runScript(deltaTime)
+        camera.turn(rate: input.lookRate * settings.lookScale, deltaTime: deltaTime)
         // **A pause is "do not advance", not "stop the loop".** The frame loop keeps running, the
         // scene still draws and the window still resizes — which is why pausing is a game's decision
         // and not something the engine has to provide.
@@ -1595,26 +1863,14 @@ final class SampleGame: GameLoop {
             if isPhotoMode {
                 camera.advance(input.movement, deltaTime: deltaTime)
             } else {
-                var movement = input.movement
-                var jump = input.isJumpHeld
-                var crouching = input.isCrouching
-                if let look = scriptedWalk?.takeLook() {
-                    if let yaw = look.yaw { camera.yaw = yaw }
-                    if let pitch = look.pitch { camera.pitch = pitch }
-                }
-                if let keys = scriptedWalk?.keys {
-                    movement = keys.movement
-                    jump = keys.jump
-                    crouching = keys.crouch
-                }
                 // **Yaw from the camera, and nothing else.** Pitch never reaches the body: looking at
                 // your feet does not slow the walk, and looking at the sky does not lift you off it.
                 let wasAirborne = !body.isGrounded
                 let fallSpeed = -body.verticalVelocity
                 body.step(yaw: camera.yaw,
-                          input: movement,
-                          jump: jump,
-                          crouching: crouching,
+                          input: input.movement,
+                          jump: input.isJumpHeld,
+                          crouching: input.isCrouching,
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
@@ -1624,7 +1880,6 @@ final class SampleGame: GameLoop {
                     particles.burst(SampleGame.dustRecipe, at: body.feet + SIMD3(0, 0.05, 0),
                                     seed: stepCount)
                 }
-                scriptedWalk?.advance(by: deltaTime, body: body)
             }
         }
     }
@@ -2175,7 +2430,11 @@ final class SampleGame: GameLoop {
 
         switch run.mode {
         case .paused:
-            _ = hud.text("PAUSED — p to resume", x: margin, y: y, pointSize: body, color: gold)
+            // Not while the settings screen is open: it paused the run itself, it takes every key
+            // including P, and "p to resume" would be an instruction that does nothing.
+            if menu == nil {
+                _ = hud.text("PAUSED — p to resume", x: margin, y: y, pointSize: body, color: gold)
+            }
         case .won(let seconds):
             _ = hud.text(String(format: "ALL FOUND in %.1fs — r to run again", seconds),
                          x: margin, y: y, pointSize: body, color: green)
@@ -2199,14 +2458,24 @@ final class SampleGame: GameLoop {
             // **The hints follow whichever device is actually plugged in.** Telling somebody holding
             // a controller to press WASD is a small lie the game is in a position to avoid, and the
             // engine already reports which it has.
+            // **From the bindings, not typed in.** The hint that said "shift sprint" while Shift did
+            // nothing was written by hand; one that reads the bindings cannot disagree with them.
+            let b = settings.bindings
+            let directions = [b[.forward], b[.left], b[.back], b[.right]].map(\.name)
+            let move = directions.allSatisfy { $0.count == 1 }
+                ? directions.joined() : directions.joined(separator: "/")
             let moving = input.isGamepadConnected
                 ? "left stick move · right stick look · cross jump · circle crouch"
-                : "WASD move · shift sprint · space jump · c crouch · mouse look · click to capture"
+                : "\(move) move · \(b[.sprint].name.lowercased()) sprint · "
+                    + "\(b[.jump].name.lowercased()) jump · \(b[.crouch].name.lowercased()) crouch · "
+                    + "click to capture"
             _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
                          pointSize: hint, color: white)
-            _ = hud.text("p pause · r restart · n next level · m tone map · tab to edit the level",
+            _ = hud.text("o settings · p pause · r restart · n next level · m tone map · tab edit",
                          x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
         }
+
+        if let menu { drawSettings(menu, on: hud, scale: scale) }
 
         // A centre dot, so turning has something to turn about.
         let dot = 3 * scale

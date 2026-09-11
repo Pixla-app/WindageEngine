@@ -21,14 +21,20 @@ final class SampleView: MTKView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    // **Three events, and the third is the one that was missing.** Shift, Control, Option and
+    // Command never arrive as `keyDown`: they arrive as `flagsChanged`, and a view that does not
+    // override it has no Shift at all — which is how this sample printed "shift sprint" on screen
+    // with Shift doing nothing.
+    //
+    // **Where each goes is the game's decision, not the view's**, so the scripted walk can send keys
+    // down exactly the same path and test what a keyboard would.
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { game?.input.setMouseCaptured(false); return }   // esc releases
-        // The editor gets first refusal. A key it takes must not also reach `InputState`, or `D`
-        // would nudge a crate *and* strafe the camera.
-        if game?.handleKey(event.keyCode, command: event.modifierFlags.contains(.command)) == true { return }
-        game?.input.keyDown(event.keyCode)
+        game?.keyPressed(event.keyCode, command: event.modifierFlags.contains(.command))
     }
-    override func keyUp(with event: NSEvent) { game?.input.keyUp(event.keyCode) }
+    override func keyUp(with event: NSEvent) { game?.keyReleased(event.keyCode) }
+    override func flagsChanged(with event: NSEvent) {
+        game?.modifiersChanged(event.keyCode, flags: event.modifierFlags.rawValue)
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard let game else { return }
@@ -83,10 +89,6 @@ engine.game = game
 // at all being more useful than a black window.
 engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
 
-// **Exposure is the game's dial, not the engine's.** ACES lifts midtones by roughly a fifth, so a
-// scene whose values were chosen before there was a curve comes out bright; half a stop down puts it
-// back. A game authored against the curve from the start would sit at zero.
-engine.toneMapping = ToneMapping(curve: .aces, exposureStops: -0.5)
 view.game = game
 
 guard let metalLayer = view.layer as? CAMetalLayer else {

@@ -145,6 +145,15 @@ public final class AudioEngine {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts)
     }
 
+    /// Everything this engine plays, 0…1 — the player's volume setting.
+    ///
+    /// **On the main mixer, after the spatialiser**, so it scales every voice by the same amount
+    /// without touching the distance attenuation that says how far away each one is.
+    public var masterVolume: Float {
+        get { engine.mainMixerNode.outputVolume }
+        set { engine.mainMixerNode.outputVolume = min(max(newValue, 0), 1) }
+    }
+
     public func stop() {
         players.forEach { $0.stop() }
         engine.stop()
