@@ -12,6 +12,34 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.12.2] — 2026-09-11
+
+**A clock while the window is hidden.** Additive: off by default, and hidden stays frozen until a game
+asks otherwise.
+
+### Added
+
+- **`FrameRenderer.runsWhileHidden`** — steps the simulation from a timer while the display link is
+  quiet (hidden, minimised, covered, another Space): the same fixed steps, no frame drawn, and
+  `GameLoop.beginFrame()` not called, since no frame begins.
+
+### Measured
+
+A hidden window's display link delivers **no frames** — 10.2 s hidden, then one frame of 10.23 s, 30
+steps kept of it. With the switch on, the sample's scripted crate walk ran hidden at 0 frames and
+119–121 steps a second, every segment on the wall clock, ending where the visible run ended; with it
+off, the walk's opening 2 s wait ended 16 s late. 87 s hidden held 120 steps a second (a terminal-started
+executable; a bundled app not measured). Four tests on the crediting arithmetic: the first frame back
+credits one frame, not the display link's 48 ms lead again — fails, by exactly 0.048 s, on the first
+version of it.
+
+### In the sample
+
+- **A scripted walk switches it on**, so a check finishes whether or not its window is in front.
+- **`WINDAGE_SAMPLE_FPS=1` reports from steps as well as frames**, so a hidden run is not silent.
+
+**Consumers**: `FrameRenderer` gained stored properties — build clean.
+
 ## [0.12.1] — 2026-09-11
 
 **Walking into a turned crate stops at its face, not its box.** Additive: nothing changes until a game

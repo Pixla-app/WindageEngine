@@ -124,7 +124,47 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     private let toneMapUniformBuffer: MTLBuffer
     /// Per frame in flight, because the GPU may still be reading last frame's exposure.
     private static let toneMapStride = (MemoryLayout<ToneMapping.Packed>.stride + 255) & ~255
-    private var lastPresentationTime: CFTimeInterval?
+
+    /// Whether the simulation keeps running while nothing is being drawn — the window hidden,
+    /// minimised, covered or on another Space. **Off by default: hidden is frozen.**
+    ///
+    /// **The display link is the clock, and a hidden window has none.** macOS stops delivering its
+    /// frames, so the simulation stops with them; when the window returns, the first frame reports the
+    /// whole absence and ``FixedTimestep/maxFrameTime`` throws all but a quarter of a second of it
+    /// away. Measured: hidden for 10.2 s, one frame back of 10.23 s, 30 steps run for it. That is a fair
+    /// pause for a single-player game, and wrong for anything that has to keep time — a match with
+    /// other players in it, a timed run, a check scripted to finish.
+    ///
+    /// On, the simulation is stepped from a timer while the display link is quiet: the same fixed
+    /// steps, the same clock — credited once, whichever of the two credits it — with no frame drawn
+    /// and ``GameLoop/beginFrame()`` not called, because no frame begins.
+    public var runsWhileHidden = false {
+        didSet {
+            guard runsWhileHidden != oldValue else { return }
+            hiddenTimer?.invalidate()
+            hiddenTimer = nil
+            guard runsWhileHidden else { return }
+            // Weakly: a timer keeps its target alive, and a renderer is not kept alive by a switch.
+            let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stepWhileHidden() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            hiddenTimer = timer
+        }
+    }
+
+    private var hiddenTimer: Timer?
+    private var clock = FrameClock()
+
+    isolated deinit { hiddenTimer?.invalidate() }
+
+    private func stepWhileHidden() {
+        guard let elapsed = clock.tick(now: CACurrentMediaTime()) else { return }
+        let steps = timestep.advance(by: elapsed)
+        for _ in 0..<steps {
+            game?.step(deltaTime: Float(timestep.step))
+        }
+    }
 
     public init?(device: MTLDevice, simulationStepsPerSecond: Double = 120) {
         guard device.supportsFamily(.metal4) else { return nil }
@@ -220,8 +260,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
 
         // The display link reports when the frame will be *shown*, which is the clock animation and
         // ballistics belong on. The first frame has no predecessor and contributes no time.
-        let frameTime = lastPresentationTime.map { presentationTime - $0 } ?? 0
-        lastPresentationTime = presentationTime
+        let frameTime = clock.frame(presented: presentationTime, now: CACurrentMediaTime())
 
         game?.beginFrame()
 

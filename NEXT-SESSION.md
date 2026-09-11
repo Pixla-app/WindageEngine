@@ -19,7 +19,7 @@ pull it to the floor before the first frame.
 
 **Walk it without a keyboard — or a controller:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
 swift run WindageSample` — key names and seconds, **pressed through the same path a keyboard uses**,
-and the log says where the feet ended each segment. `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
+and the log says where the feet ended each segment. **It keeps time with its window hidden** (0.12.2). `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
 rebinds forward to I; `pad.south`, `pad.menu`, `pad.down` press a virtual controller, which then
 counts as connected. **A script that changes settings writes the real settings file** in Application
 Support; delete it afterwards.
@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-563 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+567 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,32 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a clock while the window is hidden (0.12.2)
+
+**The item's diagnosis was wrong, and measuring first is what showed it.** It said a hidden window's
+display link was throttled and the 0.25 s ceiling threw the time away, and proposed lifting the ceiling
+while a script ran. Hidden with System Events (`set visible … to false`, after the first frame — the
+first attempt hid it before the window existed and measured nothing), the display link delivered **no
+frames at all** for 10.2 s, then one frame reporting 10.23 s, 30 steps kept. Nothing to lift a ceiling
+for. The old crawls fit a window behind others getting an occasional frame.
+
+**`FrameRenderer.runsWhileHidden`** (off by default): a timer steps the simulation once the display
+link has been quiet 0.1 s, without drawing or `beginFrame`. The crediting is **`FrameClock`** (internal),
+tested alone — four tests; crediting up to *now* fails two of them by exactly the 48 ms lead, no timer
+fails two. That lead was found in the sample first: 125 steps in the second the window came back, 120
+after the fix. The sample turns it on for any scripted walk, and `WINDAGE_SAMPLE_FPS` reports from steps
+too.
+
+Measured (`hiddenrun`: the crate walk, window hidden from its first frame to 20 s):
+
+| | hidden | walk |
+|---|---|---|
+| off | no frames; one back crediting 16.5 s → 30 steps | opening 2 s wait ended at 21.4 s |
+| on | **0 frames, 119–121 steps/s** | on the wall clock, 6.59 s for 6.5915 s, ending at the crate's face |
+
+87 s hidden: 120 steps/s throughout, no App Nap — for the sample as a terminal-started executable. A
+bundled app hidden is unmeasured; if one ever naps, `ProcessInfo.beginActivity` is the answer, measured.
 
 ## Done 2026-09-11 — a turned crate stops you at its face (0.12.1)
 
@@ -187,7 +213,8 @@ start sounds three). Symmetry is what the test holds.
 took over 20 s — and a profile showed the main thread waiting, not working. **`WINDAGE_SAMPLE_FPS=1`**
 (new) showed 60 frames a second at every viewpoint in photo mode and on the landing in a later run: the
 crawl was the window hidden behind others, where macOS throttles the display timer the simulation runs
-on. A slow scripted run is a hidden window until the frame count says otherwise.
+on. A slow scripted run is a hidden window until the frame count says otherwise. *(Since 0.12.2 a
+scripted run keeps time hidden; and a fully hidden window turned out to get no frames at all.)*
 
 **Every game checked**: none uses the controller; all five build and pass.
 
@@ -1295,14 +1322,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A scripted run keeps time with its window hidden.** Twice now a scripted walk crawled — a 0.6 s
-   wait taking 20 s — because macOS throttles a hidden window's display timer and `FixedTimestep`
-   credits at most `maxFrameTime` (0.25 s) of simulation a frame. Right for a game; wrong for a check that
-   has to finish. A frame-time ceiling `FrameRenderer` lets a game set, and the sample lifting it while a
-   script runs. **Proved by** the same scripted walk with the window hidden finishing on wall-clock time,
-   the frame counter showing few frames and 120 steps a second.
-
-2. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
+1. **Something moving into a body shoves it out of the way.** The carry only moves a body *standing on*
    a solid. Measured 2026-09-11: a slab sliding at 1 m/s into a body standing beside it ended with its
    face at the body's centre — **0.30 m inside it** — and the body was then stuck: a second of walking
    away moved it 0.0 m, since every move starts from an overlap. A moving solid should push the body
@@ -1310,12 +1330,19 @@ below, never in this list.
    **Proved in the sample by** a block sliding across the courtyard and a scripted walk standing in its
    path: the body kept 0.30 m from the face every step and moving at the block's speed, computed first.
 
-3. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
+2. **Standing past the turntable's rim is standing on air.** Its footprint is the square round the
    disc, turning with it: four corners 0.83 m past the rim where a body steps up 0.2 m onto nothing.
    A round footprint — a disc, collided against the body's square as a rounded square, swept the same
    way — for solids that are round. **Proved in the sample by** walking at the table's centre along the
    line through one of its footprint's corners: the feet rise where the body's corner reaches the rim,
    not 0.83 m before it, computed first.
+
+3. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
+   executable started from a terminal — no App Nap in 87 s hidden. A shipped game is an `.app`, and App
+   Nap is decided per app. Add `runsWhileHidden` to a minimal bundled build of the sample (or the one
+   title with an app target, in its own repo), hide it for two minutes with the frame counter on, and
+   either record that it holds 120 steps a second or add `ProcessInfo.beginActivity` to the switch and
+   show that it then does.
 
 ## Parked — not next, and why
 

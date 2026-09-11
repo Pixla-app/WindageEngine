@@ -1057,6 +1057,38 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### A clock while the window is hidden (0.12.2)
+
+The simulation steps when the display link calls, and **a hidden window's display link does not call
+at all** — measured: hidden for 10.2 s, not one frame, then one frame back reporting 10.23 s, of which
+`FixedTimestep.maxFrameTime` kept a quarter of a second. Hidden is frozen. That is a fair pause for a
+single-player game and wrong for anything that has to keep time — a match with other people in it, a
+timed run, a check scripted to finish.
+
+**`FrameRenderer.runsWhileHidden`** — off by default, so nothing changes until a game asks; Unity's
+`runInBackground` is the same switch. On, a timer steps the simulation while the display link is quiet
+(more than 0.1 s, three frames at its slowest), with no frame drawn and no `beginFrame`, since no frame
+begins. **One clock, credited once**: a frame's stamp is when it will be *shown*, 48 ms ahead of the
+host clock here, so the timer moves the frames' clock on by exactly what it credits — crediting up to
+*now* instead counted that lead twice and jumped 40 ms on every return (measured, 125 steps in the
+second the window came back; 120 after). The arithmetic is `FrameClock`, tested apart from the timer.
+
+**Measured in the sample**, which switches it on for a scripted walk: the crate walk, the window hidden
+from its first frame until 20 s —
+
+| | while hidden | the walk |
+|---|---|---|
+| off | nothing, then one frame crediting 16.5 s → 30 steps | its 2 s opening wait ended at 21.4 s, after the window came back |
+| on | **0 frames, 119–121 steps a second** | every segment on the wall clock; 6.59 s start to finish for a 6.5915 s script, ending at the crate's face as the visible run did |
+
+Hidden for 87 s, the rate held at 120 a second throughout — no App Nap. **That was the sample, a bare
+executable started from a terminal**; a bundled `.app` has not been measured hidden.
+
+> **The handoff had the diagnosis wrong, and building its fix would have fixed nothing.** It said a
+> hidden window's display link was *throttled* and the frame-time ceiling threw the time away, and
+> proposed lifting the ceiling while a script ran. Measured first: there are no frames to lift it for.
+> The earlier crawls — a few steps a second — fit a window *behind* others getting an occasional frame.
+
 ### Something set down at an angle (0.12.1)
 
 The controller saw every solid as its world-aligned box, and a turned crate's box is bigger than the

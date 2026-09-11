@@ -882,6 +882,9 @@ final class SampleGame: GameLoop {
     init?(engine: FrameRenderer) {
         self.engine = engine
         let device = engine.device
+        // **A scripted walk keeps time with its window hidden.** It is a check that has to finish —
+        // and the player's own game is paused by hiding it, the engine's default.
+        engine.runsWhileHidden = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_WALK"] != nil
 
         levelIndex = SampleGame.startingLevel
         let loaded = SampleLevel.load(levelIndex)
@@ -2504,14 +2507,7 @@ final class SampleGame: GameLoop {
     func beginFrame() {
         if SampleGame.reportsRate {
             rateWindow.frames += 1
-            let now = CFAbsoluteTimeGetCurrent()
-            if now - rateWindow.start >= 1 {
-                print(String(format: "WindageSample: %.0f frames a second, %.0f steps, camera (%.1f, %.1f, %.1f)",
-                             Double(rateWindow.frames) / (now - rateWindow.start),
-                             Double(rateWindow.steps) / (now - rateWindow.start),
-                             camera.position.x, camera.position.y, camera.position.z))
-                rateWindow = (now, 0, 0)
-            }
+            reportRate()
         }
         input.pollFrame()
         handleMenuPad()
@@ -2522,8 +2518,22 @@ final class SampleGame: GameLoop {
         if scriptedWalk?.isRunning != true { lookWithMouse(look) }
     }
 
+    /// Prints the rate once a second has gone by. **From a step as well as a frame**, because a
+    /// hidden window running its simulation has steps and no frames — a report only a frame could
+    /// print would go quiet exactly when there is something to report.
+    private func reportRate() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - rateWindow.start >= 1 else { return }
+        print(String(format: "WindageSample: %.0f frames a second, %.0f steps, camera (%.1f, %.1f, %.1f)",
+                     Double(rateWindow.frames) / (now - rateWindow.start),
+                     Double(rateWindow.steps) / (now - rateWindow.start),
+                     camera.position.x, camera.position.y, camera.position.z))
+        rateWindow = (now, 0, 0)
+    }
+
     func step(deltaTime: Float) {
         rateWindow.steps += 1
+        if SampleGame.reportsRate { reportRate() }
         previousCamera = camera
         previousBob = shownBob
         // **First, and whatever state the run is in** — a script that opens the settings screen
