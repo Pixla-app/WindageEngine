@@ -668,6 +668,8 @@ final class SampleGame: GameLoop {
     /// has that is worth photographing was found by comparing a before against an after.
     ///
     /// - `WINDAGE_SAMPLE_LEVEL=1` — open on that level rather than the first.
+    /// - `WINDAGE_SAMPLE_SILENT=1` — no audio engine at all, so App Nap can be measured without the
+    ///   exemption macOS gives an app playing sound (`Tools/bundle_sample_app.sh` makes the app).
     /// - `WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch` — stand there instead of at the spawn. Angles in
     ///   degrees, because they are numbers a person types.
     ///
@@ -1156,7 +1158,11 @@ final class SampleGame: GameLoop {
         // hints spent several sessions reading "S save  Z undo" with the ⌘ silently missing.
         hud = HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•", "—"])
 
-        audio = AudioEngine()
+        // **`WINDAGE_SAMPLE_SILENT=1` runs with no audio engine at all** — not muted, absent. macOS
+        // exempts an app playing sound from App Nap, and a running `AVAudioEngine` is playing sound
+        // whether or not anything is audible, so measuring whether a hidden game is napped needs the
+        // sample without one: a game's worst case is the one with nothing playing.
+        audio = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SILENT"] == nil ? AudioEngine() : nil
         if let audio {
             // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
             // which for a SwiftPM executable is the executable itself and holds no resources — the
@@ -2573,6 +2579,10 @@ final class SampleGame: GameLoop {
     /// only shows as a scripted walk taking too long was first measured.
     private static let reportsRate = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_FPS"] != nil
     private var rateWindow = (start: CFAbsoluteTimeGetCurrent(), frames: 0, steps: 0)
+    /// The longest wall-clock wait between two steps in the current second, and when the last ran.
+    /// **Steps a second cannot show a throttled clock**: a hidden window's steps credit whatever time
+    /// went by, so a timer slowed to once a second still runs 120 of them — in one burst. The gap shows it.
+    private var stepGap = (longest: 0.0, last: CFAbsoluteTimeGetCurrent())
 
     func beginFrame() {
         if SampleGame.reportsRate {
@@ -2594,16 +2604,23 @@ final class SampleGame: GameLoop {
     private func reportRate() {
         let now = CFAbsoluteTimeGetCurrent()
         guard now - rateWindow.start >= 1 else { return }
-        print(String(format: "WindageSample: %.0f frames a second, %.0f steps, camera (%.1f, %.1f, %.1f)",
+        print(String(format: "WindageSample: %.0f frames a second, %.0f steps, longest wait %.0f ms, camera (%.1f, %.1f, %.1f)",
                      Double(rateWindow.frames) / (now - rateWindow.start),
                      Double(rateWindow.steps) / (now - rateWindow.start),
+                     stepGap.longest * 1000,
                      camera.position.x, camera.position.y, camera.position.z))
         rateWindow = (now, 0, 0)
+        stepGap.longest = 0
     }
 
     func step(deltaTime: Float) {
         rateWindow.steps += 1
-        if SampleGame.reportsRate { reportRate() }
+        if SampleGame.reportsRate {
+            let now = CFAbsoluteTimeGetCurrent()
+            stepGap.longest = max(stepGap.longest, now - stepGap.last)
+            stepGap.last = now
+            reportRate()
+        }
         previousCamera = camera
         previousBob = shownBob
         // **First, and whatever state the run is in** — a script that opens the settings screen

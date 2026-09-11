@@ -1057,6 +1057,29 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### Kept out of App Nap (0.13.2)
+
+0.12.2's hidden clock was measured on the sample run from a terminal with its audio engine running, and
+**macOS exempts an app playing sound from App Nap** — a running `AVAudioEngine` counts, audible or not.
+A game with nothing playing is the case that matters, so it was measured again as one:
+`Tools/bundle_sample_app.sh` makes the sample an app bundle, launched with `open`, and
+`WINDAGE_SAMPLE_SILENT=1` leaves the audio engine out.
+
+**Steps a second cannot show App Nap**, because the hidden clock credits whatever time went by: a timer
+slowed to once a second would still run 120 steps — in one burst. What shows it is the longest
+wall-clock wait between steps, which the sample's rate report now prints. Hidden two minutes:
+
+| silent bundled app | longest wait | seconds over 25 ms |
+|---|---|---|
+| no activity (two runs) | 120 / 78 ms — 17 ms for a minute, then ragged | 23 / 18 |
+| user-initiated activity (two runs) | 165 / 54 ms | 5 / 11 |
+| **user-initiated + `latencyCritical` (two runs)** | **33 / 32 ms** | **1 / 1** |
+| *with sound, no activity* | *32 ms* | *1* |
+
+So `runsWhileHidden` holds `[.userInitiatedAllowingIdleSystemSleep, .latencyCritical]` while it is on:
+as steady as an app playing sound. Idle sleep is still allowed; the precision's power is paid only by a
+game that asked to keep time hidden.
+
 ### Something round (0.13.1)
 
 A round thing's box is the square round it, and a turned footprint of that box turns the square with
@@ -1136,8 +1159,9 @@ from its first frame until 20 s —
 | off | nothing, then one frame crediting 16.5 s → 30 steps | its 2 s opening wait ended at 21.4 s, after the window came back |
 | on | **0 frames, 119–121 steps a second** | every segment on the wall clock; 6.59 s start to finish for a 6.5915 s script, ending at the crate's face as the visible run did |
 
-Hidden for 87 s, the rate held at 120 a second throughout — no App Nap. **That was the sample, a bare
-executable started from a terminal**; a bundled `.app` has not been measured hidden.
+Hidden for 87 s, the rate held at 120 a second throughout. **That was the sample started from a
+terminal, with its audio running** — which macOS exempts from App Nap. Measured as a bundled, silent app
+it was napped a minute in: see 0.13.2.
 
 > **The handoff had the diagnosis wrong, and building its fix would have fixed nothing.** It said a
 > hidden window's display link was *throttled* and the frame-time ceiling threw the time away, and

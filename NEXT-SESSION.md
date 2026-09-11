@@ -76,6 +76,22 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
 
+## Done 2026-09-11 — kept out of App Nap (0.13.2)
+
+**The item's premise needed a correction first**: 0.12.2's "no App Nap in 87 s" had the sample's audio
+engine running, and an app playing sound is exempt. So the measurement was of a **bundled, silent** app:
+`Tools/bundle_sample_app.sh` (new; `.build/WindageSample.app`, ad hoc, `open`-launched) with
+`WINDAGE_SAMPLE_SILENT=1` (new). And the rate report now gives the **longest wait between steps** —
+steps a second read 120 in every case, since the clock credits the time a slowed timer skipped.
+
+Hidden two minutes each: no activity — steady ~17 ms, then ragged from about a minute in, up to 120 /
+78 ms (23 / 18 seconds over 25 ms); a user-initiated activity — milder, 165 / 54 ms (5 / 11); **adding
+`latencyCritical` — 33 / 32 ms (1 / 1), steady throughout**, as steady as the app with sound (32 ms, 1).
+`runsWhileHidden` now holds that activity while on. A third no-activity run was spoiled — the window was
+clicked into view ten seconds in — and was run again rather than counted.
+
+No test: the activity is the operating system's, and the measurement is the check.
+
 ## Done 2026-09-11 — round solids are round (0.13.1)
 
 **`Footprint.radius`**, `Footprint(centre:radius:)`, `Footprint(discOf:)`; a disc collided as a rounded
@@ -1363,14 +1379,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A bundled app keeps time hidden, measured.** 0.12.2 was measured only on the sample, a bare
-   executable started from a terminal — no App Nap in 87 s hidden. A shipped game is an `.app`, and App
-   Nap is decided per app. Add `runsWhileHidden` to a minimal bundled build of the sample (or the one
-   title with an app target, in its own repo), hide it for two minutes with the frame counter on, and
-   either record that it holds 120 steps a second or add `ProcessInfo.beginActivity` to the switch and
-   show that it then does.
-
-2. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
+1. **A body pushed off an edge keeps the push's speed.** Measured 2026-09-11: pushed at 1.5 m/s off a
    1 m ledge by a block that stops at the edge, the body left at x 1.302 and landed at x 1.302 —
    straight down, the speed forgotten: 0.12.0's "stops dead in the air", for a push instead of a carry.
    A push should count toward ``groundVelocity`` as a carry does. **Proved by** a test landing it
@@ -1379,11 +1388,19 @@ below, never in this list.
    the way and *not* broken: a crouched body pushed under a beam stays under it, and letting go mid-push
    keeps it held down.)
 
-3. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
+2. **The documented walks run as a check, not from memory.** 0.13.0's slider broke the walk 0.12.1 was
    measured by, and nothing noticed until it was re-run by hand a version later. A `Tools/walks.sh` that
    runs each walk the handoff documents — the crate, the lift jump, the push, the turntable rim, the
    stairs — hidden (0.12.2 lets it), and compares each end position with the one recorded, failing on
    more than 2 cm. **Proved by** it passing now, and failing on purpose with the slider put back at z 8.
+
+3. **The sample uses `pinnedBy`: its slider reverses when it would crush the player.** By this file's
+   own rule 0.13.0 is not finished — the sample never reads `pinnedBy`, and a capability is proved by
+   the sample using it. A door that meets someone reverses; the slider should, the moment it pins the
+   player against something. **Proved in the courtyard** by a crate set at the far end of the slider's
+   run (the content test's clear-run check then allows that one stop) and a scripted walk standing the
+   player against it, computed first: pinned when the gap closes to the body's width, the slider turning
+   back that step, the player never pushed into the crate.
 
 ## Parked — not next, and why
 

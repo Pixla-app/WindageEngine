@@ -12,6 +12,40 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.13.2] — 2026-09-11
+
+**A hidden game keeps steady time as an app, too.** `runsWhileHidden` was measured in 0.12.2 on the
+sample run from a terminal, with its audio running — and macOS exempts an app playing sound from App Nap.
+
+### Changed
+
+- **`runsWhileHidden` holds a process activity while it is on**:
+  `[.userInitiatedAllowingIdleSystemSleep, .latencyCritical]`, ended when it is turned off. Idle sleep
+  is still allowed.
+
+### Measured
+
+The sample as a bundled app (`Tools/bundle_sample_app.sh`), launched with `open`, **no audio engine**
+(`WINDAGE_SAMPLE_SILENT=1`), hidden two minutes; the longest wall-clock wait between steps each second —
+steps a second cannot show it, since a throttled timer still credits all the time that passed:
+
+| | longest wait | seconds over 25 ms |
+|---|---|---|
+| no activity, two runs | 120 / 78 ms — steady ~17 ms for a minute, then ragged | 23 / 18 |
+| a user-initiated activity, two runs | 165 / 54 ms | 5 / 11 |
+| **with `latencyCritical` too, two runs** | **33 / 32 ms**, 16–17 throughout | **1 / 1** |
+| with sound playing, no activity | 32 ms | 1 |
+
+Steps held 120 a second in every run; what App Nap took was their evenness. A third no-activity run
+was spoiled — the window was clicked back into view ten seconds in — and is not counted.
+
+### In the sample
+
+- **`Tools/bundle_sample_app.sh`** wraps the built sample as `.build/WindageSample.app`, signed ad hoc —
+  for measuring on the machine that built it; its resources come from SwiftPM's build-path fallback.
+- **`WINDAGE_SAMPLE_SILENT=1`** runs with no audio engine at all.
+- **`WINDAGE_SAMPLE_FPS=1` reports the longest wait between steps** in each second.
+
 ## [0.13.1] — 2026-09-11
 
 **Round solids are round.** Additive: nothing is round until a game says so.

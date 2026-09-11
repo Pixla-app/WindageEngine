@@ -137,13 +137,27 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     ///
     /// On, the simulation is stepped from a timer while the display link is quiet: the same fixed
     /// steps, the same clock — credited once, whichever of the two credits it — with no frame drawn
-    /// and ``GameLoop/beginFrame()`` not called, because no frame begins.
+    /// and ``GameLoop/beginFrame()`` not called, because no frame begins. **And the app is kept out of
+    /// App Nap** while it is on (0.13.2), which otherwise coalesces that timer a minute into hiding.
     public var runsWhileHidden = false {
         didSet {
             guard runsWhileHidden != oldValue else { return }
             hiddenTimer?.invalidate()
             hiddenTimer = nil
+            hiddenActivity.map(ProcessInfo.processInfo.endActivity)
+            hiddenActivity = nil
             guard runsWhileHidden else { return }
+            // **And no App Nap — which needs both options, measured.** A bundled app with no sound
+            // playing, hidden two minutes, the longest wait between steps each second: with no activity,
+            // steady 17 ms for about a minute and then ragged, up to 120 ms (steps still 120 a second,
+            // in bursts). A user-initiated activity alone left it ragged, milder — up to 54 ms. Adding
+            // `latencyCritical`, "the highest timer precision available", held it at 16–17 ms the whole
+            // two minutes, twice: as steady as an app playing sound, which macOS exempts anyway. Idle
+            // sleep is still allowed — keeping time is not keeping the machine awake — and the cost, the
+            // timer precision's power, is paid only while a game has asked for this.
+            hiddenActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+                reason: "A game keeping time while its window is hidden")
             // Weakly: a timer keeps its target alive, and a renderer is not kept alive by a switch.
             let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.stepWhileHidden() }
@@ -154,9 +168,13 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     }
 
     private var hiddenTimer: Timer?
+    private var hiddenActivity: NSObjectProtocol?
     private var clock = FrameClock()
 
-    isolated deinit { hiddenTimer?.invalidate() }
+    isolated deinit {
+        hiddenTimer?.invalidate()
+        hiddenActivity.map(ProcessInfo.processInfo.endActivity)
+    }
 
     private func stepWhileHidden() {
         guard let elapsed = clock.tick(now: CACurrentMediaTime()) else { return }
