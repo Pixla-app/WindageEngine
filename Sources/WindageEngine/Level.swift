@@ -263,6 +263,11 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         /// > its two levels only by accident — and a crate would have rung like a flagstone.
         public var surface: String?
 
+        /// A sound this thing makes for as long as it is there — a brazier's crackle, a generator's
+        /// hum — at an offset in its own space, like ``light``, so it moves and copies with it.
+        /// Resolve it with ``Level/carriedSounds(on:)``; play it with ``AudioEngine/startLoop(_:at:volume:)``.
+        public var sound: CarriedSound?
+
         public init(mesh: String,
                     position: SIMD3<Float>,
                     yaw: Float = 0,
@@ -301,7 +306,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         // omitted at their defaults. A level of four hundred props is mostly defaults, and a format
         // that writes them all is four times the file and four times the diff.
         private enum CodingKeys: String, CodingKey {
-            case mesh, position, yaw, scale, anchor, tags, light, surface
+            case mesh, position, yaw, scale, anchor, tags, light, surface, sound
         }
 
         public init(from decoder: Decoder) throws {
@@ -314,6 +319,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
             light = try container.decodeIfPresent(PunctualLight.self, forKey: .light)
             surface = try container.decodeIfPresent(String.self, forKey: .surface)
+            sound = try container.decodeIfPresent(CarriedSound.self, forKey: .sound)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -326,6 +332,38 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             if !tags.isEmpty { try container.encode(tags, forKey: .tags) }
             try container.encodeIfPresent(light, forKey: .light)
             try container.encodeIfPresent(surface, forKey: .surface)
+            try container.encodeIfPresent(sound, forKey: .sound)
+        }
+    }
+
+    /// A looping sound a placement makes: a name the game loads, where on the placement it comes from,
+    /// and how loud.
+    public nonisolated struct CarriedSound: Codable, Equatable, Sendable {
+        public var name: String
+        /// In the placement's own space — scaled and turned with it.
+        public var offset: SIMD3<Float>
+        public var volume: Float
+
+        public init(name: String, offset: SIMD3<Float> = .zero, volume: Float = 1) {
+            self.name = name
+            self.offset = offset
+            self.volume = volume
+        }
+
+        private enum CodingKeys: String, CodingKey { case name, offset, volume }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            name = try container.decode(String.self, forKey: .name)
+            offset = try container.decodeIfPresent(SIMD3<Float>.self, forKey: .offset) ?? .zero
+            volume = try container.decodeIfPresent(Float.self, forKey: .volume) ?? 1
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            if offset != .zero { try container.encode(offset, forKey: .offset) }
+            if volume != 1 { try container.encode(volume, forKey: .volume) }
         }
     }
 
@@ -461,6 +499,18 @@ nonisolated extension Level {
     /// transform: this is the case that type's `.external` attachment exists for, and a second
     /// consumer of it. The position goes through the whole transform, scale included; a cone's
     /// direction is turned by the placement's rotation alone, since a direction has no size.
+    /// The sounds placements carry, in the world: which placement, what, where and how loud.
+    ///
+    /// **Through the placement's own transform**, so a brazier moved, turned, scaled or copied in the
+    /// editor takes its crackle with it — the reason a sound is carried rather than listed.
+    public func carriedSounds(on ground: Ground) -> [(placement: Int, name: String, position: SIMD3<Float>, volume: Float)] {
+        placements.indices.compactMap { index in
+            guard let sound = placements[index].sound else { return nil }
+            let world = transform(of: placements[index], on: ground) * SIMD4(sound.offset, 1)
+            return (index, sound.name, SIMD3(world.x, world.y, world.z), sound.volume)
+        }
+    }
+
     public func carriedLights(on ground: Ground) -> [(placement: Int, light: PunctualLight)] {
         let carriers = placements.indices.filter { placements[$0].light != nil }
         guard !carriers.isEmpty else { return [] }

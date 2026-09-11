@@ -52,6 +52,14 @@ final class SampleView: MTKView {
 // the moment you pipe it is a sample that cannot be debugged by the person trying to learn from it.
 setbuf(stdout, nil)
 
+// **`WINDAGE_SAMPLE_MEASURE_AUDIO=1` renders the brazier's crackle offline and prints its level at
+// distances, then exits** — no window, no speakers. How a sound this session could not hear was
+// checked: the sample's own crackle.wav, through the engine's loops, at 1, 2, 4, 8 and 20 m.
+if ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_MEASURE_AUDIO"] != nil {
+    SampleGame.measureCrackle()
+    exit(0)
+}
+
 let application = NSApplication.shared
 application.setActivationPolicy(.regular)
 

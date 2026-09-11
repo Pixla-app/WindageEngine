@@ -12,6 +12,44 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.10.2] — 2026-09-11
+
+**A brazier that crackles.** The audio engine played one-shots only.
+
+### Added
+
+- **`AudioEngine.startLoop(_:at:volume:)`, `moveLoop(_:to:)`, `stopLoop(_:)`, `stopAllLoops()`,
+  `loopCount`** — looping voices, made on demand, each starting at a different point in its sound,
+  through **a second spatialiser** with the inverse law from `loopReferenceDistance` (2 m).
+- **`AudioEngine(offlineSampleRate:)` and `renderOffline(seconds:)`** — an engine with no device whose
+  mix is pulled and measured. **`load(_:samples:sampleRate:)`** — a sound from samples in memory.
+- **`Level.Placement.sound`** (`Level.CarriedSound`: a name, an offset in the placement's space, a
+  volume) and **`Level.carriedSounds(on:)`**.
+
+### Found
+
+- **The note that spherical-head rendering "keeps the directional cue" was wrong.** Measured offline, a
+  source 5 m to the right is 1.01× louder in the right ear under `.sphericalHead`, 4.6× under HRTF and
+  5.6× under `.auto`. The line setting it did nothing anyway (it was on the environment node, and the
+  algorithm belongs to each source), and every `play()` set `.auto`. **Behaviour unchanged**: voices are
+  `.auto`, set once per voice; the note is corrected and a test pins the cue.
+- **Under HRTF a source inside its spatialiser's reference distance is quieter, not flat** — about 72%
+  at the listener, full at the reference. Beyond it the inverse law holds exactly.
+
+### Measured
+
+Loops at 2, 8, 20 m: 1 : 0.250 : 0.100. One-shots: 1 : 1.28 : 0.545 (the near quirk at 2 m; 8→20 m is
+the model's 0.4255). Direction, right ÷ left ear: a one-shot at 5 m 2.7×, at 400 m 5.6×; a loop 5.6×.
+
+### In the sample
+
+- **The braziers crackle** — `crackle.wav`, a seamless three-second fire from `Tools/make_sample_sounds.py`
+  (its seam jumps 42 against a median step of 41) — carried from the coals.
+- **`WINDAGE_SAMPLE_MEASURE_AUDIO=1`** renders the crackle offline at 1–20 m and a footstep for scale.
+- Loops are reconciled on every rebuild, matched by what and where before placement number.
+
+**Consumers**: `Level.Placement` gained a stored property — build clean.
+
 ## [0.10.1] — 2026-09-11
 
 **Standing on something that moves.** Additive: nothing moves until a game says so.

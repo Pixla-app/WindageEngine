@@ -453,3 +453,35 @@ struct SurfaceTests {
         #expect(editor.selected?.surface == "wood")
     }
 }
+
+@Suite("Sounds carried by placements")
+struct CarriedSoundTests {
+
+    private let flat = Level.Ground(heightAt: { _, _ in 0 })
+
+    @Test("A carried sound is in the world where its placement puts it, and moves with it")
+    func placedAndMoved() {
+        var brazier = Level.Placement(mesh: "brazier", position: SIMD3(4, 0, -2), yaw: .pi / 2, scale: 2)
+        brazier.sound = Level.CarriedSound(name: "crackle", offset: SIMD3(0.5, 1, 0), volume: 0.6)
+        var level = Level(name: "t", placements: [Level.Placement(mesh: "box", position: .zero), brazier])
+        var sounds = level.carriedSounds(on: flat)
+        #expect(sounds.count == 1 && sounds[0].placement == 1 && sounds[0].name == "crackle" && sounds[0].volume == 0.6)
+        // Scaled by 2 and turned a quarter: the +x offset of 0.5 becomes 1 m along −z, the height 2 m.
+        #expect(simd_distance(sounds[0].position, SIMD3(4, 2, -3)) < 1e-4, "\(sounds[0].position)")
+        level.placements[1].position.x += 3
+        sounds = level.carriedSounds(on: flat)
+        #expect(abs(sounds[0].position.x - 7) < 1e-4)
+    }
+
+    @Test("A carried sound round-trips, with its defaults left out of the file")
+    func roundTrip() throws {
+        var p = Level.Placement(mesh: "brazier", position: .zero)
+        p.sound = Level.CarriedSound(name: "crackle", offset: SIMD3(0, 1, 0))
+        let data = try JSONEncoder().encode(p)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("crackle") && !text.contains("volume"), "\(text)")
+        #expect(try JSONDecoder().decode(Level.Placement.self, from: data) == p)
+        let bare = try JSONDecoder().decode(Level.Placement.self, from: Data(#"{ "mesh": "box", "position": [0, 0, 0] }"#.utf8))
+        #expect(bare.sound == nil)
+    }
+}

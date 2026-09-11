@@ -734,6 +734,15 @@
         0,
         -10
       ],
+      "sound" : {
+        "name" : "crackle",
+        "offset" : [
+          0,
+          1.0,
+          0
+        ],
+        "volume" : 0.8
+      },
       "surface" : "metal",
       "tags" : [
         "solid"
@@ -761,6 +770,15 @@
         0,
         -28
       ],
+      "sound" : {
+        "name" : "crackle",
+        "offset" : [
+          0,
+          1.0,
+          0
+        ],
+        "volume" : 0.8
+      },
       "surface" : "metal",
       "tags" : [
         "solid"

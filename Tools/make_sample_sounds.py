@@ -149,3 +149,39 @@ for n in range(3):
     write(f"step_metal_{n}", ringing(footfall(600 + n, 0.22, 160, 0.6, 2500, 8000, 2.0, 0.03, 0.6), 620, 0.35, 0.12, 610 + n))
 write("land_wood", ringing(footfall(700, 0.34, 80, 1.2, 400, 2200, 3.0, 0.08, 0.8), 150, 0.6, 0.1, 710))
 write("land_metal", ringing(footfall(800, 0.36, 120, 0.9, 2000, 7000, 2.4, 0.06, 0.8), 540, 0.5, 0.2, 810))
+
+
+def crackle(seconds=3.0, seed=900):
+    """A fire: a low, breathing bed of noise and a scatter of pops, **seamless when looped**.
+
+    A loop that clicks where it wraps is a metronome, and the ear finds it within a few cycles. So the
+    bed is made a little long and its tail crossfaded into its head, and every pop is written into a
+    circular buffer — one that starts near the end finishes at the beginning."""
+    rng = random.Random(seed)
+    count = int(RATE * seconds)
+    fade = int(RATE * 0.08)
+    # The bed: noise filtered low, twice, with a slow swell — the fire drawing air.
+    raw = lowpass(lowpass([rng.uniform(-1, 1) for _ in range(count + fade)], 500), 500)
+    swell = [0.75 + 0.25 * math.sin(2 * math.pi * 0.7 * i / RATE) for i in range(count + fade)]
+    bed = [r * s for r, s in zip(raw, swell)]
+    for i in range(fade):
+        t = i / fade
+        bed[i] = bed[i] * t + bed[count + i] * (1 - t)
+    bed = bed[:count]
+    loudest_bed = max(abs(v) for v in bed) or 1
+    out = [v * 0.18 / loudest_bed for v in bed]
+    # The pops: about fourteen a second, most small and a few big — a power law, which is what a fire
+    # sounds like; evenly sized pops read as rain.
+    for _ in range(int(14 * seconds)):
+        at = rng.randrange(count)
+        size = 0.15 + 0.85 * rng.random() ** 3
+        length = int(RATE * rng.uniform(0.002, 0.009))
+        decay = length / 3
+        burst = bandpass([rng.uniform(-1, 1) for _ in range(length)], 1200, 6500)
+        for j in range(length):
+            out[(at + j) % count] += burst[j] * size * 2.2 * math.exp(-j / decay)
+    loudest = max(abs(v) for v in out) or 1
+    return [v * 0.7 / loudest for v in out]
+
+
+write("crackle", crackle())

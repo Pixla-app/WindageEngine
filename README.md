@@ -1046,6 +1046,37 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### Sounds that belong to a place (0.10.2)
+
+`AudioEngine.startLoop(_:at:volume:)`, `moveLoop`, `stopLoop` play a sound for as long as a thing is
+there; `Level.Placement.sound` is one a placement carries, at an offset in its own space like its lamp,
+and `Level.carriedSounds(on:)` puts it in the world. A brazier moved, copied or deleted in the editor
+takes its crackle with it.
+
+**Loops have their own spatialiser**, because one distance curve cannot serve a shot and a fire.
+Through the one-shots' curve — reference 8 m, then 90% of the inverse law — a sound at 20 m measured
+over half its level at 2 m: a brazier through it would fill the level. Loops use the physical inverse
+law from 2 m and measured **1 : 0.250 : 0.100** at 2, 8 and 20 m. Each loop starts at a different point
+in its sound, so two braziers are not one crackle in two places.
+
+**Measured, not heard — `AudioEngine(offlineSampleRate:)` and `renderOffline(seconds:)`** pull the mix
+with no device, which is how every level here was checked. `WINDAGE_SAMPLE_MEASURE_AUDIO=1 swift run
+WindageSample` does it for the sample's own crackle: −33.1 dBFS at 2 m, halving with each doubling to
+−53.1 at 20 m — about 6 dB under a walking footstep, at the level file's 0.8, standing at the fire.
+
+**Measuring found the engine's own note about spatialisation was wrong.** It set `.sphericalHead` on the
+environment node — where the algorithm does nothing, since it belongs to each source — with a comment
+that spherical head "keeps the directional cue a game reads". Set where it does take effect, a source
+5 m to the right came out **1.01× louder in the right ear; HRTF gives 4.6×, `.auto` 5.6×.** Voices stay
+`.auto`, as every `play()` had quietly made them; the note says what was measured, and a test keeps the
+cue from going missing. **And a quirk of HRTF, measured**: inside a spatialiser's reference distance a
+source is quieter, not flat — about 72% at the listener, rising to full at the reference — so a loop at
+1 m reads a little under one at 2 m. Beyond the reference the inverse law holds exactly.
+
+The sample reconciles its loops on every rebuild rather than restarting them, **matching by what and
+where first**: placements have no identity but their index, and a copy inserted before a brazier
+renumbers it — keyed by index, an edit to one brazier restarted the other's fire.
+
 ### And something that moves underfoot (0.10.1)
 
 `Surroundings.motion` says how far each solid moved since the last step, in the order of `solids`; a

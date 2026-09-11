@@ -113,4 +113,18 @@ struct SampleLevelContentTests {
         }
         #expect(biggest < 0.01, "a step of the lift jumped \(biggest) m")
     }
+
+    /// **A fire you can see and not hear reads as a picture of a fire.** Every brazier carries the
+    /// crackle, from its coals — which `Tools/make_sample_brazier.py` puts at 0.97 m, domed to 1.0.
+    @Test("Every brazier carries a crackle, from its coals")
+    func braziersCrackle() throws {
+        for index in SampleLevel.names.indices {
+            let level = try SampleLevel.bundled(index)
+            for brazier in level.placements where brazier.mesh == "brazier" {
+                let sound = try #require(brazier.sound, "a silent brazier in \(level.name)")
+                #expect(sound.name == "crackle")
+                #expect(sound.offset.y > 0.9 && sound.offset.y < 1.2, "the crackle at \(sound.offset.y) m, not the coals")
+            }
+        }
+    }
 }

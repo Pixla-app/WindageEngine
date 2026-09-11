@@ -552,6 +552,95 @@ final class SampleGame: GameLoop {
     /// Where the placements' lamps were at the last rebuild, so the log can say when one moved.
     private var lastCarriedLights: [SIMD3<Float>] = []
 
+    /// The loops playing for the level's carried sounds: what, where, for which placement.
+    private var soundLoops: [(placement: Int, name: String, position: SIMD3<Float>, loop: AudioEngine.Loop)] = []
+
+    /// **Reconciled, not restarted**: a rebuild happens on every edit and every crate collected, and a
+    /// loop stopped and started each time is a fire that hiccups whenever anything else happens.
+    ///
+    /// **Matched by what and where first, and by placement only for one that moved.** Placements have
+    /// no identity but their index, and an index is not stable: copying a brazier inserts a placement,
+    /// and every one after it moves up by one. Keyed by index alone — the first version — the *other*
+    /// brazier's loop was stopped and restarted by an edit to this one.
+    private func syncSoundLoops() {
+        guard let audio else { return }
+        let wanted = level.carriedSounds(on: SampleGame.ground)
+        var unclaimed = soundLoops
+        var kept: [(placement: Int, name: String, position: SIMD3<Float>, loop: AudioEngine.Loop)] = []
+        var waiting: [(placement: Int, name: String, position: SIMD3<Float>, volume: Float)] = []
+        // Untouched: the same sound in the same place, whatever its placement is numbered now.
+        for sound in wanted {
+            if let i = unclaimed.firstIndex(where: { $0.name == sound.name && simd_distance($0.position, sound.position) < 1e-4 }) {
+                kept.append((sound.placement, sound.name, sound.position, unclaimed.remove(at: i).loop))
+            } else {
+                waiting.append(sound)
+            }
+        }
+        // Moved: the same placement, somewhere new.
+        var changed = false
+        for sound in waiting {
+            if let i = unclaimed.firstIndex(where: { $0.placement == sound.placement && $0.name == sound.name }) {
+                let loop = unclaimed.remove(at: i).loop
+                audio.moveLoop(loop, to: sound.position)
+                kept.append((sound.placement, sound.name, sound.position, loop))
+            } else if let loop = audio.startLoop(sound.name, at: sound.position, volume: sound.volume) {
+                kept.append((sound.placement, sound.name, sound.position, loop))
+                soundLoopStarts += 1
+                changed = true
+            }
+        }
+        for gone in unclaimed { audio.stopLoop(gone.loop); changed = true }
+        soundLoops = kept
+        let positions = wanted.map(\.position)
+        if changed || positions != lastSoundPositions {
+            print("WindageSample: \(audio.loopCount) sounds looping (\(soundLoopStarts) started so far) — "
+                  + wanted.map { String(format: "%@ at (%.2f, %.2f, %.2f)", $0.name, $0.position.x, $0.position.y, $0.position.z) }
+                    .joined(separator: ", "))
+            lastSoundPositions = positions
+        }
+    }
+
+    /// How many loops have ever been started — so a log can show that an edit restarted nothing.
+    private var soundLoopStarts = 0
+    private var lastSoundPositions: [SIMD3<Float>] = []
+
+    /// See `WINDAGE_SAMPLE_MEASURE_AUDIO` in main.swift. **The sample's own crackle, through the
+    /// engine's own loop path**, with the listener facing it so both ears hear it alike.
+    static func measureCrackle() {
+        guard let audio = AudioEngine(offlineSampleRate: 44_100), audio.load("crackle", bundle: .module) else {
+            print("WindageSample: could not make an offline audio engine")
+            return
+        }
+        audio.updateListener(position: .zero, forward: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
+        guard let loop = audio.startLoop("crackle", at: SIMD3(0, 0, -1)) else { return }
+        func level() -> Float {
+            _ = audio.renderOffline(seconds: 0.1)
+            let all = (audio.renderOffline(seconds: 6) ?? []).flatMap { $0 }   // two whole loops
+            return (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
+        }
+        var reference: Float = 0
+        for metres: Float in [1, 2, 4, 8, 20] {
+            audio.moveLoop(loop, to: SIMD3(0, 0, -metres))
+            let rms = level()
+            if metres == 2 { reference = rms }
+            let db = 20 * log10(max(rms, 1e-9))
+            print(String(format: "WindageSample: crackle at %4.0f m — RMS %.4f (%.1f dBFS)%@", metres, rms, db,
+                         reference > 0 ? String(format: ", %.3f of its level at 2 m", rms / reference) : ""))
+        }
+        // **Something to hear it against.** A level in dBFS means little alone; a footstep — played the
+        // way the game plays one, to the player, at the volume a walk gives it — says whether a fire
+        // two metres off sits under the feet or over them.
+        audio.stopLoop(loop)
+        _ = audio.renderOffline(seconds: 0.2)
+        if audio.load("step_stone_0", bundle: .module) {
+            audio.play("step_stone_0", volume: 0.55)
+            let all = (audio.renderOffline(seconds: 0.14) ?? []).flatMap { $0 }
+            let rms = (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
+            print(String(format: "WindageSample: a walking footstep on stone, for comparison — RMS %.4f (%.1f dBFS) over its 0.14 s",
+                         rms, 20 * log10(max(rms, 1e-9))))
+        }
+    }
+
     /// **Two environment overrides, and they exist so a picture can be taken twice.**
     ///
     /// Judging a rendering change means comparing two frames, and two frames are only comparable if
@@ -982,7 +1071,7 @@ final class SampleGame: GameLoop {
             let feet = SampleLevel.footstepSurfaces.flatMap { surface in
                 (0..<3).map { "step_\(surface)_\($0)" } + ["land_\(surface)"]
             }
-            for sound in ["pickup", "win", "lose"] + feet where !audio.load(sound, bundle: .module) {
+            for sound in ["pickup", "win", "lose", "crackle"] + feet where !audio.load(sound, bundle: .module) {
                 print("WindageSample: no sound named \(sound)")
             }
         } else {
@@ -1373,6 +1462,7 @@ final class SampleGame: GameLoop {
         rebuildFigures()
         rebuildLanterns()
         rebuildLights()
+        syncSoundLoops()
         placeLanterns()
         reportClustersNextFrame = true
         reportCubeDrawsNextFrame = true

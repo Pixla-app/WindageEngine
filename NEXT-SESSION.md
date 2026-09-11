@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-535 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+542 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,41 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a brazier that crackles (0.10.2)
+
+**Loops in `AudioEngine`** (start, move, stop; each from a different point in its sound) through **a
+second spatialiser** — inverse law from 2 m — and **offline rendering** to measure any of it.
+**`Level.Placement.sound`** and **`carriedSounds(on:)`**. Seven tests, four of them rendering real
+audio offline.
+
+**Measured** (offline, listener facing the source):
+
+| distance | loop (near spatialiser) | one-shot (range spatialiser) |
+|---|---|---|
+| 2 m | 1 | 1 |
+| 8 m | 0.250 | 1.28 — HRTF's near quirk, see below |
+| 20 m | 0.100 | 0.545 |
+
+The sample's own crackle (`WINDAGE_SAMPLE_MEASURE_AUDIO=1`): −34.5 dBFS at 1 m, −33.1 at 2, −39.1 at 4,
+−45.1 at 8, −53.1 at 20; a walking footstep −29.2 — the fire about 6 dB under the feet beside it, at the
+level file's 0.8. **Not heard**: the levels are measured and the seam checked sample by sample.
+
+**The measurement overturned a change I had made.** The engine's note said spherical-head rendering
+"keeps the directional cue"; I switched voices to it as a fix — and a direction test failed: **1.01×
+louder in the near ear, where HRTF gives 4.6× and `.auto` 5.6×.** Reverted before commit: voices stay
+`.auto`, as they always effectively were; the note is corrected; the test stays. **Also measured**: under
+HRTF a source inside the spatialiser's reference distance is quieter, not flat (72% at the listener,
+full at the reference) — so the one-shot row above reads louder at 8 m than 2 m.
+
+**Driven in the ruins**: two loops at the braziers' coals on load; a brazier nudged twice — its loop
+moved each time, nothing restarted; copied — a third loop at the copy; the copy deleted — back to two;
+**N** to the courtyard — zero. **The run found** that keying loops by placement index restarted the
+*other* brazier's fire when a copy renumbered it; matched by what and where first now (3 loops ever
+started across that whole edit, where it had been 5).
+
+**The engine's own tests hit the stale-build crash too** (a sample test failing nonsensically after
+`Placement` gained a field); a clean build cleared it. Every game checked from clean builds.
 
 ## Done 2026-09-11 — standing on something that moves (0.10.1)
 
@@ -1145,25 +1180,23 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
-   ("loops arrive when a title needs them") — but a looping sound at a place is settled shape, and the
-   ruins' braziers are silent fire. A looped, positioned voice carried by a placement the way its lamp
-   is, so it moves and copies with it. **Proved in the sample by** rendering the mix offline
-   (`AVAudioEngine`'s manual rendering) with the listener at 2, 8 and 20 m from a brazier and measuring
-   the crackle's level fall with distance — measured, since this session cannot listen.
-
-2. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
+1. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
    fixed on 2026-09-10 — and **coming down the same four sounds one** (measured: footfalls at the top
    landing, one tread, and the ground). The descent floats. A step *down* a tread is a foot landing too,
    the mirror of `footOnRise`. **Proved in the sample by** the scripted walk down the ruins' stairs
    reporting a footstep per tread, stone on the treads and wood on the landing above.
 
-3. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
+2. **A platform that turns.** The carry is translation only: stand on a turntable or a turning deck and
    it spins under you while you stay put. A turning solid should carry the body round its centre and
    turn the view by the same angle — the settled shape of a based character — with `Surroundings`
    saying how far each solid turned and about where. **Proved in the sample by** a turntable in the
    courtyard and the scripted walk standing on it logging the feet circling the centre at the table's
    rate and the view turning by the table's angle.
+
+3. **An ambience volume beside the master volume.** Loops and one-shots share `PlayerSettings.volume`:
+   a player who wants the fire quieter has to turn down their own footsteps with it. An ambience
+   setting that scales the loops and nothing else, on the settings screen. **Proved by** the offline
+   render: the crackle at half ambience measuring 6 dB down while a footstep measures unchanged.
 
 ## Parked — not next, and why
 
