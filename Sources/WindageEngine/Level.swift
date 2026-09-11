@@ -80,6 +80,22 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     public var placements: [Placement]
     public var markers: [Marker]
 
+    /// What the ground itself is made of — the terrain, wherever no placement is under the feet.
+    /// The game's word, like ``Placement/surface``.
+    public var groundSurface: String?
+
+    /// What is under the feet: the surface of the placement stood on, or the ground's when that is
+    /// `nil`. **The one question a footstep asks**, answered from the level rather than from a guess.
+    ///
+    /// Pass the *placement's* index. A game that built ``CharacterController/Surroundings`` from some
+    /// placements — its solid ones — maps ``CharacterController/groundSolid`` back to the placement it
+    /// came from first. Returns `nil` for a placement that names no surface, so a missing one can be
+    /// noticed rather than papered over with the ground's.
+    public func surface(standingOn placement: Int?) -> String? {
+        guard let placement else { return groundSurface }
+        return placements.indices.contains(placement) ? placements[placement].surface : nil
+    }
+
     public init(name: String,
                 settings: [String: Double] = [:],
                 sky: ProceduralSky? = nil,
@@ -95,6 +111,20 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         self.markers = markers
     }
 
+    /// A level whose ground is made of something. Separate from the initialiser above for the reason
+    /// ``Placement/init(mesh:position:yaw:scale:anchor:tags:light:surface:)`` gives.
+    public init(name: String,
+                settings: [String: Double] = [:],
+                sky: ProceduralSky? = nil,
+                lights: [PunctualLight] = [],
+                placements: [Placement] = [],
+                markers: [Marker] = [],
+                groundSurface: String?) {
+        self.init(name: name, settings: settings, sky: sky, lights: lights, placements: placements,
+                  markers: markers)
+        self.groundSurface = groundSurface
+    }
+
     // MARK: - Codable
     //
     // **Written by hand rather than synthesised, so that every field but the version is optional.**
@@ -105,7 +135,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     // The version is the one thing that must be there: it is what makes a file readable at all.
 
     private enum CodingKeys: String, CodingKey {
-        case formatVersion, name, settings, sky, lights, placements, markers
+        case formatVersion, name, settings, sky, lights, groundSurface, placements, markers
     }
 
     public init(from decoder: Decoder) throws {
@@ -117,6 +147,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         lights = try container.decodeIfPresent([PunctualLight].self, forKey: .lights) ?? []
         placements = try container.decodeIfPresent([Placement].self, forKey: .placements) ?? []
         markers = try container.decodeIfPresent([Marker].self, forKey: .markers) ?? []
+        groundSurface = try container.decodeIfPresent(String.self, forKey: .groundSurface)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -128,6 +159,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         // **Omitted when empty**, so a level with no lamps does not carry an empty array explaining
         // that it has none. Same for the sky above.
         if !lights.isEmpty { try container.encode(lights, forKey: .lights) }
+        try container.encodeIfPresent(groundSurface, forKey: .groundSurface)
         try container.encode(placements, forKey: .placements)
         try container.encode(markers, forKey: .markers)
     }
@@ -191,6 +223,18 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         /// lamp rather than of the object holding it.
         public var light: PunctualLight?
 
+        /// What this is made of, for what a foot on it sounds like — `"stone"`, `"wood"`, `"metal"`.
+        ///
+        /// **The game's word, like ``tags``**: the engine does not know what sounds a game has, only
+        /// that a footstep needs to ask. Read it with ``Level/surface(standingOn:)``, which also answers
+        /// for the ground.
+        ///
+        /// > **Why it is in the level and not guessed.** A game knows which solid its player is
+        /// > standing on (``CharacterController/groundSolid``) and nothing about what that solid is.
+        /// > The sample filled the gap with "every solid is stone, the ground is dirt", which was true of
+        /// > its two levels only by accident — and a crate would have rung like a flagstone.
+        public var surface: String?
+
         public init(mesh: String,
                     position: SIMD3<Float>,
                     yaw: Float = 0,
@@ -207,11 +251,29 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             self.light = light
         }
 
+        /// A placement made of something. **A separate initialiser rather than one more defaulted
+        /// parameter on the one above**, because adding a parameter changes that initialiser's symbol:
+        /// a consumer's already-compiled code then fails to link against the new engine until it
+        /// happens to be rebuilt — which is exactly what happened to a consumer's test target when this
+        /// field arrived.
+        public init(mesh: String,
+                    position: SIMD3<Float>,
+                    yaw: Float = 0,
+                    scale: Float = 1,
+                    anchor: Anchor = .ground,
+                    tags: [String] = [],
+                    light: PunctualLight? = nil,
+                    surface: String?) {
+            self.init(mesh: mesh, position: position, yaw: yaw, scale: scale, anchor: anchor, tags: tags,
+                      light: light)
+            self.surface = surface
+        }
+
         // Written long-hand so the JSON stays small and stable: yaw, scale, anchor and tags are all
         // omitted at their defaults. A level of four hundred props is mostly defaults, and a format
         // that writes them all is four times the file and four times the diff.
         private enum CodingKeys: String, CodingKey {
-            case mesh, position, yaw, scale, anchor, tags, light
+            case mesh, position, yaw, scale, anchor, tags, light, surface
         }
 
         public init(from decoder: Decoder) throws {
@@ -223,6 +285,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             anchor = try container.decodeIfPresent(Anchor.self, forKey: .anchor) ?? .ground
             tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
             light = try container.decodeIfPresent(PunctualLight.self, forKey: .light)
+            surface = try container.decodeIfPresent(String.self, forKey: .surface)
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -234,6 +297,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             if anchor != .ground { try container.encode(anchor, forKey: .anchor) }
             if !tags.isEmpty { try container.encode(tags, forKey: .tags) }
             try container.encodeIfPresent(light, forKey: .light)
+            try container.encodeIfPresent(surface, forKey: .surface)
         }
     }
 

@@ -631,6 +631,11 @@ final class SampleGame: GameLoop {
     /// day they do you are pointing at something you cannot touch.
     private var volumes: [Volume] = []
     private var solidVolumes: [Volume] = []
+    /// Which placement each of `solidVolumes` came from — so the controller's `groundSolid`, an
+    /// index into the solids, can be asked what it is made of.
+    private var solidPlacements: [Int] = []
+    /// Placements already reported for naming no surface, so the log says it once.
+    private var unnamedSurfaces = Set<Int>()
     /// Which drawables are objectives, so a collected one can go dark without searching the level.
     private var objectiveDrawables: [Int] = []
 
@@ -938,7 +943,7 @@ final class SampleGame: GameLoop {
             // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
             // which for a SwiftPM executable is the executable itself and holds no resources — the
             // sounds live in the target's own bundle.
-            let feet = ["dirt", "stone"].flatMap { surface in
+            let feet = SampleLevel.footstepSurfaces.flatMap { surface in
                 (0..<3).map { "step_\(surface)_\($0)" } + ["land_\(surface)"]
             }
             for sound in ["pickup", "win", "lose"] + feet where !audio.load(sound, bundle: .module) {
@@ -1284,10 +1289,11 @@ final class SampleGame: GameLoop {
         drawables.removeAll(keepingCapacity: true)
         volumes.removeAll(keepingCapacity: true)
         solidVolumes.removeAll(keepingCapacity: true)
+        solidPlacements.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
         let ground = SampleGame.ground
-        for placement in level.placements {
+        for (placementIndex, placement) in level.placements.enumerated() {
             guard let mesh = meshes[placement.mesh] else { continue }
             // **The engine's placement transform, not one built here.** This file used to build the
             // matrix itself; so did a game, twice; and the engine's own bedding turned the other way
@@ -1309,7 +1315,10 @@ final class SampleGame: GameLoop {
             // **The level's own tag decides.** The engine has no idea what "solid" means; this game
             // does. Shipping the tag and then ignoring it — which this sample did on its first
             // run — is worse than not having it, because the file says something untrue.
-            if placement.tags.contains("solid") { solidVolumes.append(volume) }
+            if placement.tags.contains("solid") {
+                solidVolumes.append(volume)
+                solidPlacements.append(placementIndex)
+            }
         }
         // **Axis-aligned world boxes, which overstate a turned crate's corners.** A crate at 45° is
         // stood beside a hand's width further off than its faces are. That is the conservative way to
@@ -1979,9 +1988,15 @@ final class SampleGame: GameLoop {
     /// the ears are 1.7 m above the feet and moving with them, so a spatialised footstep would only
     /// come out a little quieter and from somewhere odd.
     private func playFootfalls() {
-        // Every solid you can stand on in this sample is stone — the steps. Crates are taller than a
-        // step and cannot be jumped onto, so there is no wood to walk on.
-        let surface = body.groundSolid == nil ? "dirt" : "stone"
+        // **From the level**: the placement stood on, or the ground. This was "every solid is stone,
+        // the ground is dirt" until 0.9.1 — true of both levels only because nobody had laid a board.
+        let placement = body.groundSolid.flatMap { solidPlacements.indices.contains($0) ? solidPlacements[$0] : nil }
+        var surface = level.surface(standingOn: placement) ?? "stone"
+        if level.surface(standingOn: placement) == nil, let placement, unnamedSurfaces.insert(placement).inserted {
+            // Said once, not guessed silently: a solid with no surface is a gap in the level file.
+            print("WindageSample: \(level.placements[placement].mesh) #\(placement) names no surface — footsteps sound like stone")
+        }
+        if !SampleLevel.footstepSurfaces.contains(surface) { surface = "stone" }
         for event in body.events {
             switch event {
             case .stride(_, let speed):

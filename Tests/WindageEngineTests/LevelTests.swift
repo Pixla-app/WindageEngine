@@ -402,3 +402,54 @@ struct CarriedLightTests {
         #expect(back.resolvedLights(on: flat) == level.resolvedLights(on: flat))
     }
 }
+
+@Suite("What things are made of")
+struct SurfaceTests {
+
+    private let level = Level(name: "t", placements: [
+        Level.Placement(mesh: "step", position: .zero, tags: ["solid"], surface: "stone"),
+        Level.Placement(mesh: "deck", position: SIMD3(0, 0, -1), tags: ["solid"], surface: "wood"),
+        Level.Placement(mesh: "mystery", position: SIMD3(0, 0, -2), tags: ["solid"]),
+    ], groundSurface: "dirt")
+
+    @Test("The surface underfoot comes from the placement stood on, or the ground")
+    func underfoot() {
+        #expect(level.surface(standingOn: 0) == "stone")
+        #expect(level.surface(standingOn: 1) == "wood")
+        #expect(level.surface(standingOn: nil) == "dirt")
+    }
+
+    /// **Not the ground's**: a crate with no surface is a gap in the level, and borrowing "dirt"
+    /// for it would make that gap sound fine.
+    @Test("A placement that names no surface says so, rather than borrowing the ground's")
+    func unnamedIsNil() {
+        #expect(level.surface(standingOn: 2) == nil)
+        #expect(level.surface(standingOn: 99) == nil)
+    }
+
+    @Test("Surfaces round-trip, and are left out of the file when not set")
+    func roundTrip() throws {
+        let data = try JSONEncoder().encode(level)
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("\"groundSurface\":\"dirt\"") && text.contains("\"surface\":\"wood\""), "\(text)")
+        #expect(text.components(separatedBy: "\"surface\"").count == 3, "only the two named placements carry one")
+        let back = try JSONDecoder().decode(Level.self, from: data)
+        #expect(back.placements.map(\.surface) == ["stone", "wood", nil])
+        #expect(back.groundSurface == "dirt")
+    }
+
+    @Test("A level written before surfaces loads with none")
+    func olderLevel() throws {
+        let json = #"{ "formatVersion": 1, "placements": [ { "mesh": "box", "position": [0, 0, 0] } ] }"#
+        let old = try JSONDecoder().decode(Level.self, from: Data(json.utf8))
+        #expect(old.groundSurface == nil && old.placements[0].surface == nil)
+    }
+
+    @Test("A copy made in the editor is made of the same thing")
+    func duplicateKeepsSurface() {
+        var editor = LevelEditor(level: level)
+        editor.select(1)
+        editor.duplicate()
+        #expect(editor.selected?.surface == "wood")
+    }
+}

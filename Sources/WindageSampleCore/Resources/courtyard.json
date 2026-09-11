@@ -1,5 +1,6 @@
 {
   "formatVersion" : 1,
+  "groundSurface" : "dirt",
   "markers" : [
     {
       "anchor" : "absolute",
@@ -114,6 +115,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -127,6 +129,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -140,6 +143,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -153,6 +157,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -166,6 +171,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -179,6 +185,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -192,6 +199,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -205,6 +213,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -218,6 +227,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -231,6 +241,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -244,6 +255,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -257,6 +269,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -270,6 +283,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -283,6 +297,7 @@
         -18
       ],
       "scale" : 2,
+      "surface" : "wood",
       "tags" : [
         "solid"
       ]
@@ -295,6 +310,7 @@
         0,
         -18
       ],
+      "surface" : "stone",
       "tags" : [
         "solid",
         "landmark"
@@ -308,6 +324,7 @@
         0,
         -18
       ],
+      "surface" : "stone",
       "tags" : [
         "solid",
         "landmark"
@@ -321,6 +338,7 @@
         0,
         6
       ],
+      "surface" : "stone",
       "tags" : [
         "solid",
         "landmark"
@@ -334,6 +352,7 @@
         0,
         6
       ],
+      "surface" : "stone",
       "tags" : [
         "solid",
         "landmark"
@@ -348,6 +367,7 @@
         -6
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"
@@ -362,6 +382,7 @@
         -9
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"
@@ -377,6 +398,7 @@
         -3
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"
@@ -392,6 +414,7 @@
         -12
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"
@@ -407,6 +430,7 @@
         -22
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"
@@ -422,6 +446,7 @@
         -24
       ],
       "scale" : 1.5,
+      "surface" : "wood",
       "tags" : [
         "solid",
         "objective"

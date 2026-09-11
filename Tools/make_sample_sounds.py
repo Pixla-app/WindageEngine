@@ -125,6 +125,27 @@ for n in range(3):
     write(f"step_dirt_{n}", footfall(100 + n, 0.16, 85, 0.9, 250, 1100, 5.0, 0.045, 0.6))
     write(f"step_stone_{n}", footfall(200 + n, 0.14, 140, 0.7, 1500, 6000, 3.4, 0.028, 0.6))
 
-# Landings: the same two surfaces, heavier, longer, and lower.
+# Landings: the same surfaces, heavier, longer, and lower.
 write("land_dirt", footfall(300, 0.32, 55, 1.2, 200, 900, 5.0, 0.09, 0.8))
 write("land_stone", footfall(400, 0.28, 90, 1.0, 1200, 5500, 3.6, 0.06, 0.8))
+
+
+def ringing(samples, hz, gain, decay, seed):
+    """A resonance under a footfall: a board's hollow note, a plate's ring. **Added, not the whole
+    sound** — a foot on wood is still a foot, and a pure tone on its own reads as a bell."""
+    wobble = 1 + random.Random(seed).uniform(-0.05, 0.05)
+    out = [v + gain * math.sin(2 * math.pi * hz * wobble * i / RATE) * math.exp(-(i / RATE) / decay)
+           for i, v in enumerate(samples)]
+    loudest = max(abs(v) for v in out) or 1
+    peak = max(abs(v) for v in samples) or 1
+    return [v * peak / loudest for v in out]
+
+
+# Wood — the ruins' landing: a hollow board, the heel lower and longer than stone, the scuff in the
+# middle of the range, and a short boom under it. Metal — a brazier someone jumped onto: a hard heel,
+# a bright scrape, and a ring that outlasts the step.
+for n in range(3):
+    write(f"step_wood_{n}", ringing(footfall(500 + n, 0.18, 110, 1.0, 500, 2600, 2.6, 0.04, 0.6), 190, 0.5, 0.06, 510 + n))
+    write(f"step_metal_{n}", ringing(footfall(600 + n, 0.22, 160, 0.6, 2500, 8000, 2.0, 0.03, 0.6), 620, 0.35, 0.12, 610 + n))
+write("land_wood", ringing(footfall(700, 0.34, 80, 1.2, 400, 2200, 3.0, 0.08, 0.8), 150, 0.6, 0.1, 710))
+write("land_metal", ringing(footfall(800, 0.36, 120, 0.9, 2000, 7000, 2.4, 0.06, 0.8), 540, 0.5, 0.2, 810))

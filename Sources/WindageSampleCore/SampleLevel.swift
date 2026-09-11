@@ -25,6 +25,11 @@ public nonisolated enum SampleLevel {
     /// whether anything assumed there would only ever be one, and something always has.
     public static let names = ["courtyard", "ruins"]
 
+    /// The surfaces this sample has footsteps and landings for — `step_<surface>_0…2` and
+    /// `land_<surface>`, made by `Tools/make_sample_sounds.py`. **Every solid in a level names one of
+    /// these**, which `SampleLevelContentTests` checks, so a new material cannot arrive silent.
+    public static let footstepSurfaces = ["dirt", "stone", "wood", "metal"]
+
     public static func fileName(_ index: Int) -> String {
         names[min(max(index, 0), names.count - 1)]
     }

@@ -12,6 +12,34 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.9.1] — 2026-09-11
+
+**What things are made of, from the level file.** A footstep knew which solid it was on and nothing
+about what the solid was.
+
+### Added
+
+- **`Level.Placement.surface`** and **`Level.groundSurface`** — names the game defines, like tags.
+  Optional, and left out of the file when unset; a level written before them loads with none.
+- **`Level.surface(standingOn:)`** — the placement's surface, or the ground's for `nil`. A placement
+  that names none answers `nil` rather than borrowing the ground's.
+
+**New initialisers rather than new defaulted parameters** on `Level.init` and `Placement.init`. The
+first version added a parameter, which changes the existing initialiser's symbol: a consumer's test
+target, compiled against 0.9.0, then failed to link — found checking that consumer, and not worth
+passing on to anyone else upgrading.
+
+### In the sample
+
+- **Every solid names its surface** — crates wood, towers, pillars and steps stone, braziers metal — and
+  both levels name their ground dirt. A test on the shipped levels checks every solid names a surface
+  the sample has footsteps for.
+- **The ruins' stair landing is timber** (`step_wood.obj`, the step's shape in the crate's wood), and a
+  footstep on it sounds like wood. **Wood and metal footsteps and landings** from
+  `Tools/make_sample_sounds.py`.
+- **Footsteps ask the level**, through a map from each solid back to its placement. A solid with no
+  surface falls back to stone and says so in the log, once.
+
 ## [0.9.0] — 2026-09-11
 
 **A stick dead zone the player sets — and a stick that walks at the speed it is pushed to.** A minor

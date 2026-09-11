@@ -37,4 +37,30 @@ struct SampleLevelContentTests {
             #expect(floating.isEmpty, "\(SampleLevel.names[index]): \(floating.map(\.position)) float")
         }
     }
+
+    /// **Every solid names what it is made of, and the sample can make that sound.** A solid with no
+    /// surface falls back to stone with a line in the log; one with a surface the sample has no
+    /// footsteps for would fall back silently. Both are gaps in the file, and this finds them first.
+    @Test("Every solid, and the ground, names a surface the sample has footsteps for")
+    func surfacesAreNamedAndHeard() throws {
+        for index in SampleLevel.names.indices {
+            let level = try SampleLevel.bundled(index)
+            #expect(level.groundSurface.map(SampleLevel.footstepSurfaces.contains) == true,
+                    "\(level.name) does not say what its ground is")
+            for (i, placement) in level.placements.enumerated() where placement.tags.contains("solid") {
+                #expect(placement.surface.map(SampleLevel.footstepSurfaces.contains) == true,
+                        "\(level.name) #\(i) \(placement.mesh) is '\(placement.surface ?? "nothing")'")
+            }
+        }
+    }
+
+    /// The ruins' landing is boards laid where the stone treads end — the one place underfoot that
+    /// changes material without changing shape, which is what the footstep has to follow.
+    @Test("The ruins have a wooden landing at the top of stone stairs")
+    func woodenLanding() throws {
+        let ruins = try SampleLevel.bundled(1)
+        let treads = ruins.placements.filter { $0.mesh == "step" || $0.mesh == "step_wood" }
+        #expect(treads.filter { $0.surface == "wood" }.count == 3)
+        #expect(treads.filter { $0.surface == "stone" }.count == 3)
+    }
 }
