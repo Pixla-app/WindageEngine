@@ -56,7 +56,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-452 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+454 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -69,6 +69,22 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, **`InputBindings` and `PlayerSettings`**, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — braziers (0.6.10)
+
+**The ruins' lamps stand over iron braziers** (`brazier.usda`, from `Tools/make_sample_brazier.py`)
+with coals glowing from an emissive map, and the embers come off the coals. **USD because Model I/O
+reads no emission from an OBJ**; the sample's level loader now tries OBJ, then USD.
+
+**It found a shipped bug: the ruins had white, untextured pillars and steps when reached from the
+courtyard.** The second level's meshes were loaded by a path that resolved no textures. Every
+screenshot had used `WINDAGE_SAMPLE_LEVEL=1`, which loads through `init` — the override hid it. One
+loading path now. **Check future screenshots the way a player arrives, not only through the
+override.**
+
+Also: a test that every coneless lamp stands over a brazier and every brazier has its lamp; the second
+lamp had been floating over a crate, so both pairs moved to open ground; the iron blackened because a
+bare metal's grey blew out to cream under a lamp half a metre away; glow ×2.5, since ×6 read white.
 
 ## Done 2026-09-10 — footsteps and landings (0.6.9)
 
@@ -838,21 +854,22 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
-   them, so their embers rise out of thin air. A brazier mesh with an emissive map, placed from the
-   level like everything else. **Proved in the sample by** a screenshot where the embers visibly come
-   off something.
-
-2. **Gamepad rebinding.** The keyboard is rebindable and the pad is not: its layout is the console
+1. **Gamepad rebinding.** The keyboard is rebindable and the pad is not: its layout is the console
    convention written into `InputState`, with reserved buttons on purpose. The same `InputBindings`
    shape with a button per action, and the settings screen showing whichever device is connected.
    **Proved in the sample by** a rebound button in the settings file surviving a relaunch — the pad
    itself cannot be scripted, so the input path is tested in the package.
 
-3. **A camera dip on landing.** The controller now reports how hard a landing was and nothing shows it
-   but the sound. A short dip of the view, scaled by impact speed and applied to the view and never
-   to the aim — the same rule as the slide's. **Proved in the sample by** the scripted drop off the
-   steps logging the dip's depth, and a screenshot mid-dip.
+2. **A camera dip on landing.** The controller reports how hard a landing was and nothing shows it
+   but the sound. A short dip of the view, scaled by impact speed, applied to the view and never to
+   the aim — the same rule as the slide's. **Proved in the sample by** the scripted drop off the steps
+   logging the dip's depth, and a screenshot mid-dip.
+
+3. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
+   kept together by a test. Move the brazier in the in-game editor and the lamp stays where it was —
+   a bug waiting for the first person to edit a level. A placement should be able to carry its light,
+   offset from it, placed through the transform hierarchy. **Proved in the sample by** moving a
+   brazier in the editor and the pool of light going with it.
 
 ## Parked — not next, and why
 

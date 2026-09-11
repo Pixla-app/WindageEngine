@@ -28,10 +28,10 @@
         0.6,
         0.3
       ],
-      "intensity" : 90,
+      "intensity" : 60,
       "position" : [
         -4.0,
-        2.2,
+        1.8,
         -10
       ],
       "range" : 14
@@ -42,11 +42,11 @@
         0.86,
         0.52
       ],
-      "intensity" : 80,
+      "intensity" : 55,
       "position" : [
-        -6.5,
-        2.4,
-        -30
+        -3.5,
+        1.8,
+        -28
       ],
       "range" : 14
     },
@@ -700,6 +700,30 @@
         4.5,
         0.2,
         -1
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "brazier",
+      "position" : [
+        -4.0,
+        0,
+        -10
+      ],
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "brazier",
+      "position" : [
+        -3.5,
+        0,
+        -28
       ],
       "tags" : [
         "solid"

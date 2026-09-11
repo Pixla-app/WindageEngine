@@ -399,9 +399,28 @@ final class SampleGame: GameLoop {
                        gravity: -1, drag: 3, colour: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
     ], capacity: 1024)
     private let particleRenderer: ParticleRenderer?
-    /// One per lamp that points nowhere — the braziers and the lanterns — by index into
-    /// `lightSet.lights`, so an emitter follows a lantern because the light does.
-    private var emberEmitters: [(light: Int, emitter: ParticleEmitter)] = []
+    /// Where a stream of embers comes from.
+    private enum EmberSource {
+        /// A fixed point — the coals of a brazier the level placed.
+        case point(SIMD3<Float>)
+        /// A light, by index into `lightSet.lights` — a lantern, which moves, so the embers follow
+        /// the light because the light follows the hand.
+        case light(Int)
+    }
+    private var emberEmitters: [(source: EmberSource, emitter: ParticleEmitter)] = []
+
+    /// **How brightly a mesh's emissive map glows**, by the mesh's name.
+    ///
+    /// A file connecting `emissiveColor` to a texture has no scalar, so the map arrives at 1 — lit
+    /// coals as bright as white paper. **The game owns the strength**, as it owns a collected crate's,
+    /// and it lives in a table rather than in a check for one name so the next glowing thing is a line.
+    private static let glowStrength: [String: Float] = ["brazier": 2.5]
+    /// Drawable index to its glow strength, rebuilt with the level.
+    private var glowingDrawables: [Int: Float] = [:]
+
+    /// Where a brazier's coals are, above its origin: just under the rim of `brazier.usda`. Embers
+    /// come off the coals, not off the light the level placed above them.
+    private static let brazierCoals: Float = 1.0
     /// Steps taken since launch. **The seed for anything a step throws**, which is what keeps a
     /// scripted walk's dust landing the same way every time.
     private var stepCount = 0
@@ -887,22 +906,7 @@ final class SampleGame: GameLoop {
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
         // Meshes, then the level resolved against them.
-        for name in Set(level.placements.map(\.mesh)) {
-            if let mesh = try? MeshLoader.load(named: name, device: device,
-                                               vertexDescriptor: vertexDescriptor,
-                                               semantics: SampleGame.semantics,
-                                               bundle: .module).first {
-                meshes[name] = mesh
-                baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
-                normalMaps[name] = resolveMaps(of: mesh, slot: .normal, named: name)
-                ormMaps[name] = resolveMaps(of: mesh, slot: .roughness, named: name)
-                emissiveMaps[name] = resolveMaps(of: mesh, slot: .emissive, named: name)
-                engine.residencySet.addAllocations(mesh.mesh.vertexBuffers.map(\.buffer))
-                engine.residencySet.addAllocations(mesh.mesh.submeshes.map(\.indexBuffer.buffer))
-            } else {
-                print("WindageSample: no mesh named \(name)")
-            }
-        }
+        loadMissingMeshes()
         loadFigureAsset()
         rebuildEnvironment()
         engine.commitResidency()
@@ -1226,6 +1230,7 @@ final class SampleGame: GameLoop {
         volumes.removeAll(keepingCapacity: true)
         solidVolumes.removeAll(keepingCapacity: true)
         objectiveDrawables.removeAll(keepingCapacity: true)
+        glowingDrawables.removeAll(keepingCapacity: true)
         let ground = Level.Ground(heightAt: { _, _ in 0 })
         for placement in level.placements {
             guard let mesh = meshes[placement.mesh] else { continue }
@@ -1244,6 +1249,7 @@ final class SampleGame: GameLoop {
                               ormMaps[placement.mesh] ?? [],
                               emissiveMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
+            if let glow = SampleGame.glowStrength[placement.mesh] { glowingDrawables[drawables.count - 1] = glow }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
             // **The level's own tag decides.** The engine has no idea what "solid" means; this game
@@ -1329,15 +1335,18 @@ final class SampleGame: GameLoop {
         // is left is the warning that a level has crowded a point, which is still worth knowing.
         lightSet = LightSet(lights: lights, budget: 4)
 
-        // **Embers off the level's coneless lamps and the lanterns, and not off the crates' glow**,
-        // which is a light standing in for the crate rather than a flame. Rebuilt whenever the lights
-        // are, which is every collected crate — so the seed base is the light's own index, and a
-        // brazier keeps throwing the same embers rather than a new pattern each time.
-        let levelPoints = level.lights.indices.filter { level.lights[$0].cone == nil }
-        emberEmitters = (levelPoints + lanternLights).map { index in
-            (index, ParticleEmitter(recipe: SampleGame.emberRecipe,
-                                    rate: lanternLights.contains(index) ? 6 : 14,
-                                    seedBase: index &* 104_729))
+        // **Embers off the braziers' coals and the lanterns** — off the things that burn, not off
+        // the lights. They used to come off the level's coneless lights, which had nothing drawn at
+        // them, so the embers rose out of thin air; the particles are what made that obvious.
+        // Rebuilt whenever the lights are, which is every collected crate — so the seed base comes
+        // from what the emitter is, and a brazier keeps throwing the same embers.
+        let braziers = drawables.indices.filter { glowingDrawables[$0] != nil }.map { index -> EmberSource in
+            let base = drawables[index].transform.columns.3
+            return .point(SIMD3(base.x, base.y + SampleGame.brazierCoals, base.z))
+        }
+        emberEmitters = (braziers + lanternLights.map { EmberSource.light($0) }).enumerated().map { n, source in
+            let rate: Float = if case .light = source { 6 } else { 14 }
+            return (source, ParticleEmitter(recipe: SampleGame.emberRecipe, rate: rate, seedBase: n &* 104_729))
         }
         shadowCasters = assignShadowTiles()
         cubeCasters = assignShadowCubes()
@@ -1426,17 +1435,34 @@ final class SampleGame: GameLoop {
     /// **Additive rather than a reload.** Levels share most of their meshes, and throwing the lot away
     /// on every switch would stall for no reason — but a mesh has to be in the residency set before
     /// the GPU can reach it, so a newly loaded one joins it and the set is committed again.
+    ///
+    /// > **The one path for every level mesh, and there used to be two.** `init` loaded the first
+    /// > level's meshes and resolved their textures; this loaded the next level's and **did not**. So
+    /// > the ruins, reached the way a player reaches them — from the courtyard — had flat white pillars
+    /// > and white steps. Every screenshot for a week had opened the ruins directly with
+    /// > `WINDAGE_SAMPLE_LEVEL=1`, which went through `init`, and the override written to make pictures
+    /// > repeatable was exactly what kept this one out of them.
+    ///
+    /// **OBJ first, then USD.** A level names a mesh without an extension. Emission is USD-only through
+    /// Model I/O, so an object that glows — the brazier — cannot be an OBJ, and a loader that only
+    /// looked for one would draw nothing where the level put it.
     private func loadMissingMeshes() {
         var added: [any MTLAllocation] = []
         for name in Set(level.placements.map(\.mesh)) where meshes[name] == nil {
-            guard let mesh = try? MeshLoader.load(named: name, device: engine.device,
-                                                  vertexDescriptor: SampleGame.vertexDescriptor(),
-                                                  semantics: SampleGame.semantics,
-                                                  bundle: .module).first else {
+            let found = ["obj", "usda"].lazy.compactMap { format in
+                try? MeshLoader.load(named: name, withExtension: format, device: self.engine.device,
+                                     vertexDescriptor: SampleGame.vertexDescriptor(),
+                                     semantics: SampleGame.semantics, bundle: .module).first
+            }.first
+            guard let mesh = found else {
                 print("WindageSample: no mesh named \(name)")
                 continue
             }
             meshes[name] = mesh
+            baseColorMaps[name] = resolveBaseColorMaps(of: mesh, named: name)
+            normalMaps[name] = resolveMaps(of: mesh, slot: .normal, named: name)
+            ormMaps[name] = resolveMaps(of: mesh, slot: .roughness, named: name)
+            emissiveMaps[name] = resolveMaps(of: mesh, slot: .emissive, named: name)
             added += mesh.mesh.vertexBuffers.map(\.buffer)
             added += mesh.mesh.submeshes.map(\.indexBuffer.buffer)
         }
@@ -1900,8 +1926,14 @@ final class SampleGame: GameLoop {
         // **Every step, and after the lanterns have moved**, so an ember leaves the lantern where it
         // is rather than where it was. Paused or not: embers that froze mid-air would read as the game
         // having crashed, the same reason the figures keep breathing through a pause.
-        for index in emberEmitters.indices where emberEmitters[index].light < lightSet.lights.count {
-            let at = lightSet.lights[emberEmitters[index].light].position
+        for index in emberEmitters.indices {
+            let at: SIMD3<Float>
+            switch emberEmitters[index].source {
+            case .point(let point): at = point
+            case .light(let light):
+                guard light < lightSet.lights.count else { continue }
+                at = lightSet.lights[light].position
+            }
             emberEmitters[index].emitter.emit(into: &particles, at: at, deltaTime: deltaTime)
         }
         particles.step(deltaTime: deltaTime)
@@ -2032,6 +2064,7 @@ final class SampleGame: GameLoop {
             // it survives being in shadow, and it is above 1 so the tone map rolls it towards white:
             // it reads as powered rather than as painted.
             var emissive = drawable.mesh.material(forSubmesh: 0).emissive
+            if let glow = glowingDrawables[index] { emissive *= glow }
             if let slot = objectiveDrawables.firstIndex(of: index) {
                 let taken = run.collected.indices.contains(slot) && run.collected[slot]
                 // **Modest, because the whole crate emits and emission is unshaded.** A surface that

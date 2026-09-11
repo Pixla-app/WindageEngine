@@ -918,6 +918,22 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
 
+## An override that hid a bug (2026-09-10)
+
+**The ruins had untextured pillars and steps for as long as the sample had two levels** — whenever a
+player walked into them from the courtyard, which is the only way a player gets there. The first
+level's meshes were loaded, and their textures resolved, in one place; the next level's were loaded in
+another that resolved nothing.
+
+**Nothing showed it because every screenshot opened the ruins directly** with `WINDAGE_SAMPLE_LEVEL=1`,
+and that path loaded the ruins' meshes the first way. The override existed to make a picture
+repeatable, and repeatable turned out to mean *always the same route in* — never the player's. It was
+found by building the braziers, which exist only in the second level and so would only ever load the
+second way.
+
+> **A debugging entry point is a second way into the program, and a second way in is a second place
+> for state to be set up.** One loading path now, for both.
+
 ## Footsteps and landings (2026-09-10)
 
 `CharacterController` reports what its body did each step — a foot coming down, a landing and how

@@ -12,6 +12,47 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.10] — 2026-09-10
+
+**Braziers.** The ruins' two lamps stand over iron braziers now, with coals that glow from an emissive
+map and embers that come off the coals rather than out of the air. No engine change; the sample, its
+level and its tools.
+
+### Added — in the sample
+
+- **`brazier.usda`** and its three maps, from a new **`Tools/make_sample_brazier.py`**.
+- **A test that every coneless lamp in a level stands over a brazier, above its rim, and every
+  brazier has its lamp.** A level stores lights and meshes separately; nothing else keeps them
+  together.
+
+### Fixed — in the sample, and it was shipped
+
+**The ruins had flat white pillars and steps whenever you walked into them from the courtyard** —
+which is the only way a player reaches them. `init` loaded the first level's meshes and resolved their
+textures; the path that loaded the *next* level's meshes resolved none. **Every screenshot for a week
+had opened the ruins directly with `WINDAGE_SAMPLE_LEVEL=1`**, which goes through `init`, so the
+override written to make pictures repeatable was exactly what kept this one out of them. One loading
+path now, for both.
+
+### Why USD, and the second thing the loader needed
+
+**Model I/O reads no emission from an OBJ** — measured at 0.5.2 — so the one level object that makes
+its own light cannot be one. The sample's level loader only ever looked for `<name>.obj`; it now tries
+OBJ and then USD, since a level names a mesh without an extension.
+
+### Placing it taught three things
+
+- **A lamp half a metre above a bowl shadows the ground under it**, a disc a metre across. That is what
+  a brazier does, and it is kept; the flame sits 0.72 m above the rim so the disc stays smaller than the
+  pool around it.
+- **Close light blows out a clean metal.** Iron at a bare metal's mid-grey read as cream under a lamp
+  half a metre away. It is blackened now — dark, with rust catching the firelight.
+- **The second lamp had been floating over a crate**, 2.4 m up to clear it, so the first brazier put
+  under it stood inside the crate. Both moved to open ground.
+
+The glow's strength is the game's (×2.5), in a table by mesh name: a file connecting `emissiveColor` to
+a texture has no scalar, and ×6 read white-hot rather than orange.
+
 ## [0.6.9] — 2026-09-10
 
 **Footsteps and landings.** The controller says when a foot comes down, when the body lands and how
