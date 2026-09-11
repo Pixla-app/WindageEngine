@@ -53,7 +53,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-392 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+415 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -63,9 +63,32 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `HUDRenderer` and `FontAtlas`, `AudioEngine`, `SaveStore`, `ShaderLibrary`, `Skeleton`,
 `AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
-`ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, **`CharacterController`**, and — for the
-lamps that cast —
+`ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, **`ParticleSystem`
+and `ParticleRenderer`**, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — particles (0.6.7)
+
+**`ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer`.** Embers rise off the
+ruins' braziers and the figures' lanterns, a collected crate throws green sparks, a landing from a
+drop kicks up dust.
+
+**Extracted from a working game**, with three changes: its enum of kinds became a recipe a game
+defines; its "every eighth step" emission became a rate per second, tested at four step sizes; and its
+spread randomness — `fract(sin(x) × 43758)` in 32-bit floats — turned out to give **8,923 distinct
+values in 300,000 draws**, so it is an integer hash now (297,320).
+
+**Light and matter share one pipeline** through premultiplied alpha: light writes zero coverage and
+the blend becomes an add.
+
+**The sample found two things.** Unlit dust is a lamp: a 0.5-grey cloud in shadow came out as a white
+glow, so matter is now lit by the sky's mean radiance plus the sun over 4π (`matterLight(under:)`).
+And the crate burst started inside the crate, so depth hid half of it.
+
+**Driven in the running sample**: embers seen rising, a scripted walk collecting a crate shows the
+burst, and the landing dust is a dim tan puff after the lighting fix, a white blob before it. The
+scripted walk gained `yaw:` and `pitch:`, because a replay that ignores the mouse otherwise cannot look
+at its own feet.
 
 ## Done 2026-09-10 — a body with feet (0.6.6)
 
@@ -774,19 +797,20 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Particles.** A pool, an emitter, camera-facing quads, and a deterministic spread so the same
-   seed gives the same burst. **Proved in the sample by** sparks rising off the braziers and the
-   lanterns, and a burst when a crate is collected.
-
-2. **Input rebinding and settings that persist.** Keys a player can change, and settings —
+1. **Input rebinding and settings that persist.** Keys a player can change, and settings —
    bindings, mouse sensitivity, tone map, volume — saved and loaded through `SaveStore`. **Proved in
    the sample by** rebinding a key, quitting, and finding it still rebound.
 
-3. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
+2. **Footsteps and landings.** The controller reports a stride every so many metres and a landing
    with how hard it was; the sample plays them through `AudioEngine`, which is already positional.
    A body that walks silently reads as a camera on a rail. **Proved in the sample by** walking,
    sprinting and dropping off the steps and hearing the difference, and by the stride count in a
    scripted walk.
+
+3. **Something in the braziers.** The ruins' two coneless lamps are lights with nothing drawn at
+   them, so their embers rise out of thin air. A brazier mesh with an emissive map, placed from the
+   level like everything else — small, but it is the gap the particles made obvious. **Proved in the
+   sample by** a screenshot where the embers visibly come off something.
 
 ## Parked — not next, and why
 
@@ -797,6 +821,8 @@ below, never in this list.
 - **Soft shadows (PCSS or variance maps).** Fixed-radius filtering everywhere today. Nothing in the
   sample looks wrong for want of it.
 - **LOD and instancing.** Needed once a scene is larger than the sample's. Nothing in it is yet.
+- **Soft particles and sorting.** Particles are cut off hard where they meet a surface, and matter is
+  drawn unsorted. Neither shows at the sample's sizes and opacities; dense smoke would show both.
 - **Standing up under something low.** The controller lets a crouched player stand up into a
   ceiling. Nothing in either level has an overhang to find it; it is a few lines when one does.
 - **Standing on something that moves.** A deck or a lift. The engine's reference-frame probe is the

@@ -12,6 +12,59 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.7] — 2026-09-10
+
+**Particles.** Embers rise off the ruins' braziers and the figures' lanterns, a collected crate
+throws a burst of green sparks, and landing from a drop kicks up dust.
+
+### Added
+
+- **`ParticleSystem`** — a fixed pool, deterministic bursts, oldest-recycled when full.
+- **`ParticleRecipe`** — what one kind of particle is, defined by the game.
+- **`ParticleEmitter`** — a steady rate, in particles per second.
+- **`ParticleRenderer`** — camera-facing quads in one instanced draw, its shaders in the engine, and
+  `matterLight(under:)` for lighting dust.
+
+### Extracted, and three things changed on the way
+
+The simulation came from a working game: fixed step, deterministic, fixed pool, and **the oldest
+particle recycled when full, never the newest** — the newest burst is the one the player is looking
+at.
+
+- **Kinds became recipes.** The game had an enum of its own kinds. An engine cannot; the next game's
+  kinds are different ones. What was shared was the shape of a kind, which is `ParticleRecipe`.
+- **"Every eighth step" became a rate.** The game's continuous effects emitted on a step count, which
+  ties their density to the fixed timestep. `ParticleEmitter` carries the fraction owed between steps,
+  so twelve a second is twelve a second at any step size — tested at 30, 60, 120 and 240 Hz.
+- **The spread's randomness was quantised, and nobody could see it.** It used `fract(sin(x) ×
+  43758.5453)`, the shader one-liner, in 32-bit floats. Measured: **300,000 draws gave 8,923 distinct
+  values** — about thirteen bits. It is now an integer hash: 297,320 distinct in the same draws, which
+  is what a perfect 24-bit output does.
+
+### Light and matter, one pipeline
+
+A spark makes light; dust covers what is behind it. **Premultiplied alpha serves both**: matter writes
+its opacity as coverage, light writes zero, and the same blend becomes an add. One pipeline, one draw,
+no sort between two kinds.
+
+### Dust is an albedo, and needs lighting — found in the sample
+
+The first landing threw a 0.5-grey dust cloud onto ground in shadow, and it came out as **a white
+glow several times brighter than the floor**. A particle's colour is radiance for a spark and albedo
+for dust; drawn as radiance, grey dust is a grey lamp. Dust is now lit by the sky's mean radiance plus
+the sun's irradiance over 4π — the isotropic answer, computed once per level, unshadowed.
+
+### Also found in the sample
+
+A crate's burst was thrown from 1.2 m, inside a crate 1.5 m tall, so depth hid half of it. Now thrown
+from above the lid.
+
+### Verified in the running sample
+
+Embers seen rising off the brazier and a lantern; a scripted walk collecting a crate shows the burst
+spreading above it with the crate's lid hiding the ones behind; the landing dust reads as a dim tan
+puff after the lighting fix, where it was a white blob before it.
+
 ## [0.6.6] — 2026-09-10
 
 **A body with feet.** `CharacterController` walks, stands on things, steps up, falls off, jumps,

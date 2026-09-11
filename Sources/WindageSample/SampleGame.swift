@@ -105,18 +105,26 @@ final class SampleGame: GameLoop {
             var jump = false
             var crouch = false
         }
-        private let segments: [(label: String, keys: Keys, seconds: Float)]
+        private let segments: [(label: String, keys: Keys, seconds: Float, look: (yaw: Float?, pitch: Float?))]
         private var index = 0
         private var elapsed: Float = 0
         private var peak: Float = -.greatestFiniteMagnitude
 
         init?(_ script: String?) {
             guard let script, !script.isEmpty else { return nil }
-            var parsed: [(String, Keys, Float)] = []
+            var parsed: [(String, Keys, Float, (yaw: Float?, pitch: Float?))] = []
             for token in script.split(whereSeparator: \.isWhitespace) {
                 let parts = token.split(separator: ":")
                 guard parts.count == 2, let seconds = Float(parts[1]) else {
                     print("WindageSample: WINDAGE_SAMPLE_WALK wants keys:seconds — ignoring '\(token)'")
+                    continue
+                }
+                // `yaw:` and `pitch:` take degrees and no time: they turn the view, which is the
+                // one thing a replayed walk otherwise cannot do, since it ignores the mouse.
+                if parts[0] == "yaw" || parts[0] == "pitch" {
+                    let radians = radians_from_degrees(seconds)
+                    parsed.append((String(token), Keys(), 0,
+                                   parts[0] == "yaw" ? (radians, nil) : (nil, radians)))
                     continue
                 }
                 var keys = Keys()
@@ -133,10 +141,22 @@ final class SampleGame: GameLoop {
                     default: print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(key)'")
                     }
                 }
-                parsed.append((String(token), keys, seconds))
+                parsed.append((String(token), keys, seconds, (nil, nil)))
             }
             guard !parsed.isEmpty else { return nil }
             segments = parsed
+        }
+
+        /// Any turns due now, consumed. Call before ``keys``.
+        mutating func takeLook() -> (yaw: Float?, pitch: Float?) {
+            var result: (yaw: Float?, pitch: Float?) = (nil, nil)
+            while index < segments.count, segments[index].seconds == 0 {
+                let look = segments[index].look
+                result.yaw = look.yaw ?? result.yaw
+                result.pitch = look.pitch ?? result.pitch
+                index += 1
+            }
+            return result
         }
 
         /// The keys held right now, or nil once the script has run out — at which point the keyboard
@@ -310,6 +330,34 @@ final class SampleGame: GameLoop {
     /// Which lights have a tile this frame, recomputed with the light set.
     private var shadowCasters: [(lightIndex: Int, caster: ShadowAtlas.Caster)] = []
 
+    // MARK: - Particles
+
+    /// Embers, a burst for a collected crate, and dust when the player lands.
+    ///
+    /// **The sample's three recipes, and they are the sample's.** The engine has no idea what an ember
+    /// is; it knows what a recipe is. Two of these glow and one does not, which is the point of having
+    /// three: one blend has to serve light and matter both.
+    private static let emberRecipe = 0, pickupRecipe = 1, dustRecipe = 2
+    private var particles = ParticleSystem(recipes: [
+        // **Rising, not falling** — gravity is per recipe, and heat lifts an ember. Well above 1 in
+        // colour so it reads as hot, and tiny, because a spark the size of a coin is a firefly.
+        ParticleRecipe(count: 1, speed: 0.9, spread: 0.35, lifetime: 1.6, size: 0.07,
+                       gravity: 1.4, drag: 0.9, colour: SIMD3(5.0, 1.1, 0.12), fade: 1.5, glows: true),
+        // The crate's own green, thrown outward and falling back: a moment, not a firework.
+        ParticleRecipe(count: 48, speed: 4.5, spread: 2.2, lifetime: 0.9, size: 0.12,
+                       gravity: -7, drag: 1.8, colour: SIMD3(0.5, 5.0, 2.2), glows: true),
+        // **Matter**: it covers what is behind it, spreads as it thins, and does not glow.
+        ParticleRecipe(count: 14, speed: 0.6, spread: 1.4, lifetime: 0.9, size: 0.35, growth: 1.8,
+                       gravity: -1, drag: 3, colour: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
+    ], capacity: 1024)
+    private let particleRenderer: ParticleRenderer?
+    /// One per lamp that points nowhere — the braziers and the lanterns — by index into
+    /// `lightSet.lights`, so an emitter follows a lantern because the light does.
+    private var emberEmitters: [(light: Int, emitter: ParticleEmitter)] = []
+    /// Steps taken since launch. **The seed for anything a step throws**, which is what keeps a
+    /// scripted walk's dust landing the same way every time.
+    private var stepCount = 0
+
     // MARK: - Something in a hand
 
     /// The lanterns the figures carry.
@@ -404,7 +452,8 @@ final class SampleGame: GameLoop {
     /// same spawn reach the same place, and the log says where that was.
     ///
     /// `WINDAGE_SAMPLE_WALK="d:0.75 w:1.6 w+space:0.1"` — segments of keys and seconds, keys joined
-    /// with `+` from `w a s d shift space c`, or `wait` for none. Each segment's end is printed with where the feet are,
+    /// with `+` from `w a s d shift space c`, or `wait` for none. `yaw:90` and `pitch:-40` turn the
+    /// view to that many degrees, taking no time. Each segment's end is printed with where the feet are,
     /// the highest they got during it, and whether they are on the ground.
     private var scriptedWalk = ScriptedWalk(ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_WALK"])
 
@@ -716,6 +765,8 @@ final class SampleGame: GameLoop {
         // default is mean about — so the sample chooses, out loud, and pays for it in resolution
         // rather than in lamps that do not cast. Six faces at 384² is 21 MB.
         shadowCubes = ShadowCubes(device: device, size: 384, lightCount: 6)
+        particleRenderer = ParticleRenderer(device: device, capacity: 1024)
+        if particleRenderer == nil { print("WindageSample: no particle renderer — nothing will spark") }
         if shadowCubes == nil { print("WindageSample: no shadow cubes — point lights will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
@@ -779,6 +830,7 @@ final class SampleGame: GameLoop {
         if let shadowMap { engine.residencySet.addAllocations(shadowMap.allocations) }
         if let shadowAtlas { engine.residencySet.addAllocations(shadowAtlas.allocations) }
         if let shadowCubes { engine.residencySet.addAllocations(shadowCubes.allocations) }
+        if let particleRenderer { engine.residencySet.addAllocations(particleRenderer.allocations) }
         if let hud { engine.residencySet.addAllocations(hud.allocations) }
 
         // Meshes, then the level resolved against them.
@@ -1089,6 +1141,7 @@ final class SampleGame: GameLoop {
     /// **The sun here is the level's sun.** An environment lit from somewhere the sun is not reads as
     /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
     private func rebuildEnvironment() {
+        matterLight = ParticleRenderer.matterLight(under: level.resolvedSky)
         let started = CFAbsoluteTimeGetCurrent()
         guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
             print("WindageSample: no environment — metal will have nothing to reflect")
@@ -1215,6 +1268,17 @@ final class SampleGame: GameLoop {
         // **The budget is only used for the report now.** Clustering removed the per-draw limit; what
         // is left is the warning that a level has crowded a point, which is still worth knowing.
         lightSet = LightSet(lights: lights, budget: 4)
+
+        // **Embers off the level's coneless lamps and the lanterns, and not off the crates' glow**,
+        // which is a light standing in for the crate rather than a flame. Rebuilt whenever the lights
+        // are, which is every collected crate — so the seed base is the light's own index, and a
+        // brazier keeps throwing the same embers rather than a new pattern each time.
+        let levelPoints = level.lights.indices.filter { level.lights[$0].cone == nil }
+        emberEmitters = (levelPoints + lanternLights).map { index in
+            (index, ParticleEmitter(recipe: SampleGame.emberRecipe,
+                                    rate: lanternLights.contains(index) ? 6 : 14,
+                                    seedBase: index &* 104_729))
+        }
         shadowCasters = assignShadowTiles()
         cubeCasters = assignShadowCubes()
         if lights.count > SampleGame.maxSceneLights {
@@ -1256,6 +1320,10 @@ final class SampleGame: GameLoop {
     /// **An overcast level says so by having a dim sun and a bright sky**, which is a thing a level
     /// can now express and previously could not.
     private var sunIrradiance: SIMD3<Float> { level.resolvedSky.sunIrradiance }
+
+    /// What lights dust under this level's sky. Computed once per level, since the sky is the
+    /// level's — see `ParticleRenderer.matterLight(under:)`.
+    private var matterLight = SIMD3<Float>(repeating: 1)
 
     // MARK: - Levels
 
@@ -1481,6 +1549,9 @@ final class SampleGame: GameLoop {
                 // that a sound should come from where the thing is; playing it flat would make the
                 // positional path untested by the one consumer meant to exercise it.
                 audio?.play("pickup", at: crate + SIMD3(0, 1, 0))
+                // **Above the lid, not at the crate's middle.** The first run threw it from 1.2 m, inside
+                // a crate 1.5 m tall, and depth hid the bottom half of every burst.
+                particles.burst(SampleGame.pickupRecipe, at: crate + SIMD3(0, 1.6, 0), seed: stepCount)
             }
             if events.won {
                 audio?.play("win")
@@ -1504,6 +1575,16 @@ final class SampleGame: GameLoop {
 
         animateFigures(deltaTime: deltaTime)
 
+        // **Every step, and after the lanterns have moved**, so an ember leaves the lantern where it
+        // is rather than where it was. Paused or not: embers that froze mid-air would read as the game
+        // having crashed, the same reason the figures keep breathing through a pause.
+        for index in emberEmitters.indices where emberEmitters[index].light < lightSet.lights.count {
+            let at = lightSet.lights[emberEmitters[index].light].position
+            emberEmitters[index].emitter.emit(into: &particles, at: at, deltaTime: deltaTime)
+        }
+        particles.step(deltaTime: deltaTime)
+        stepCount += 1
+
         // Where the ears are. Once per step is more often than needed — once per frame would do —
         // but it costs two vector writes and cannot go stale.
         audio?.updateListener(position: camera.position, forward: camera.forward, up: SIMD3(0, 1, 0))
@@ -1517,6 +1598,10 @@ final class SampleGame: GameLoop {
                 var movement = input.movement
                 var jump = input.isJumpHeld
                 var crouching = input.isCrouching
+                if let look = scriptedWalk?.takeLook() {
+                    if let yaw = look.yaw { camera.yaw = yaw }
+                    if let pitch = look.pitch { camera.pitch = pitch }
+                }
                 if let keys = scriptedWalk?.keys {
                     movement = keys.movement
                     jump = keys.jump
@@ -1524,6 +1609,8 @@ final class SampleGame: GameLoop {
                 }
                 // **Yaw from the camera, and nothing else.** Pitch never reaches the body: looking at
                 // your feet does not slow the walk, and looking at the sky does not lift you off it.
+                let wasAirborne = !body.isGrounded
+                let fallSpeed = -body.verticalVelocity
                 body.step(yaw: camera.yaw,
                           input: movement,
                           jump: jump,
@@ -1531,6 +1618,12 @@ final class SampleGame: GameLoop {
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
+                // **Dust on a landing that was a fall**, not on every step down a stair: 4 m/s is a
+                // drop of about 40 cm at this gravity, which is where a landing starts to be felt.
+                if wasAirborne && body.isGrounded && fallSpeed > 4 {
+                    particles.burst(SampleGame.dustRecipe, at: body.feet + SIMD3(0, 0.05, 0),
+                                    seed: stepCount)
+                }
                 scriptedWalk?.advance(by: deltaTime, body: body)
             }
         }
@@ -1947,6 +2040,17 @@ final class SampleGame: GameLoop {
         }
 
         encodeFigures(into: encoder, frameSlot: frameSlot)
+
+        // **Last, into the scene rather than onto the interface**: a spark goes through the tone map
+        // like the lamp it came off. After everything opaque, so depth can hide the ones behind.
+        if let particleRenderer {
+            let view = displayCamera(interpolation)
+            let projection = matrix_perspective_right_hand_reverse_z(
+                fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+            particleRenderer.draw(particles, into: encoder, frameSlot: frameSlot,
+                                  viewProjection: simd_mul(projection, view.viewMatrix), camera: view,
+                                  matterLight: matterLight)
+        }
     }
 
     /// The sky, drawn first and covered by everything else.

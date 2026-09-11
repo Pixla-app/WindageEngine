@@ -143,7 +143,7 @@ asset-orientation correction for Z-up centimetre exports** · **materials and te
 metallic-roughness set read from a file, and a caching texture store that knows colour from
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
-or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** ·
+or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** · **particles** ·
 **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
@@ -165,7 +165,7 @@ library that survives having no Xcode · and a complete sample game exercising a
 | ~~**Materials and a texture path**~~ | **Done 2026-09-09.** `Material`, `TextureSlot`, `TextureStore`; `MeshLoader` returns a material per submesh, and the sample textures every surface from the file that names it. See below. |
 | ~~**Normal maps**~~ | **Done 2026-09-10.** `MeshLoader` generates a tangent basis on request; the sample is normal mapped throughout. See below. |
 | ~~**Post-processing**~~ | **Tone mapping done 2026-09-10** — an HDR scene target, exposure in stops, and a choice of curve. See below. Bloom and colour grading are a *look* and are not here. |
-| **Particles** | Written outside already. A settled shape — pool, emitter, camera-facing quads, deterministic spread. |
+| ~~**Particles**~~ | **Done 2026-09-10.** `ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer` — embers, a pickup burst and landing dust in the sample. See below. |
 | ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
 | **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
 | **Input rebinding, settings persistence** | Small, unglamorous, and the difference between a demo and something shippable. |
@@ -916,6 +916,53 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## Particles (2026-09-10)
+
+`ParticleSystem` simulates; `ParticleRenderer` draws. Embers rise off the ruins' braziers and the
+figures' lanterns, a collected crate throws green sparks, and a landing from a drop kicks up dust.
+
+### Extracted, and three things changed on the way
+
+**The simulation came from a working game.** It steps on the fixed timestep, so a burst plays the same
+way twice and the whole thing tests without a GPU; the pool is fixed; and when it is full the
+**oldest** particle is recycled, never the newest, because the newest burst is the one the player is
+looking at.
+
+**Kinds became recipes.** The game had an enum of its own kinds — right inside one game, wrong in an
+engine, because the next game's kinds are embers and spray. What was shared was the *shape* of a kind:
+`ParticleRecipe` — count, speed, spread, life, size, growth, gravity (signed, per recipe: dust falls,
+an ember rises, a flash does neither), drag, colour, fade, and whether it glows.
+
+**"Every eighth step" became a rate.** Emitting on a step count ties an effect's density to the fixed
+timestep; change the step and every continuous effect in the game changes with it. `ParticleEmitter`
+keeps the fraction owed from one step to the next.
+
+**The randomness was quantised.** The spread came from `fract(sin(x) × 43758.5453)` — the shader
+one-liner — in 32-bit floats on the CPU, where the product is tens of thousands and the fraction keeps
+only the bits left over. **300,000 draws produced 8,923 distinct values.** It looked plausible, which is
+why nothing had said so. It is an integer hash now, and the same draws give 297,320.
+
+### Light and matter share one pipeline
+
+A spark makes light and covers nothing; dust covers what is behind it. **Premultiplied alpha serves
+both**: the blend is `src + dst × (1 − src.a)`, matter writes its opacity as `src.a`, light writes zero,
+and for light the blend becomes a plain add. Two pipelines would mean two draws and a sort between
+them.
+
+Drawn **into the HDR scene**, after everything opaque, with depth tested and never written — a spark
+goes through the tone map like the lamp it came off, a spark behind a pillar is hidden by it, and one
+spark does not punch a hole in another. **Unsorted**: addition does not care about order, and at the
+opacities dust is drawn at, a wrong order is not something an eye finds.
+
+### Dust is an albedo — found by landing on it
+
+The first landing threw a 0.5-grey cloud onto ground in shadow and it came out as a white glow, several
+times brighter than the floor. **A particle's colour means radiance for a spark and albedo for dust**,
+and drawn as radiance a grey dust puff is a grey lamp. `ParticleRenderer.matterLight(under:)` lights
+matter by the sky's mean radiance plus the sun's irradiance spread over 4π — what an isotropic speck
+sends the eye. Computed once per level, and **unshadowed**: dust in the shade of a wall is lit as if in
+the open, which is the price of not asking per particle.
 
 ## A body with feet (2026-09-10)
 
