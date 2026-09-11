@@ -765,6 +765,62 @@
       "tags" : [
         "solid"
       ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        -3.0,
+        0,
+        -4
+      ],
+      "scale" : 1.5,
+      "surface" : "wood",
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "box",
+      "position" : [
+        3.0,
+        0,
+        -4
+      ],
+      "scale" : 1.5,
+      "surface" : "wood",
+      "tags" : [
+        "solid"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        -1.5,
+        1.5,
+        -4
+      ],
+      "surface" : "stone",
+      "tags" : [
+        "solid",
+        "lintel"
+      ]
+    },
+    {
+      "anchor" : "absolute",
+      "mesh" : "step",
+      "position" : [
+        1.5,
+        1.5,
+        -4
+      ],
+      "surface" : "stone",
+      "tags" : [
+        "solid",
+        "lintel"
+      ]
     }
   ],
   "settings" : {},

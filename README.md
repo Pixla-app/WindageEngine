@@ -1046,6 +1046,23 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
+### And room to stand (0.10.0)
+
+**Letting go of crouch is a request, not a promise of room.** Under a beam the controller keeps the
+body down — at crouched height, a crouched walk's speed, no sprint, a crouched stride — and stands the
+moment the footprint is clear; `isHeldDown` says so, for a game to put on screen. Room is the lowest
+underside of anything over the footprint and above the soles, with the collision test's own tolerance.
+
+**What it replaced was worse than the parked note said.** Standing up under a 1.5 m beam put the top of
+the head 35 cm inside it — and then every move was refused, because the body already overlapped the
+beam wherever it tried to go. Stuck, until crouching again, with nothing to say why.
+
+**The sample found a second fault in the first fix**: the walk stops a body against a face to within
+a hair, and a headroom check without that tolerance counted the touch as overhead — walking up to the
+ruins' new lintel, *standing*, pushed the player into a crouch. Driven in the ruins after the fix:
+stopped at the lintel standing (eye 1.70), crouched under it (1.05), let go — held at 1.05, "NO ROOM TO
+STAND" — then walked out and stood the moment the body was clear.
+
 ### And a head that bobs, which a player can turn down or off (0.8.1)
 
 `headBob` is a view offset in metres — across the view and up — **locked to the stride phase**, the

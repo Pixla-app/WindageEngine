@@ -59,8 +59,25 @@ struct SampleLevelContentTests {
     @Test("The ruins have a wooden landing at the top of stone stairs")
     func woodenLanding() throws {
         let ruins = try SampleLevel.bundled(1)
-        let treads = ruins.placements.filter { $0.mesh == "step" || $0.mesh == "step_wood" }
+        // The lintel is cut from the same stone step, laid across two posts — it is not a tread.
+        let treads = ruins.placements.filter { ($0.mesh == "step" || $0.mesh == "step_wood") && !$0.tags.contains("lintel") }
         #expect(treads.filter { $0.surface == "wood" }.count == 3)
         #expect(treads.filter { $0.surface == "stone" }.count == 3)
+    }
+
+    /// **The lintel is there to be crouched under**: its underside above a crouched body and below a
+    /// standing one, so walking under it means crouching and letting go under it means staying down.
+    @Test("The ruins' lintel is low enough to need a crouch and high enough to allow one")
+    func lintelNeedsACrouch() throws {
+        let ruins = try SampleLevel.bundled(1)
+        let lintels = ruins.placements.filter { $0.tags.contains("lintel") }
+        #expect(lintels.count == 2)
+        let tuning = CharacterController.Tuning()
+        let crouchedTop = tuning.bodyHeight(for: tuning.crouchedEyeHeight)
+        let standingTop = tuning.bodyHeight(for: tuning.eyeHeight)
+        for lintel in lintels {
+            #expect(lintel.position.y > crouchedTop && lintel.position.y < standingTop,
+                    "the lintel's underside at \(lintel.position.y) m should lie between \(crouchedTop) and \(standingTop)")
+        }
     }
 }

@@ -223,7 +223,7 @@ public nonisolated struct CharacterController: Sendable {
         }
 
         /// The body's height for a posture height.
-        func bodyHeight(for eye: Float) -> Float { eye + headroom }
+        public func bodyHeight(for eye: Float) -> Float { eye + headroom }
     }
 
     public var tuning: Tuning
@@ -305,6 +305,15 @@ public nonisolated struct CharacterController: Sendable {
     public var bounds: BoundingBox { body(at: feet, eyeHeight: height) }
 
     public var isSliding: Bool { slideLeft > 0 }
+
+    /// Whether the player has let go of crouch and **there is no room to stand** — under a beam, a
+    /// table, a low doorway. The body stays crouched until there is, then stands on its own.
+    ///
+    /// > **What happened before it existed**: letting go of crouch under a beam raised the body into
+    /// > it — the head 35 cm inside the stone — and every move after that was refused, because the body
+    /// > already overlapped the beam wherever it tried to go. The player was stuck until they crouched
+    /// > again, with nothing to say why. A game can show this ("no room to stand") instead.
+    public private(set) var isHeldDown = false
 
     /// How far through a slide, 0 at entry to 1 at the end. Zero when not sliding.
     public var slideProgress: Float { slideLeft > 0 ? 1 - slideLeft / tuning.slideSeconds : 0 }
@@ -394,6 +403,12 @@ public nonisolated struct CharacterController: Sendable {
         wasCrouching = crouching
         wasSprinting = input.sprint && moving
 
+        // --- Room to stand. **A choice to stand is not a promise of room to**: under a beam the body
+        // stays down, in every respect — height, speed, stride, no sprint — until it is clear, and
+        // stands the moment it is. See ``isHeldDown``.
+        isHeldDown = !crouching && standingRoom(in: world) < tuning.eyeHeight - 1e-4
+        let crouched = crouching || isHeldDown
+
         // --- Direction on the ground plane, from yaw alone.
         let forward = SIMD2<Float>(-sin(yaw), -cos(yaw))
         let right = SIMD2<Float>(cos(yaw), -sin(yaw))
@@ -413,7 +428,7 @@ public nonisolated struct CharacterController: Sendable {
         }
 
         // Crouched you walk, slowly. Sprinting from a crouch would make the posture free.
-        var speed = crouching
+        var speed = crouched
             ? tuning.walkSpeed * tuning.crouchedSpeedFraction
             : (input.sprint ? tuning.sprintSpeed : tuning.walkSpeed)
         // Unless you are sliding, in which case the sprint's speed bleeds off into the crouch's —
@@ -424,7 +439,7 @@ public nonisolated struct CharacterController: Sendable {
         }
 
         // --- Posture height, at a rate.
-        let target = crouching ? tuning.crouchedEyeHeight : tuning.eyeHeight
+        let target = crouched ? tuning.crouchedEyeHeight : tuning.eyeHeight
         let rate = slideLeft > 0 ? tuning.postureRate * tuning.slideDropRate : tuning.postureRate
         height += max(-rate * dt, min(rate * dt, target - height))
 
@@ -449,7 +464,7 @@ public nonisolated struct CharacterController: Sendable {
         if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
             let groundSpeed = covered / dt
             let gait: Float
-            if crouching {
+            if crouched {
                 gait = tuning.bobCrouchScale
             } else {
                 let t = simd_clamp((groundSpeed - tuning.walkSpeed)
@@ -457,7 +472,7 @@ public nonisolated struct CharacterController: Sendable {
                 gait = 1 + (tuning.bobSprintScale - 1) * t
             }
             // Slower than a walk — easing into one, or pressed against a wall — bobs less.
-            let pace = crouching ? tuning.walkSpeed * tuning.crouchedSpeedFraction : tuning.walkSpeed
+            let pace = crouched ? tuning.walkSpeed * tuning.crouchedSpeedFraction : tuning.walkSpeed
             wantBob = gait * min(1, groundSpeed / max(pace, 1e-3))
         }
         let ease = min(1, tuning.bobEase * dt)
@@ -468,7 +483,7 @@ public nonisolated struct CharacterController: Sendable {
         if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
             if !wasMoving { setStridePhase(max(stridePhase, tuning.firstStepPhase)) }
             let groundSpeed = covered / dt
-            stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, crouching: crouching)
+            stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, crouching: crouched)
             // **Not a slide**, which is excluded above: a slide is a body skidding, and footsteps at
             // sprint speed under it would be nine a second of feet that are not moving.
             while stridePhase >= 1 {
@@ -569,6 +584,28 @@ public nonisolated struct CharacterController: Sendable {
         let before = rawBob
         stridePhase = phase
         bobCatchUp += before - rawBob
+    }
+
+    /// The tallest eye height the space overhead allows, standing where the feet are: the lowest
+    /// underside of anything above the soles and over the footprint, less the body's ``Tuning/headroom``.
+    ///
+    /// **Above the soles, over the footprint** — the same two tests ``obstructing(at:in:)`` makes,
+    /// asked of what is *over* the body rather than what it would walk into. A step in front starts at
+    /// the ground and is not overhead; a crate stood on starts below the feet and is not either.
+    private func standingRoom(in world: Surroundings) -> Float {
+        let r = tuning.radius, t = CharacterController.contactTolerance
+        var lowest = Float.greatestFiniteMagnitude
+        for solid in world.solids {
+            // **With the collision test's own tolerance**, or a body resting against a beam's face —
+            // which the walk allows to within a hair — counts it as overhead. The first version did,
+            // and walking up to the ruins' lintel standing pushed the player into a crouch.
+            guard solid.minimum.y > feet.y + t,
+                  solid.minimum.x + t < feet.x + r, solid.maximum.x - t > feet.x - r,
+                  solid.minimum.z + t < feet.z + r, solid.maximum.z - t > feet.z - r else { continue }
+            lowest = min(lowest, solid.minimum.y)
+        }
+        guard lowest < .greatestFiniteMagnitude else { return .greatestFiniteMagnitude }
+        return lowest - feet.y - tuning.headroom - CharacterController.contactTolerance
     }
 
     /// Every solid the body would overlap, standing at `position`.

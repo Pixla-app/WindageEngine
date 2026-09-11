@@ -62,7 +62,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-521 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+527 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -75,6 +75,31 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — standing up under something low (0.10.0)
+
+**Measured before touching it**: letting go of crouch under a beam with a 1.5 m underside raised the
+eye to 1.7 and the head 35 cm into the beam, and the player was then **stuck** — every move refused,
+since the body overlapped the beam wherever it went. Now the body stays crouched in every respect
+until the footprint is clear, and stands on its own; `isHeldDown` reports it. Five tests; the
+three that exercise the fix fail without it (checked).
+
+**The sample found a second fault**: the first headroom check had no collision tolerance, so a player
+who walked up to the new lintel *standing* — stopped against its face to within a hair — was pushed
+into a crouch. Fixed, with a test.
+
+**Driven in the ruins** (new lintel: two stone slabs on crate posts, underside 1.5 m, at z −4):
+
+| | feet z | eye |
+|---|---|---|
+| walk up standing | −3.20 (stopped at the face) | 1.70 |
+| crouch, shuffle under | −4.01 | 1.05 |
+| let go of crouch, wait 1 s | −4.01 | 1.05 — "no room to stand" |
+| walk on | −6.62 | 1.70 — stood when clear |
+
+The frame shows the underside of the lintel overhead and "NO ROOM TO STAND".
+
+**Every game checked**: none uses `CharacterController`; all five build and pass.
 
 ## Done 2026-09-11 — adding from the editor (0.9.2)
 
@@ -1097,25 +1122,25 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Standing up under something low.** A crouched player can stand up into a ceiling: the controller
-   raises the body's height with no check above it, so under a lintel the head ends up inside the stone.
-   Stay crouched until there is room, and stand the moment there is. **Proved in the sample by** a low
-   lintel added to the ruins and a scripted crouch-walk under it that lets go of crouch halfway — the
-   log reporting the eye held at crouch height until the body is clear, and standing after.
-
-2. **Standing on something that moves.** The controller stands on boxes that never move: ride a lift
+1. **Standing on something that moves.** The controller stands on boxes that never move: ride a lift
    and the lift leaves without you, or pushes up through your feet. `groundSolid` already says which
    box is underfoot; what is missing is carrying the body by that box's motion each step — up, down and
    across — and not at all once the feet leave it. **Proved in the sample by** a lift in the ruins
    rising a floor and back, and the scripted walk standing on it logging the feet rising with it to the
    centimetre and staying on it when it turns round.
 
-3. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
+2. **Sounds that belong to a placement: a brazier that crackles.** `AudioEngine` is one-shots only
    ("loops arrive when a title needs them") — but a looping sound at a place is settled shape, and the
    ruins' braziers are silent fire. A looped, positioned voice carried by a placement the way its lamp
    is, so it moves and copies with it. **Proved in the sample by** rendering the mix offline
    (`AVAudioEngine`'s manual rendering) with the listener at 2, 8 and 20 m from a brazier and measuring
    the crackle's level fall with distance — measured, since this session cannot listen.
+
+3. **A foot on every tread going down.** Climbing four treads sounds four footsteps — a rule found and
+   fixed on 2026-09-10 — and **coming down the same four sounds one** (measured: footfalls at the top
+   landing, one tread, and the ground). The descent floats. A step *down* a tread is a foot landing too,
+   the mirror of `footOnRise`. **Proved in the sample by** the scripted walk down the ruins' stairs
+   reporting a footstep per tread, stone on the treads and wood on the landing above.
 
 ## Parked — not next, and why
 

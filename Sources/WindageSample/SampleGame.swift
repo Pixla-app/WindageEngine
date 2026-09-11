@@ -206,8 +206,9 @@ final class SampleGame: GameLoop {
                 }
                 let f = body.feet
                 let report = segment.isLook ? nil : String(
-                    format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@",
-                    segment.label, f.x, f.y, f.z, peak, body.isGrounded ? "on the ground" : "in the air")
+                    format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@, eye %.2f m up%@",
+                    segment.label, f.x, f.y, f.z, peak, body.isGrounded ? "on the ground" : "in the air",
+                    body.eye.y - f.y, body.isHeldDown ? ", no room to stand" : "")
                 events.append(.end(segment, report: report))
                 index += 1
                 begun = false
@@ -2902,6 +2903,12 @@ final class SampleGame: GameLoop {
                          x: margin, y: y, pointSize: hint, color: white)
         } else {
             _ = hud.text("no run finished yet", x: margin, y: y, pointSize: hint, color: white)
+        }
+        // **Said, not left to be discovered.** Crouch let go under a beam does nothing you can see
+        // except not standing; without a word, that reads as the key being broken.
+        if self.body.isHeldDown && !isEditing {
+            _ = hud.text("NO ROOM TO STAND", x: (viewportSize.x - hud.width(of: "NO ROOM TO STAND", pointSize: body)) / 2,
+                         y: viewportSize.y * 0.62, pointSize: body, color: white)
         }
         y += hint * 1.6
 

@@ -905,3 +905,83 @@ struct CharacterHeadBobTests {
         #expect(biggestJump < 0.004, "the bob jumped \(biggestJump) m in one step on the stairs")
     }
 }
+
+// MARK: - Room to stand
+
+@Suite("Character controller — room to stand")
+struct CharacterHeadroomTests {
+
+    /// A beam across the path, its underside at 1.5 m: a crouched body (1.2 m) goes under it, a
+    /// standing one (1.85 m) does not.
+    private let world = CharacterController.Surroundings(solids: [
+        BoundingBox(minimum: SIMD3(-3, 1.5, -4.5), maximum: SIMD3(3, 2.5, -3.5)),
+    ])
+
+    /// Crouches, and walks until the feet are under the middle of the beam.
+    private func underTheBeam() -> CharacterController {
+        var c = CharacterController(feet: .zero)
+        run(&c, seconds: 1, crouching: true, in: world)
+        while c.feet.z > -4 {
+            c.step(yaw: 0, input: MovementInput(forward: 1), crouching: true, deltaTime: step, in: world)
+        }
+        return c
+    }
+
+    /// **The bug**: the body rose into the beam, 35 cm of head inside the stone, and every move after
+    /// that was refused because the body already overlapped the beam. Stuck until crouching again.
+    @Test("Letting go of crouch under a beam keeps the body down")
+    func staysDownUnderABeam() {
+        var c = underTheBeam()
+        run(&c, seconds: 1, crouching: false, in: world)
+        #expect(c.isHeldDown)
+        #expect(abs(c.eye.y - c.tuning.crouchedEyeHeight) < 1e-4, "stood to \(c.eye.y) under a 1.5 m beam")
+        #expect(c.bounds.maximum.y < 1.5, "the head is inside the beam: \(c.bounds.maximum.y)")
+    }
+
+    @Test("Walking out from under it stands up, at once and on its own")
+    func standsWhenClear() {
+        var c = underTheBeam()
+        run(&c, seconds: 0.5, crouching: false, in: world)
+        var stoodAt: Float?
+        for _ in 0..<240 {
+            c.step(yaw: 0, input: MovementInput(forward: 1), crouching: false, deltaTime: step, in: world)
+            if stoodAt == nil && c.eye.y > c.tuning.crouchedEyeHeight + 0.01 { stoodAt = c.feet.z }
+        }
+        #expect(!c.isHeldDown)
+        #expect(abs(c.eye.y - c.tuning.eyeHeight) < 1e-4, "never stood: \(c.eye.y)")
+        // The beam ends at z = −4.5 and the body is 0.3 either side of its feet.
+        #expect(stoodAt.map { $0 < -4.8 && $0 > -5.0 } == true, "began to stand at z \(stoodAt ?? .nan)")
+    }
+
+    /// Held down is crouched in every respect: a crouched walk's speed, and no sprint.
+    @Test("Held down under a beam, the walk is a crouched walk and cannot sprint")
+    func heldDownIsCrouched() {
+        var c = underTheBeam()
+        run(&c, seconds: 0.5, crouching: false, in: world)
+        let before = c.feet
+        c.step(yaw: .pi / 2, input: MovementInput(forward: 1, sprint: true), crouching: false, deltaTime: step, in: world)
+        let speed = simd_distance(ground(before), ground(c.feet)) / step
+        let crouchedSpeed = c.tuning.walkSpeed * c.tuning.crouchedSpeedFraction
+        #expect(abs(speed - crouchedSpeed) < 0.01, "moved at \(speed) m/s under the beam, sprint held")
+    }
+
+    /// **Found by the sample**: the walk stops a body against a face to within the collision
+    /// tolerance, and the first headroom check counted that touch as the beam being overhead — a
+    /// player who only walked up to a low beam was pushed into a crouch.
+    @Test("Walking up to a low beam standing stops at it, still standing")
+    func walkingUpToABeamStaysStanding() {
+        var c = CharacterController(feet: SIMD3(0, 0, 6))
+        run(&c, seconds: 2, MovementInput(forward: 1), in: world)
+        #expect(abs(c.feet.z + 3.2) < 0.01, "should stop at the beam's face: \(c.feet.z)")
+        #expect(!c.isHeldDown)
+        #expect(abs(c.eye.y - c.tuning.eyeHeight) < 1e-4, "walked into a crouch: eye \(c.eye.y)")
+    }
+
+    @Test("In the open, letting go of crouch stands as it always did")
+    func openAirUnchanged() {
+        var c = CharacterController(feet: .zero)
+        run(&c, seconds: 1, crouching: true, in: world)
+        run(&c, seconds: 1, crouching: false, in: world)
+        #expect(!c.isHeldDown && abs(c.eye.y - c.tuning.eyeHeight) < 1e-4)
+    }
+}

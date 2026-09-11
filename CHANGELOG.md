@@ -12,6 +12,29 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.10.0] — 2026-09-11
+
+**Standing up under something low.** A minor version because it changes what the controller does
+under a beam: that is the fix.
+
+### Fixed
+
+- **Letting go of crouch under a beam raised the body into it** — the head 35 cm inside a 1.5 m beam —
+  and then every move was refused, because the body already overlapped the beam. The body now stays
+  crouched, in height, speed, stride and no sprint, until the footprint is clear, and stands on its own.
+
+### Added
+
+- **`CharacterController.isHeldDown`** — wants to stand, has no room. For a game to say so.
+- **`Tuning.bodyHeight(for:)`** is public — the body's height for an eye height, which a level check
+  needs to say whether something is low enough to crouch under.
+
+### In the sample
+
+- **A lintel in the ruins** — two stone slabs on two crate posts, its underside at 1.5 m — with a test
+  that keeps it between a crouched body's top and a standing one's.
+- **"NO ROOM TO STAND"** on screen while held down, and the scripted walk reports eye height.
+
 ## [0.9.2] — 2026-09-11
 
 **Adding from the editor.** `LevelEditor.add` had existed since the editor did, knew only a mesh's name,
