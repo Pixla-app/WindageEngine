@@ -144,7 +144,7 @@ metallic-roughness set read from a file, and a caching texture store that knows 
 numbers** · maths · bounding boxes, volumes
 and one segment hit test · frustum culling · **a transform hierarchy, so a thing can hang off a joint
 or off another thing** · **a character controller — feet, steps, gravity, jump, crouch and slide** · **particles** ·
-**rebindable keys and saved player settings** · **footsteps and landings** ·
+**rebindable keys and controller buttons, and saved player settings** · **footsteps and landings** ·
 **cascaded shadows, arithmetic and pass** · **an HDR
 scene target with exposure and tone mapping** · **a prefiltered environment for image-based
 lighting** · **punctual, spot and point lights, binned into a cluster grid, with a shadow atlas and
@@ -917,6 +917,35 @@ only for this — nothing calls it at runtime, because the hardware does that jo
 
 **The half it can** was a difference, as with the spots: the same frame with the per-light cube flag
 on and off changed **1.77% of it**, all of it around the two braziers.
+
+## Controller buttons a player can move (2026-09-10)
+
+`PadBindings` does for the controller what `InputBindings` does for the keyboard, for the four actions
+that are buttons on a pad: jump, crouch, sprint and brace.
+
+**Stored by position** — `south`, `east`, the shoulders, the stick clicks — because the bottom face
+button is A on one pad and Cross on another, and the thumb learned where it is, not what it says. What
+a settings screen shows comes from the connected pad itself.
+
+**Only the buttons that are actions move.** The sticks, the triggers, the d-pad and the menu button are
+the convention; a shooter that let aim wander onto a face button would be offering a way to make itself
+unplayable. R3 is refused because it is the engine's scroll notch. Square, Triangle and R1 are only
+unbound *by default* — kept free so a title can grow a reload — and a title that has grown one reserves
+it.
+
+**A menu that has the pad turns the pad's actions off** (`acceptsPadActions`), because a pad is polled
+rather than dispatched: without it, Circle pressed to leave the settings screen also crouches the
+player behind it. The menu reads `padButtonsPressed` instead, and **reads raw presses rather than the
+bindings** — it is where the bindings change, and a menu that followed them would move its own
+"change" button.
+
+### A controller nobody is holding
+
+`GCController.withExtendedGamepad()` builds a real `GCExtendedGamepad` whose buttons are set from code,
+and `InputState.useGamepad(_:)` reads it in place of the system's. That is what the tests press, and
+what the sample's scripted walk presses — so the rebinding was driven end to end in the running game,
+menu and all, with no controller on the desk. **Its d-pad only moves through `setValueForXAxis(_:yAxis:)`**;
+set as a button, a direction is accepted and ignored.
 
 ## An override that hid a bug (2026-09-10)
 

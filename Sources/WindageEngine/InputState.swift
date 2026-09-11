@@ -36,6 +36,10 @@ public final class InputState {
     /// | R3 | — | one scroll notch (magnification) |
     /// | d-pad | — | discrete steps (scope turrets, weapon select) |
     ///
+    /// **The jump, crouch, sprint and brace rows are defaults**, and a player can move them — see
+    /// ``padBindings`` and ``PadBindings``. The sticks, triggers, d-pad, R3 and the menu button are
+    /// the convention and stay put.
+    ///
     /// **Square and Triangle stay unbound even in a title that has neither a reload nor a second
     /// weapon**, because a player will press them looking for both, and because a title that later
     /// grows either would otherwise have to move something a player had already learned. That is the
@@ -92,7 +96,6 @@ public final class InputState {
     /// same discrete clicks.
     private var scrollAccumulator: Float = 0
     private var pendingScroll = 0
-    private var scrollClickWasPressed = false
 
     /// How much raw scroll makes one notch.
     public static let scrollNotch: Float = 1.0
@@ -144,11 +147,51 @@ public final class InputState {
 
     /// The active pad, if any. `GCController.current` follows whichever pad was last used, which is
     /// the right behaviour when someone puts a controller down and picks up the mouse.
-    private var gamepad: GCExtendedGamepad? {
-        GCController.current?.extendedGamepad
+    public var gamepad: GCExtendedGamepad? {
+        suppliedGamepad ?? GCController.current?.extendedGamepad
     }
 
     public var isGamepadConnected: Bool { gamepad != nil }
+
+    /// One the game handed over, which wins over the system's.
+    private var suppliedGamepad: GCExtendedGamepad?
+
+    /// Reads this pad instead of whichever one the system says is current — or, given nil, goes back.
+    ///
+    /// **For a pad nobody is holding**: `GCController.withExtendedGamepad()` makes one whose buttons are
+    /// set from code, which is what a replay, a scripted check or a test drives. The system never
+    /// makes it `current`, because it is not connected to anything — so without this there would be
+    /// no way to put a finger on the real input path without a real finger.
+    public func useGamepad(_ pad: GCExtendedGamepad?) {
+        suppliedGamepad = pad
+        padButtonsDown = []
+    }
+
+    /// Which button does what on a pad. **Everything the pad's buttons drive reads through this.**
+    public var padBindings = PadBindings.standard
+
+    /// Whether the pad's buttons act — crouch, brace, sprint, jump, the scroll notch.
+    ///
+    /// **Off while a game's menu has the pad.** A keyboard key the menu takes never reaches this type;
+    /// a pad is polled here, so without a switch a Circle pressed to leave a settings screen would
+    /// also crouch the player behind it. The presses are still reported in ``padButtonsPressed``, which
+    /// is what the menu reads instead.
+    public var acceptsPadActions = true
+
+    /// Buttons that went down this frame, whatever they are bound to. For a menu, or for a settings
+    /// screen waiting for the button a player wants.
+    public private(set) var padButtonsPressed: Set<PadButton> = []
+
+    /// Whether the pad's menu button went down this frame.
+    public private(set) var padMenuPressed = false
+
+    private var padButtonsDown: Set<PadButton> = []
+    private var padMenuWasDown = false
+
+    private func padHeld(_ action: InputBindings.Action) -> Bool {
+        guard acceptsPadActions, let pad = gamepad, let button = padBindings[action] else { return false }
+        return button.element(on: pad)?.isPressed ?? false
+    }
 
     private func observeControllers() {
         let centre = NotificationCenter.default
@@ -257,11 +300,10 @@ public final class InputState {
     /// flies: `C` pulls that axis down, so holding Space and C together reads as zero there and would
     /// swallow a jump taken from a crouch.
     public var isJumpHeld: Bool {
-        held(.jump) || (gamepad?.buttonA.isPressed ?? false)
+        held(.jump) || padHeld(.jump)
     }
 
     private var steadyingFromPad = false
-    private var crouchButtonWasPressed = false
 
     /// Crouch: **C** on the keyboard, Circle on a pad. **Latched — press to crouch, press to stand.**
     ///
@@ -295,7 +337,6 @@ public final class InputState {
     /// folds when the player stands or runs.
     public func releaseBrace() { isBraced = false }
 
-    private var braceButtonWasPressed = false
 
     /// **Asking to sprint stands you up — on the press, not while it is held.**
     ///
@@ -371,26 +412,33 @@ public final class InputState {
     /// through a stop, and the next tap of the stick reads as sprinting when the player meant to
     /// walk.
     public func pollFrame() {
-        // Circle toggles the crouch on its press edge, like `C` does. Level-triggering it would
-        // strobe the posture for as long as the button is down.
-        let crouchButton = gamepad?.buttonB.isPressed ?? false
-        if crouchButton && !crouchButtonWasPressed { toggleCrouch() }
-        crouchButtonWasPressed = crouchButton
+        // **Every button's press edge, once, from one set** — rather than a remembered flag per
+        // button, which is what this was while each button meant one fixed thing. Bound buttons move,
+        // so the edge has to be found for all of them and then looked up.
+        let down = Set(PadButton.allCases.filter { button in
+            gamepad.flatMap { button.element(on: $0)?.isPressed } ?? false
+        })
+        padButtonsPressed = down.subtracting(padButtonsDown)
+        padButtonsDown = down
+        let menuDown = gamepad?.buttonMenu.isPressed ?? false
+        padMenuPressed = menuDown && !padMenuWasDown
+        padMenuWasDown = menuDown
 
-        // **L1, because every face button is spoken for.** Square is reload and Triangle is weapon
-        // swap; a shooter is expected to grow a second weapon, so Triangle is not free to borrow even
-        // while there is only one. The shoulders were unbound, L1 is reachable without letting go of
-        // either stick, and it leaves R1 for the grenade or melee a shooter usually wants.
-        // **R3 scrolls one way only, and that is a real limit rather than an oversight.** A button
-        // has no sign; a game binding it to something with a range has to wrap around, and should say
-        // so on screen. The mouse wheel is the two-way device.
-        let scrollClick = gamepad?.rightThumbstickButton?.isPressed ?? false
-        if scrollClick && !scrollClickWasPressed { pendingScroll += 1 }
-        scrollClickWasPressed = scrollClick
+        if acceptsPadActions {
+            // Crouch toggles on its press edge, like `C` does. Level-triggering it would strobe the
+            // posture for as long as the button is down.
+            if let crouch = padBindings[.crouch], padButtonsPressed.contains(crouch) { toggleCrouch() }
 
-        let braceButton = gamepad?.leftShoulder.isPressed ?? false
-        if braceButton && !braceButtonWasPressed { toggleBrace() }
-        braceButtonWasPressed = braceButton
+            // **L1 by default, because every face button is spoken for.** Square is reload and
+            // Triangle is weapon swap; a shooter is expected to grow a second weapon, so Triangle is
+            // not free to borrow even while there is only one. See ``PadBindings``.
+            if let brace = padBindings[.brace], padButtonsPressed.contains(brace) { toggleBrace() }
+
+            // **R3 scrolls one way only, and that is a real limit rather than an oversight.** A button
+            // has no sign; a game binding it to something with a range has to wrap around, and should
+            // say so on screen. The mouse wheel is the two-way device. Never a binding.
+            if padButtonsPressed.contains(.rightStick) { pendingScroll += 1 }
+        }
 
         // Sprint stands a crouched player up on the press edge. Evaluated once a frame, here, after
         // the latch below has settled — checking the *held* state instead is what made crouching
@@ -414,7 +462,7 @@ public final class InputState {
         // One button, two jobs. Through the optic the stick click steadies the shot; at the hip it
         // latches a sprint. Feeding the latch while aiming would toggle a sprint the player cannot
         // use and would find waiting for them when they lowered the scope.
-        let stickClick = gamepad?.leftThumbstickButton?.isPressed ?? false
+        let stickClick = padHeld(.sprint)
         let aiming = isAiming
         steadyingFromPad = aiming && stickClick
 
@@ -442,6 +490,8 @@ public final class InputState {
         sprintLatch.disengage()
         steadyingFromPad = false
         pendingLook = .zero
+        padButtonsDown = []
+        padButtonsPressed = []
     }
 
     // MARK: - Simulation reads
@@ -467,7 +517,7 @@ public final class InputState {
 
             // Cross rises. Circle used to drop, matching C — it toggles the crouch now, and a
             // button cannot mean both "go down one metre per second" and "change posture".
-            if gamepad.buttonA.isPressed { input.vertical += 1 }
+            if padHeld(.jump) { input.vertical += 1 }
         }
 
         // Never sprinting through the optic — the states are exclusive by design.

@@ -6,6 +6,7 @@
 import AppKit
 import Metal
 import MetalKit
+import GameController
 import simd
 import WindageEngine
 import WindageSampleCore
@@ -108,6 +109,8 @@ final class SampleGame: GameLoop {
         struct Segment {
             let label: String
             let keys: [KeyCode]
+            /// Controller elements by name — `south`, `menu`, `up` — pressed on a virtual pad.
+            var pads: [String] = []
             let seconds: Float
             var yaw: Float? = nil
             var pitch: Float? = nil
@@ -143,20 +146,27 @@ final class SampleGame: GameLoop {
                     continue
                 }
                 var keys: [KeyCode] = []
+                var pads: [String] = []
                 for name in parts[0].split(separator: "+") where name != "wait" {
-                    if let key = KeyCode(named: String(name)) {
+                    if name.hasPrefix("pad.") {
+                        pads.append(String(name.dropFirst(4)))
+                    } else if let key = KeyCode(named: String(name)) {
                         keys.append(key)
                     } else {
                         print("WindageSample: WINDAGE_SAMPLE_WALK does not know the key '\(name)'")
                     }
                 }
-                parsed.append(Segment(label: String(token), keys: keys, seconds: number))
+                parsed.append(Segment(label: String(token), keys: keys, pads: pads, seconds: number))
             }
             guard !parsed.isEmpty else { return nil }
             segments = parsed
         }
 
         var isRunning: Bool { index < segments.count }
+
+        /// Whether any segment presses a controller button — in which case the game supplies a
+        /// virtual pad for the whole script, and it counts as connected.
+        var usesPad: Bool { segments.contains { !$0.pads.isEmpty } }
 
         /// What happens this step, in order: a segment whose time is up ends — its keys come up —
         /// and the next begins — its keys go down. **Checked before the body moves**, so a segment of
@@ -191,22 +201,37 @@ final class SampleGame: GameLoop {
     /// The settings screen's state while it is open.
     private struct SettingsMenu {
         enum Row: Equatable {
+            /// A keyboard binding.
             case bind(InputBindings.Action)
+            /// A controller binding — shown only while a pad is connected.
+            case pad(InputBindings.Action)
             case sensitivity, invert, volume, brightness, reset
         }
-        static let rows: [Row] = InputBindings.Action.allCases.map { .bind($0) }
-            + [.sensitivity, .invert, .volume, .brightness, .reset]
 
+        /// **Rebuilt every frame from whether a pad is connected**, so picking one up mid-screen adds
+        /// its rows, and putting it down takes them away rather than leaving rows that do nothing.
+        static func rows(withPad pad: Bool) -> [Row] {
+            InputBindings.Action.allCases.map { .bind($0) }
+                + (pad ? PadBindings.actions.map { .pad($0) } : [])
+                + [.sensitivity, .invert, .volume, .brightness, .reset]
+        }
+
+        var rows = SettingsMenu.rows(withPad: false)
         var selected = 0
-        /// The action waiting for a key, while the screen says "press a key".
-        var capturing: InputBindings.Action?
+        /// The row waiting for a key or a button, while the screen says "press".
+        var capturing: Row?
         /// What the last change did — "Jump swapped with Forward", "P is the pause key".
         var message: String?
         /// Whether opening the screen paused the run, so closing it only resumes what it paused.
         var pausedTheRun = false
 
-        var row: Row { SettingsMenu.rows[selected] }
+        var row: Row { rows[min(selected, rows.count - 1)] }
     }
+
+    /// What the settings screen can be told to do, **from either device**. The keyboard's keys and
+    /// the pad's buttons are two ways of saying the same six things, and one handler for the six is
+    /// what keeps the two from behaving differently.
+    private enum MenuCommand { case up, down, left, right, activate, close }
 
     /// One lamp as the shader reads it: **`w` carries the range**, so a `float3` and a scalar pack
     /// into one `float4` and there is no padding for the two sides to disagree about.
@@ -919,7 +944,8 @@ final class SampleGame: GameLoop {
         engine.toneMapping = ToneMapping(curve: .aces, exposureStops: SampleGame.baseExposure)
         applySettings()
         print("WindageSample: settings from \(SampleGame.settingsStore.url.path) — forward "
-              + "\(settings.bindings[.forward].name), jump \(settings.bindings[.jump].name)")
+              + "\(settings.bindings[.forward].name), jump \(settings.bindings[.jump].name), "
+              + "pad jump \(settings.padBindings[.jump]?.rawValue ?? "")")
     }
 
     /// Loads the rigged figure: one mesh, one skeleton, two clips, all from one USD file.
@@ -1532,7 +1558,7 @@ final class SampleGame: GameLoop {
         if menu != nil {
             // Captured on the way down; everything else a modifier does is swallowed while the
             // screen is open, or a held Shift would carry a sprint out of it.
-            if key.isDown(inModifierFlags: flags), let action = menu?.capturing { bind(action, to: key) }
+            if key.isDown(inModifierFlags: flags), case .bind(let action) = menu?.capturing { bind(action, to: key) }
             if !key.isDown(inModifierFlags: flags) { input.flagsChanged(keyCode: code, modifierFlags: flags) }
             return
         }
@@ -1620,7 +1646,7 @@ final class SampleGame: GameLoop {
     private func drawSettings(_ menu: SettingsMenu, on hud: HUDRenderer, scale: Float) {
         let size = 22 * scale, line = size * 1.55
         let width = 700 * scale
-        let height = line * Float(SettingsMenu.rows.count + 5)
+        let height = line * Float(menu.rows.count + 5)
         let left = (viewportSize.x - width) / 2, top = (viewportSize.y - height) / 2
         let white = UIColor(srgb: SIMD4(1, 1, 1, 0.95))
         let dim = UIColor(srgb: SIMD4(1, 1, 1, 0.55))
@@ -1631,11 +1657,14 @@ final class SampleGame: GameLoop {
         _ = hud.text("SETTINGS", x: left + size, y: y, pointSize: size * 1.3, color: white)
         y += line * 1.3
 
-        for (index, row) in SettingsMenu.rows.enumerated() {
+        for (index, row) in menu.rows.enumerated() {
             let selected = index == menu.selected
             let (label, value): (String, String) = switch row {
             case .bind(let action):
-                (action.title, menu.capturing == action ? "press a key..." : settings.bindings[action].name)
+                (action.title, menu.capturing == row ? "press a key..." : settings.bindings[action].name)
+            case .pad(let action):
+                ("Pad " + action.title.lowercased(), menu.capturing == row
+                    ? "press a button..." : (settings.padBindings[action]?.name(on: input.gamepad) ?? ""))
             case .sensitivity: ("Look sensitivity", String(format: "%.1f", settings.lookSensitivity))
             case .invert: ("Invert look", settings.invertLook ? "on" : "off")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
@@ -1649,18 +1678,24 @@ final class SampleGame: GameLoop {
         }
 
         y += line * 0.4
-        if menu.capturing != nil {
+        if case .pad = menu.capturing {
+            _ = hud.text("press the button you want · menu button or esc cancels",
+                         x: left + size, y: y, pointSize: size * 0.8, color: gold)
+        } else if menu.capturing != nil {
             _ = hud.text("press the key you want · esc cancels", x: left + size, y: y, pointSize: size * 0.8, color: gold)
         } else if let message = menu.message {
             _ = hud.text(message, x: left + size, y: y, pointSize: size * 0.8, color: gold)
         }
         y += line
-        _ = hud.text("up/down choose · return change · left/right adjust · o close",
+        _ = hud.text(input.isGamepadConnected
+                        ? "d-pad choose · cross change · d-pad left/right adjust · circle close"
+                        : "up/down choose · return change · left/right adjust · o close",
                      x: left + size, y: y, pointSize: size * 0.75, color: dim)
     }
 
     private func openMenu() {
         var opened = SettingsMenu()
+        opened.rows = SettingsMenu.rows(withPad: input.isGamepadConnected)
         // **Paused while it is open**, or the clock runs out behind a screen of key bindings.
         if run.mode == .playing {
             run.togglePause()
@@ -1668,41 +1703,89 @@ final class SampleGame: GameLoop {
         }
         menu = opened
         input.setMouseCaptured(false)
+        input.acceptsPadActions = false
     }
 
     private func closeMenu() {
         if menu?.pausedTheRun == true && run.mode == .paused { run.togglePause() }
         menu = nil
+        input.acceptsPadActions = true
+    }
+
+    /// The pad's share of the settings screen, once a frame: open and close on the menu button,
+    /// navigate on the d-pad, Cross to change and Circle to leave — or, while a pad row is waiting,
+    /// the next button pressed, whatever it is.
+    ///
+    /// **Read from `padButtonsPressed` rather than from the bindings**, because the screen is where
+    /// the bindings are changed: a menu that followed them would move its own "change" button the
+    /// moment somebody rebound jump.
+    private func handleMenuPad() {
+        guard input.isGamepadConnected else { return }
+        let steps = input.consumeSteps()
+        guard var current = menu else {
+            if input.padMenuPressed && !isEditing { openMenu() }
+            return
+        }
+        current.rows = SettingsMenu.rows(withPad: true)
+        current.selected = min(current.selected, current.rows.count - 1)
+        menu = current
+
+        if case .pad(let action) = current.capturing {
+            if input.padMenuPressed {
+                menu?.capturing = nil
+            } else if let button = input.padButtonsPressed.sorted(by: { $0.rawValue < $1.rawValue }).first {
+                bind(action, toButton: button)
+            }
+            return
+        }
+        if input.padMenuPressed { perform(.close); return }
+        for _ in 0..<abs(steps.y) { perform(steps.y > 0 ? .up : .down) }
+        for _ in 0..<abs(steps.x) { perform(steps.x > 0 ? .right : .left) }
+        if input.padButtonsPressed.contains(.south) { perform(.activate) }
+        if input.padButtonsPressed.contains(.east) { perform(.close) }
     }
 
     /// Every key while the screen is open. **Always consumed**, so nothing typed into a settings
     /// screen walks the player behind it.
     private func handleMenuKey(_ key: KeyCode) -> Bool {
-        guard var current = menu else { return false }
-        if let action = current.capturing {
+        guard let current = menu else { return false }
+        if let capturing = current.capturing {
             if key == .escape {
-                current.capturing = nil
-                current.message = nil
-                menu = current
-            } else {
+                menu?.capturing = nil
+                menu?.message = nil
+            } else if case .bind(let action) = capturing {
                 bind(action, to: key)
             }
+            // A pad row waiting for a button ignores the keyboard, bar Escape.
             return true
         }
-
-        let count = SettingsMenu.rows.count
         switch key {
-        case .escape, KeyCode(named: "O")!:
+        case .escape, KeyCode(named: "O")!: perform(.close)
+        case .up: perform(.up)
+        case .down: perform(.down)
+        case .left: perform(.left)
+        case .right: perform(.right)
+        case .return: perform(.activate)
+        default: break
+        }
+        return true
+    }
+
+    private func perform(_ command: MenuCommand) {
+        guard var current = menu else { return }
+        let count = current.rows.count
+        switch command {
+        case .close:
             closeMenu()
-            return true
+            return
         case .up: current.selected = (current.selected + count - 1) % count
         case .down: current.selected = (current.selected + 1) % count
         case .left: adjust(current.row, by: -1)
         case .right: adjust(current.row, by: 1)
-        case .return:
+        case .activate:
             switch current.row {
-            case .bind(let action):
-                current.capturing = action
+            case .bind, .pad:
+                current.capturing = current.row
                 current.message = nil
             case .invert, .sensitivity, .volume, .brightness:
                 adjust(current.row, by: 1)
@@ -1711,11 +1794,8 @@ final class SampleGame: GameLoop {
                 current.message = "Everything back to the defaults"
                 saveAndApplySettings()
             }
-        default:
-            break
         }
         menu = current
-        return true
     }
 
     private func bind(_ action: InputBindings.Action, to key: KeyCode) {
@@ -1735,6 +1815,21 @@ final class SampleGame: GameLoop {
         saveAndApplySettings()
     }
 
+    private func bind(_ action: InputBindings.Action, toButton button: PadButton) {
+        let name = button.name(on: input.gamepad)
+        switch settings.padBindings.bind(action, to: button) {
+        case .bound:
+            menu?.message = "Pad \(action.title.lowercased()) is \(name)"
+        case .swapped(let other):
+            menu?.message = "Pad \(action.title.lowercased()) is \(name) — \(other.title.lowercased()) moved to "
+                + (settings.padBindings[other]?.name(on: input.gamepad) ?? "")
+        case .refused:
+            menu?.message = "\(name) cannot be bound"
+        }
+        menu?.capturing = nil
+        saveAndApplySettings()
+    }
+
     private func adjust(_ row: SettingsMenu.Row, by steps: Int) {
         let step = Float(steps)
         switch row {
@@ -1742,7 +1837,7 @@ final class SampleGame: GameLoop {
         case .invert: settings.invertLook.toggle()
         case .volume: settings.volume = ((settings.volume + 0.1 * step) * 10).rounded() / 10
         case .brightness: settings.brightness += 0.25 * step
-        case .bind, .reset: return
+        case .bind, .pad, .reset: return
         }
         saveAndApplySettings()
     }
@@ -1761,6 +1856,7 @@ final class SampleGame: GameLoop {
 
     private func applySettings() {
         input.bindings = settings.bindings
+        input.padBindings = settings.padBindings
         audio?.masterVolume = settings.volume
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
     }
@@ -1809,9 +1905,56 @@ final class SampleGame: GameLoop {
         }
     }
 
+    /// The pad a script presses, made the first time a script asks for one.
+    ///
+    /// **A real `GCExtendedGamepad`, not a stand-in**: `GCController.withExtendedGamepad()` makes one
+    /// whose buttons are set from code, and `InputState.useGamepad` reads it exactly as it would a
+    /// DualSense — bindings, press edges, the menu and all.
+    private var scriptPad: GCExtendedGamepad?
+
+    /// Presses or releases one element of the script's pad.
+    ///
+    /// > **The d-pad has to be pushed by its axes.** Setting `dpad.down` as a button on a virtual pad
+    /// > is accepted and does nothing — `isPressed` stays false — so the first scripted run opened the
+    /// > settings screen with the menu button and then could not move off its first row. The
+    /// > direction pad only moves through `setValueForXAxis(_:yAxis:)`.
+    private func setScriptPad(_ name: String, down: Bool) {
+        guard let pad = scriptPad else { return }
+        let value: Float = down ? 1 : 0
+        switch name {
+        case "up": pad.dpad.setValueForXAxis(0, yAxis: value)
+        case "down": pad.dpad.setValueForXAxis(0, yAxis: -value)
+        case "left": pad.dpad.setValueForXAxis(-value, yAxis: 0)
+        case "right": pad.dpad.setValueForXAxis(value, yAxis: 0)
+        default: scriptPadElement(name)?.setValue(value)
+        }
+    }
+
+    private func scriptPadElement(_ name: String) -> GCControllerButtonInput? {
+        guard let pad = scriptPad else { return nil }
+        switch name {
+        case "south": return pad.buttonA
+        case "east": return pad.buttonB
+        case "west": return pad.buttonX
+        case "north": return pad.buttonY
+        case "leftShoulder": return pad.leftShoulder
+        case "rightShoulder": return pad.rightShoulder
+        case "leftStick": return pad.leftThumbstickButton
+        case "rightStick": return pad.rightThumbstickButton
+        case "menu": return pad.buttonMenu
+        default:
+            print("WindageSample: WINDAGE_SAMPLE_WALK does not know the pad element '\(name)'")
+            return nil
+        }
+    }
+
     /// Plays the scripted walk's keys this step. See `ScriptedWalk`.
     private func runScript(_ deltaTime: Float) {
         guard scriptedWalk?.isRunning == true else { return }
+        if scriptPad == nil && scriptedWalk?.usesPad == true {
+            scriptPad = GCController.withExtendedGamepad().extendedGamepad
+            input.useGamepad(scriptPad)
+        }
         for event in scriptedWalk!.advance(by: deltaTime, body: body) {
             switch event {
             case .begin(let segment):
@@ -1824,10 +1967,12 @@ final class SampleGame: GameLoop {
                         keyPressed(key.rawValue, command: false)
                     }
                 }
+                for name in segment.pads { setScriptPad(name, down: true) }
             case .end(let segment, let report):
                 for key in segment.keys {
                     if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
                 }
+                for name in segment.pads { setScriptPad(name, down: false) }
                 if let report {
                     print(report)
                     var heard = tally.steps == 1 ? "1 footstep" : "\(tally.steps) footsteps"
@@ -1873,6 +2018,7 @@ final class SampleGame: GameLoop {
     /// game's source.
     func beginFrame() {
         input.pollFrame()
+        handleMenuPad()
         let look = input.consumePendingLook()
         // **A scripted walk holds its heading.** Otherwise whatever the mouse is doing over the
         // window steers it, and the same script ends somewhere different each time — which was the
@@ -2553,7 +2699,10 @@ final class SampleGame: GameLoop {
             let move = directions.allSatisfy { $0.count == 1 }
                 ? directions.joined() : directions.joined(separator: "/")
             let moving = input.isGamepadConnected
-                ? "left stick move · right stick look · cross jump · circle crouch"
+                ? "left stick move · right stick look · "
+                    + "\((settings.padBindings[.jump]?.name(on: input.gamepad) ?? "").lowercased()) jump · "
+                    + "\((settings.padBindings[.crouch]?.name(on: input.gamepad) ?? "").lowercased()) crouch · "
+                    + "menu button settings"
                 : "\(move) move · \(b[.sprint].name.lowercased()) sprint · "
                     + "\(b[.jump].name.lowercased()) jump · \(b[.crouch].name.lowercased()) crouch · "
                     + "click to capture"

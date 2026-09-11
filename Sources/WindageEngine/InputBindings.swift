@@ -246,6 +246,9 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     public var bindings = InputBindings.standard
 
+    /// Which controller button does what. See ``PadBindings``.
+    public var padBindings = PadBindings.standard
+
     /// A multiplier on the look speed, mouse and stick alike. 1 is the engine's tuning.
     public var lookSensitivity: Float = 1 {
         didSet { lookSensitivity = PlayerSettings.clamp(lookSensitivity, PlayerSettings.sensitivityRange, 1) }
@@ -281,7 +284,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case bindings, lookSensitivity, invertLook, volume, brightness
+        case bindings, padBindings, lookSensitivity, invertLook, volume, brightness
     }
 
     /// **Every field optional**, for the reason ``InputBindings`` gives: a settings file from an
@@ -289,6 +292,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bindings = (try? c.decodeIfPresent(InputBindings.self, forKey: .bindings)) ?? .standard
+        padBindings = (try? c.decodeIfPresent(PadBindings.self, forKey: .padBindings)) ?? .standard
         invertLook = (try? c.decodeIfPresent(Bool.self, forKey: .invertLook)) ?? false
         lookSensitivity = PlayerSettings.clamp(
             (try? c.decodeIfPresent(Float.self, forKey: .lookSensitivity)) ?? 1, PlayerSettings.sensitivityRange, 1)
@@ -300,6 +304,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(bindings, forKey: .bindings)
+        try c.encode(padBindings, forKey: .padBindings)
         try c.encode(lookSensitivity, forKey: .lookSensitivity)
         try c.encode(invertLook, forKey: .invertLook)
         try c.encode(volume, forKey: .volume)

@@ -12,6 +12,60 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.6.11] — 2026-09-10
+
+**Controller rebinding.** Jump, crouch, sprint and brace can be moved to any face button, shoulder or
+L3. The sample's settings screen shows the controller's rows whenever one is connected, and can be
+driven entirely from the pad.
+
+### Added
+
+- **`PadButton`** — a button by position (`south`, `east`, `west`, `north`, the shoulders, the stick
+  clicks), and `name(on:)` for what the connected pad prints on it.
+- **`PadBindings`** — the four actions that are buttons, with swap-on-conflict, R3 refused, and
+  tolerant decoding; **`PlayerSettings.padBindings`**.
+- **`InputState.padBindings`**, **`useGamepad(_:)`**, **`acceptsPadActions`**,
+  **`padButtonsPressed`** and **`padMenuPressed`**. `gamepad` is public.
+
+### Changed
+
+- **`InputState` reads the pad's buttons through `padBindings`**, with one press-edge set for every
+  button instead of a remembered flag per fixed button. The standard layout is the old fixed one.
+
+### Decisions
+
+- **By position, not by name.** The bottom face button is A on an Xbox pad and Cross on a DualSense;
+  the thumb learned the position, so that is what is stored. The name shown is the connected pad's own.
+- **Only the buttons that are actions.** Sticks move and look, triggers aim and fire, the d-pad steps,
+  the menu button opens the menu — the convention stays put. **R3 is refused**: it is the engine's
+  scroll notch, as the arrows are its steps.
+- **Square, Triangle and R1 are only unbound by default.** They are kept free so a title can grow a
+  reload or a second weapon; a title that has one reserves it, and a player of one that has not may use
+  them.
+- **A menu that has the pad turns its actions off.** A keyboard key the menu takes never reaches
+  `InputState`; a pad is polled there, so a Circle pressed to leave the settings screen would also have
+  crouched the player behind it. The presses are still reported for the menu to read.
+- **The menu reads raw presses, not the bindings** — it is where the bindings change, and a menu that
+  followed them would move its own "change" button the moment somebody rebound jump.
+
+### A pad nobody holds
+
+**`GCController.withExtendedGamepad()` makes a controller whose buttons are set from code**, and
+`useGamepad(_:)` points `InputState` at it — the system never makes one `current`, since it is not
+connected to anything. The engine's tests press real `GCExtendedGamepad` buttons now, and the sample's
+scripted walk takes `pad.south`, `pad.menu`, `pad.down` and the rest.
+
+**The virtual pad's d-pad only moves through its axes.** Setting `dpad.down` as a button is accepted
+and does nothing; the first scripted run opened the settings screen with the menu button and could not
+leave its first row.
+
+### Verified by driving it
+
+Two launches, controller only: open settings with the menu button, d-pad down to *Pad jump*, Cross,
+R1. R1 then jumps **0.97 m** and Cross does nothing; the file reads `"jump" : "rightShoulder"`.
+**Relaunch**: R1 still jumps, Cross still does not; *Reset to defaults* from the pad puts jump back on
+Cross. The hint line reads "r1 jump" from the bindings. The test settings file was deleted afterwards.
+
 ## [0.6.10] — 2026-09-10
 
 **Braziers.** The ruins' two lamps stand over iron braziers now, with coals that glow from an emissive

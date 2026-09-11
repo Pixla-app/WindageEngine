@@ -17,10 +17,11 @@ WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degree
 this way flies** — a screenshot position is a viewpoint, not somewhere to stand, and gravity would
 pull it to the floor before the first frame.
 
-**Walk it without a keyboard:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
+**Walk it without a keyboard — or a controller:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
 swift run WindageSample` — key names and seconds, **pressed through the same path a keyboard uses**,
 and the log says where the feet ended each segment. `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
-rebinds forward to I. **A script that changes settings writes the real settings file** in Application
+rebinds forward to I; `pad.south`, `pad.menu`, `pad.down` press a virtual controller, which then
+counts as connected. **A script that changes settings writes the real settings file** in Application
 Support; delete it afterwards.
 
 ---
@@ -56,7 +57,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-10
 
-454 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+469 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -67,8 +68,30 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `AnimationClip`, `SkeletonPose` and `RigLoader`, `Material`, `TextureSlot` and `TextureStore`,
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
-and `ParticleRenderer`, **`InputBindings` and `PlayerSettings`**, and — for the lamps that cast —
+and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-10 — controller rebinding (0.6.11)
+
+**`PadButton` and `PadBindings`**: jump, crouch, sprint and brace onto any face button, shoulder or L3,
+stored by position (`south`, not "A" or "Cross"). Sticks, triggers, d-pad and menu stay the convention;
+R3 is refused as the scroll notch. `InputState` reads the pad through `padBindings`, with one
+press-edge set for every button.
+
+**The sample's settings screen shows the controller's rows when one is connected, and runs from the
+pad**: menu button opens it, d-pad moves, Cross changes, Circle leaves. `acceptsPadActions` goes off
+while it is open, or Circle would crouch the player behind it; the menu reads raw presses, not the
+bindings it is editing.
+
+**A virtual pad drives all of it.** `GCController.withExtendedGamepad()` plus
+`InputState.useGamepad(_:)` — the tests press real `GCExtendedGamepad` buttons, and the scripted walk
+takes `pad.south`, `pad.menu`, `pad.down`. **Its d-pad moves only by its axes**; the first scripted run
+could not leave the menu's first row.
+
+**Driven in the running sample, two launches, pad only**: rebind jump to R1; R1 jumps 0.97 m, Cross
+does nothing; relaunch, same; reset from the pad, Cross jumps again. Settings file deleted afterwards.
+**Not tried with a physical controller** — the names shown on a DualSense ("Cross") are the framework's
+and were not seen here; the virtual pad reports "A".
 
 ## Done 2026-09-10 — braziers (0.6.10)
 
@@ -854,22 +877,22 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **Gamepad rebinding.** The keyboard is rebindable and the pad is not: its layout is the console
-   convention written into `InputState`, with reserved buttons on purpose. The same `InputBindings`
-   shape with a button per action, and the settings screen showing whichever device is connected.
-   **Proved in the sample by** a rebound button in the settings file surviving a relaunch — the pad
-   itself cannot be scripted, so the input path is tested in the package.
-
-2. **A camera dip on landing.** The controller reports how hard a landing was and nothing shows it
+1. **A camera dip on landing.** The controller reports how hard a landing was and nothing shows it
    but the sound. A short dip of the view, scaled by impact speed, applied to the view and never to
    the aim — the same rule as the slide's. **Proved in the sample by** the scripted drop off the steps
    logging the dip's depth, and a screenshot mid-dip.
 
-3. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
-   kept together by a test. Move the brazier in the in-game editor and the lamp stays where it was —
-   a bug waiting for the first person to edit a level. A placement should be able to carry its light,
-   offset from it, placed through the transform hierarchy. **Proved in the sample by** moving a
-   brazier in the editor and the pool of light going with it.
+2. **Lights that belong to a placement.** A brazier and its lamp are two entries in the level file,
+   kept together by a test. Move the brazier in the in-game editor and the lamp stays where it was.
+   A placement should be able to carry its light, offset from it, placed through the transform
+   hierarchy. **Proved in the sample by** moving a brazier in the editor and the pool of light going
+   with it.
+
+3. **Aim and look for a controller: sensitivity per device.** The settings have one look sensitivity,
+   and a mouse and a stick want very different ones — a value that is right for one is unusable on
+   the other, so a player who uses both has to choose which to break. Separate mouse and stick
+   sensitivities, and invert per device. **Proved in the sample by** a scripted stick turn and a mouse
+   turn giving the rates each setting says.
 
 ## Parked — not next, and why
 
