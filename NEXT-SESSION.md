@@ -79,6 +79,20 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
 
+## Done 2026-09-11 — the walk check sees the look (0.16.2)
+
+**The view's turns are checked** (to the hundredth of a degree; a segment that reports none is no turn —
+a stick inside its dead zone). **Four walks recovered**: 0.8.0's sensitivities at defaults (91.67 / 45.84 /
+63.03 / 25.21) and set from the pad (45.84 / −22.92 / 126.05 / 50.42); 0.9.0's dead zones at defaults
+(none / 2.26 / 18.11 / 91.67, and 0.11 m / 2.59 m) and at 26%–30% from the pad (none / 9.64 / 91.67, 0 m /
+1.99 m). **15 walks, 79 expectations, 33 s.** Failing on purpose: the mouse's look scale doubled fails the
+mouse's turns in both look walks, the stick's untouched.
+
+**A gap in the check itself, found by a walk that measured the defaults twice**: the settings screen's pad
+input is read in `beginFrame`, and a check draws no frames — so a scripted pad pressed its buttons and
+nothing read them. A check polls the pad from its steps now. (The keyboard was never affected: its keys go
+straight to the game, which is why the head-bob walk could set the bob.)
+
 ## Done 2026-09-11 — the walks run four at a time (0.16.1)
 
 **25 s for eleven walks, where one at a time took 122** — and `--serial` still there: **all 60 measured
@@ -1483,15 +1497,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The walk check sees the look too.** It checks movement, footsteps and bob; the look was measured
-   the same way and is unguarded. 0.8.0: at defaults the stick turned the view 91.67° right and 45.84° up,
-   the mouse 63.03° and 25.21°, and set on the settings screen (mouse 2.0, stick 0.5 inverted) 45.84°,
-   −22.92°, 126.05°, 50.42°. 0.9.0: the stick at 20% drifted 2.26° at the default dead zone and not at all
-   at 26%; at 50%, 18.11° and 9.64°. Recover those walks (`pad.lookRight:0.5`, `mousex:500`,
-   `pad.lookRight@0.2:1`), read the `look '…' → view turned` lines. **Proved by** the check passing, and
-   failing with the mouse's look scale doubled.
-
-2. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
+1. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
    exact; the landing still reports `verticalVelocity` after the step that crossed the ground, which is
    the speed a little *below* it. Measured 2026-09-11, a fall from exactly 1 m (exact impact 6.3246 m/s):
    **6.667 m/s at 30 steps a second**, 6.333 at 60, 120 and 240. A game at 30 lands 5% harder than the
@@ -1500,7 +1506,7 @@ below, never in this list.
    **Proved by** 6.3246 at all four rates, and in the sample by the landing dust and dip of the ruins'
    drop, unchanged at 120 where the error is 1 mm/s.
 
-3. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
+2. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
    0.16.0: `settling *= 1 − rate·dt` a step, where the curve is `exp(−rate·dt)`. Measured 2026-09-11,
    walking up four treads: the eye ends **1.640 m above the feet at 30 steps a second, 1.638 at 60, 1.636
    at 120 and 240** — 4 mm apart, and at a low enough rate `rate·dt` reaches 1 and the eye snaps instead of
@@ -1508,6 +1514,15 @@ below, never in this list.
    **Proved by** the same eye height at all four rates, to a tenth of a millimetre, and the walks'
    recorded eye heights unchanged at 120. Small in metres; the point is that a game at 30 and a game at
    120 are the same game.
+
+3. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
+   along `pow(remaining, slideEasing)`, taken once a step and held for the whole step — a Riemann sum of a
+   falling curve, so a coarse stepper under-counts it. Measured 2026-09-11, sprint then crouch on the
+   move: **15.847 m at 30 steps a second, 15.997 at 60, 16.069 at 120, 16.093 at 240** — 25 cm between the
+   ends, on a move whose whole point is where it puts you. The profile integrates in closed form over a
+   step (`∫ r^e dr = r^(e+1)/(e+1)`), as the jump's did. **Proved by** the same distance to a centimetre at
+   all four rates, and the walks' recorded positions unchanged at 120. (Checked on the way and already
+   right: a stick's turn is 91.6732° at every rate, and the distance a walk covers is the same.)
 
 ## Parked — not next, and why
 

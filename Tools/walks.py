@@ -33,6 +33,7 @@ from concurrent import futures
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SAMPLE = ROOT / ".build/debug/WindageSample"
 WALK_LINE = re.compile(r"walk '([^']+)' → feet \(([-0-9.]+), ([-0-9.]+), ([-0-9.]+)\), highest ([-0-9.]+)")
+LOOK_LINE = re.compile(r"look '([^']+)' → view turned ([-0-9.]+)° right, ([-0-9.]+)° up")
 
 
 def run(walk):
@@ -71,8 +72,19 @@ def check(walk, lines, tolerance):
             segments.append((m.group(1), [float(m.group(i)) for i in (2, 3, 4)], float(m.group(5)), []))
         elif segments and l.startswith("WindageSample:     "):
             segments[-1][3].append(l)
+    # The view's turns, which a segment reports only when it turned at all: a stick inside its dead zone
+    # says nothing, and nothing is what `[0, 0]` expects.
+    looks = [(m.group(1), [float(m.group(2)), float(m.group(3))])
+             for m in (LOOK_LINE.search(l) for l in lines) if m]
     for want in walk["expect"]:
-        if "after" in want:
+        if "look" in want:
+            hits = [l for l in looks if l[0] == want["look"]]
+            n = want.get("occurrence", 1)
+            turned = hits[n - 1][1] if len(hits) >= n else [0.0, 0.0]
+            # Degrees, recorded to the hundredth: a hundredth either way is the rounding.
+            ok = all(abs(a - b) <= 0.01 + 1e-6 for a, b in zip(turned, want["turned"]))
+            results.append((f"the view turned, '{want['look']}'", want["turned"], turned, ok))
+        elif "after" in want:
             hits = [s for s in segments if s[0] == want["after"]]
             n = want.get("occurrence", len(hits) if want.get("last") else 1)
             got = hits[n - 1] if len(hits) >= n else None
@@ -99,7 +111,7 @@ def check(walk, lines, tolerance):
                 bob = [float(m.group(1)), float(m.group(2))] if m else ([0.0, 0.0] if "no head bob" in heard else None)
                 ok = bob is not None and all(abs(a - b) <= 0.1 + 1e-6 for a, b in zip(bob, want["bob"]))
                 results.append((f"head bob in {where}, cm", want["bob"], bob, ok))
-        else:
+        elif "line" in want:
             hits = [l for l in lines if want["line"] in l]
             line = (hits[-1] if want.get("last") else hits[0]) if hits else None
             m = re.search(want["pattern"], line) if line else None

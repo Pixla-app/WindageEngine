@@ -1133,6 +1133,12 @@ exactly, the head bob to the millimetre, from the lines the walk report prints u
 walks, 59 expectations, among them every row of 0.8.1's head-bob table and 0.11.0's footsteps down the
 ruins' stairs. Take the tread rule's `abs` out and it fails on 3 footsteps where 5 are recorded. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
 
+**And since 0.16.2 the view's turns**, to the hundredth of a degree: 0.8.0's sensitivities and 0.9.0's
+dead zones, each at its defaults and each as the settings screen sets it from a pad — fifteen walks, 79
+expectations. Double the mouse's look scale and both look walks fail on the mouse's turns alone. That
+needed one fix: a check polls the pad from its steps, the settings screen's pad input being read per
+frame, and a check drawing none — a scripted pad pressed its buttons and nothing read them.
+
 **Four at a time since 0.16.1 — 25 s for eleven walks, where one at a time took 122** — and every value
 identical either way, a walk's result being its step count rather than the clock. Two things made that
 work: each check names its saves after its walk, or one walk launching would clear the settings another

@@ -419,6 +419,175 @@
           ]
         }
       ]
+    },
+    {
+      "name": "look",
+      "recorded": "0.8.0 — a mouse sensitivity and a stick sensitivity, at their defaults",
+      "level": 0,
+      "script": "wait:0.5 pitch:0 pad.lookRight:0.5 wait:0.2 pitch:0 pad.lookUp:0.25 wait:0.2 pitch:0 mousex:500 wait:0.1 mousey:-200 wait:0.3",
+      "expect": [
+        {
+          "look": "pad.lookRight:0.5",
+          "turned": [
+            91.67,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookUp:0.25",
+          "turned": [
+            0.0,
+            45.84
+          ]
+        },
+        {
+          "look": "mousex:500",
+          "turned": [
+            63.03,
+            0.0
+          ]
+        },
+        {
+          "look": "mousey:-200",
+          "turned": [
+            0.0,
+            25.21
+          ]
+        }
+      ]
+    },
+    {
+      "name": "look, set from the pad",
+      "recorded": "0.8.0 — mouse 2.0, stick 0.5, stick inverted, set on the settings screen from the pad",
+      "level": 0,
+      "script": "wait:0.5 pad.menu:0.1 wait:0.1 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.south:0.05 wait:0.1 pad.east:0.1 wait:0.3 pitch:0 pad.lookRight:0.5 wait:0.2 pitch:0 pad.lookUp:0.25 wait:0.2 pitch:0 mousex:500 wait:0.1 mousey:-200 wait:0.3",
+      "expect": [
+        {
+          "look": "pad.lookRight:0.5",
+          "turned": [
+            45.84,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookUp:0.25",
+          "turned": [
+            0.0,
+            -22.92
+          ]
+        },
+        {
+          "look": "mousex:500",
+          "turned": [
+            126.05,
+            0.0
+          ]
+        },
+        {
+          "look": "mousey:-200",
+          "turned": [
+            0.0,
+            50.42
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dead zones",
+      "recorded": "0.9.0 — a stick dead zone the player sets, at the defaults (look 10%, move 16%)",
+      "level": 0,
+      "script": "wait:0.5 yaw:0 pitch:0 pad.lookRight@0.08:1 wait:0.2 pad.lookRight@0.2:1 wait:0.2 pad.lookRight@0.5:0.5 wait:0.2 pad.lookRight:0.5 wait:0.2 yaw:0 pad.moveUp@0.2:1 wait:0.3 pad.moveUp@0.6:1 wait:0.3",
+      "expect": [
+        {
+          "look": "pad.lookRight@0.08:1",
+          "turned": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookRight@0.2:1",
+          "turned": [
+            2.26,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookRight@0.5:0.5",
+          "turned": [
+            18.11,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookRight:0.5",
+          "turned": [
+            91.67,
+            0.0
+          ]
+        },
+        {
+          "after": "pad.moveUp@0.2:1",
+          "feet": [
+            0.0,
+            0.0,
+            11.89
+          ]
+        },
+        {
+          "after": "pad.moveUp@0.6:1",
+          "feet": [
+            0.0,
+            0.0,
+            9.3
+          ]
+        }
+      ]
+    },
+    {
+      "name": "dead zones, set from the pad",
+      "recorded": "0.9.0 — look 26%, move 30%, set on the settings screen from the pad",
+      "level": 0,
+      "script": "wait:0.5 pad.menu:0.1 wait:0.1 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.east:0.1 wait:0.3 yaw:0 pitch:0 pad.lookRight@0.2:1 wait:0.2 pad.lookRight@0.5:0.5 wait:0.2 pad.lookRight:0.5 wait:0.2 yaw:0 pad.moveUp@0.2:1 wait:0.3 pad.moveUp@0.6:1 wait:0.3",
+      "expect": [
+        {
+          "look": "pad.lookRight@0.2:1",
+          "turned": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookRight@0.5:0.5",
+          "turned": [
+            9.64,
+            0.0
+          ]
+        },
+        {
+          "look": "pad.lookRight:0.5",
+          "turned": [
+            91.67,
+            0.0
+          ]
+        },
+        {
+          "after": "pad.moveUp@0.2:1",
+          "feet": [
+            0.0,
+            0.0,
+            12.0
+          ]
+        },
+        {
+          "after": "pad.moveUp@0.6:1",
+          "feet": [
+            0.0,
+            0.0,
+            10.01
+          ]
+        }
+      ]
     }
   ]
 }

@@ -12,6 +12,30 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.16.2] — 2026-09-11
+
+**The walk check sees the look.** Additive; no engine change.
+
+### In the sample
+
+- **`Tools/walks.py` reads the view's turns** — `look '…' → view turned X° right, Y° up` — to the
+  hundredth of a degree it prints, and takes a segment that reports none as no turn, which is what a
+  stick inside its dead zone gives.
+- **Four more walks, recovered from the history**: 0.8.0's sensitivities at their defaults (the stick
+  91.67° right and 45.84° up, the mouse 63.03° and 25.21°) and **with mouse 2.0, stick 0.5 and the stick
+  inverted set on the settings screen from the pad** (45.84°, −22.92°, 126.05°, 50.42°); 0.9.0's dead
+  zones at their defaults (8% no turn, 20% 2.26°, 50% 18.11°, full 91.67°; a stick at 20% walks 0.11 m,
+  at 60% 2.59 m) and **at 26% and 30%, set from the pad** (20% no turn, 50% 9.64°; 0 m and 1.99 m).
+- **A check polls the pad from its steps.** The settings screen's pad input is read in `beginFrame`, and a
+  check draws no frames — so a scripted pad pressed the screen's buttons and nothing read them: the
+  dead-zone walk changed nothing and measured the defaults twice. The keyboard never had this; its keys
+  go straight to the game.
+
+### Measured
+
+**Fifteen walks, 79 expectations, 33 s.** Proved by failing: the mouse's look scale doubled fails both
+look walks on the mouse's turns (63.03 → 126.05, 25.21 → 50.42) and leaves the stick's alone.
+
 ## [0.16.1] — 2026-09-11
 
 **The walk check runs its walks four at a time: 25 s, where it took 122.** Additive; no engine change.

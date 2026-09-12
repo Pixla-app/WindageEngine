@@ -2653,6 +2653,14 @@ final class SampleGame: GameLoop {
     }
 
     func step(deltaTime: Float) {
+        // **As a check there are no frames**, and the pad is polled in `beginFrame` — so a scripted pad
+        // could press the settings screen's buttons and nothing read them: the dead-zone walk set nothing
+        // and measured the defaults twice. Polled here instead, where the check's steps are. The keyboard
+        // never had this: its keys go straight to `keyPressed`.
+        if SampleGame.isCheck {
+            input.pollFrame()
+            handleMenuPad()
+        }
         rateWindow.steps += 1
         if SampleGame.reportsRate {
             let now = CFAbsoluteTimeGetCurrent()
