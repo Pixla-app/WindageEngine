@@ -1990,6 +1990,48 @@ struct CharacterStepRateTests {
                 "at \(rate) a second it landed at \(String(describing: impact)) m/s, the ground is reached at \(exact)")
     }
 
+    /// **The eye settles by the same curve at any rate, and a slow game does not snap.** A step of
+    /// `1/settleRate` — twelfths of a second here — closed the whole gap under `1 − rate·dt`, and past it
+    /// the factor went negative. It leaves `e^(−rate·dt)` of the lag, whatever the step.
+    @Test("However long the step, the eye keeps the share of its lag the rate says",
+          arguments: [Float(10), 30, 120])
+    func settleLeavesItsShare(rate: Float) {
+        let dt = 1 / rate
+        let ledge = BoundingBox(minimum: SIMD3(-2, 0, -6), maximum: SIMD3(2, 0.45, 0.5))
+        var c = CharacterController(feet: SIMD3(0, 0, 2))
+        var lag: Float?
+        for _ in 0..<Int(rate) {
+            c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: dt,
+                   in: CharacterController.Surroundings(solids: [ledge]))
+            guard c.feet.y > 0.4 else { continue }              // up on the ledge
+            let behind = c.feet.y + tuning.eyeHeight - c.eye.y
+            if let lag {
+                // **And there was a lag to keep.** At ten steps a second the old form closed the whole
+                // gap in the step that climbed, so both readings were nothing and any ratio held: that
+                // zero is the snap this is about.
+                #expect(lag > 0.1, "at \(rate) a second the eye was only \(lag) m behind a 0.45 m climb: it snapped")
+                #expect(abs(behind - lag * exp(-tuning.settleRate * dt)) < 1e-4,
+                        "at \(rate) a second a step left \(behind) m of \(lag), and \(exp(-tuning.settleRate * dt)) of it is the rate")
+                return
+            }
+            lag = behind
+        }
+        Issue.record("never climbed the ledge at \(rate) a second")
+    }
+
+    /// A rate per second closes the same share of the gap in a second, however it is cut up: half of it
+    /// in half a second, twice, is the same as all of it once.
+    @Test("A settle of a whole second is the same in one step or a hundred", arguments: [Float(1), 2, 10, 100])
+    func settleAddsUp(steps: Float) {
+        var c = CharacterController(feet: SIMD3(0, 1, 0))
+        // Drop it onto a floor 1 m down, then let the eye catch up over exactly one second.
+        let floor = BoundingBox(minimum: SIMD3(-5, 0, -5), maximum: SIMD3(5, 0, 5))
+        var many = c
+        for _ in 0..<Int(steps) { many.step(yaw: 0, input: MovementInput(), deltaTime: 1 / steps, in: .init(solids: [floor])) }
+        c.step(yaw: 0, input: MovementInput(), deltaTime: 1, in: .init(solids: [floor]))
+        #expect(abs(many.eye.y - c.eye.y) < 2e-3, "\(steps) steps of a second left the eye at \(many.eye.y), one step at \(c.eye.y)")
+    }
+
     /// And it is in the air for 2v/g, within a step: the flight a game's timing is built around.
     @Test("A jump lasts the same however often the game steps", arguments: [Float(30), 60, 120, 240])
     func sameFlight(rate: Float) {

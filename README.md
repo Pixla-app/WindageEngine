@@ -1057,6 +1057,18 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### The eye settles as the exponential it is (0.18.0)
+
+The eye closes a fraction of its lag per second — which is an exponential, and was taken as `1 − rate·dt`
+a step: the first two terms of it. Short by the rest at every rate, and **zero at `dt = 1/rate`**, so a
+game stepping twelve times a second closed the whole gap in one step and snapped where a faster one eased;
+past that the factor would have gone negative had it not been clamped. Up four treads the eye ended 1.640 m
+above the feet at 30 steps a second against 1.636 at 120.
+
+`settling`, `bobCatchUp` and the bob's easing take `e^(−rate·dt)` now: the same curve at any step rate, and
+no rate at which it snaps. The eye lags a little longer after a step than it did — by exactly the terms the
+old form dropped.
+
 ### A landing hits at the ground's speed (0.17.0)
 
 0.16.0 made the flight exact; the landing still reported the speed at the *end* of the step that crossed

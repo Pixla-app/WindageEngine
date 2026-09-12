@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-597 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+599 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,21 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the eye settles as the exponential it is (0.18.0)
+
+**`settling`, `bobCatchUp` and the bob's easing take `e^(−rate·dt)`** — a rate per second is an
+exponential, and `1 − rate·dt` is its first two terms, zero at `dt = 1/rate`: at twelve steps a second the
+eye closed the whole gap in one step. Up four treads: **1.640 m above the feet at 30 steps a second, 1.636
+at 120**; the same at every rate now. Two tests (the share a step leaves, at 10/30/120; a second of it in
+one step or a hundred), all failing on the old form.
+
+**A test of mine that measured the wrong thing**: the first version compared the eye's height after a fixed
+number of steps up stairs — which depends on where in the climb the sampling lands, not on the settle law,
+and it failed at every rate. And the 10-steps-a-second case passed the *old* code until the test also
+demanded there be a lag at all: both its readings were zero, which is the snap it was looking for.
+
+**Nothing the walks record moved** — 15 walks, 79 expectations, the head bob included.
 
 ## Done 2026-09-11 — a landing hits at the ground's speed (0.17.0)
 
@@ -1512,16 +1527,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
-   0.16.0: `settling *= 1 − rate·dt` a step, where the curve is `exp(−rate·dt)`. Measured 2026-09-11,
-   walking up four treads: the eye ends **1.640 m above the feet at 30 steps a second, 1.638 at 60, 1.636
-   at 120 and 240** — 4 mm apart, and at a low enough rate `rate·dt` reaches 1 and the eye snaps instead of
-   settling. Everything else on those stairs already agrees: same distance, 4 footsteps at every rate.
-   **Proved by** the same eye height at all four rates, to a tenth of a millimetre, and the walks'
-   recorded eye heights unchanged at 120. Small in metres; the point is that a game at 30 and a game at
-   120 are the same game.
-
-2. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
+1. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
    along `pow(remaining, slideEasing)`, taken once a step and held for the whole step — a Riemann sum of a
    falling curve, so a coarse stepper under-counts it. Measured 2026-09-11, sprint then crouch on the
    move: **15.847 m at 30 steps a second, 15.997 at 60, 16.069 at 120, 16.093 at 240** — 25 cm between the
@@ -1530,7 +1536,7 @@ below, never in this list.
    all four rates, and the walks' recorded positions unchanged at 120. (Checked on the way and already
    right: a stick's turn is 91.6732° at every rate, and the distance a walk covers is the same.)
 
-3. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
+2. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
    a screenshot — shadows, the tone map, normal maps, the clustered lights, the lamps that cast — and
    nothing guards any of them: `swift test` never draws a pixel, and the walk check draws none either (it
    builds no sky at all). A `Tools/frames.py` beside `walks.py`: the sample renders the recorded viewpoints
@@ -1539,6 +1545,16 @@ below, never in this list.
    of pixels differ by more than 2%. Start with the four the README shows. **Proved by** the frames
    passing, and by failing with the shadow pass off, and again with the tone map's curve changed — each a
    change a person would see at once and a test cannot.
+
+3. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
+   the flight (0.16.0), the landing's impact (0.17.0), the eye (0.18.0), the slide next — and each has its
+   own test. The capstone is one course that uses all of it: walk, jump, climb a ledge, sprint, slide, walk
+   off the end, land. Measured 2026-09-11 as it stands: it ends at z **−32.890 at 30 steps a second,
+   −32.734 at 60, −32.856 at 120, −32.917 at 240** — 18 cm between the ends, most of it the slide.
+   **Proved by** the course ending within a centimetre at all four rates, with the same landing impacts.
+   **Press its keys by elapsed time, not by step index**: pressing jump on "the step where i == 72" fired
+   at a different moment at each rate and landed the body from a different height — 6.3 m/s against 4.66 —
+   which is the test being wrong, not the controller.
 
 ## Parked — not next, and why
 

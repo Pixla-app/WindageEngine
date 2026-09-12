@@ -239,8 +239,14 @@ public nonisolated struct CharacterController: Sendable {
         /// anything.
         public var slideDropRate: Float = 7
 
-        /// How fast the eye catches up with a change in the height of the ground under it, as a
-        /// fraction closed per second. See the type's notes on smoothing.
+        /// How fast the eye catches up with a change in the height of the ground under it, as a rate
+        /// per second: a second of it leaves `e^(−12)` of the gap, a step of `dt` leaves `e^(−12·dt)`.
+        /// See the type's notes on smoothing.
+        ///
+        /// **The exponential, not `1 − rate·dt`** (0.18.0): that is its first two terms, it is short by
+        /// the rest, and at `dt = 1/rate` it closes the whole gap in one step — a game stepping 12 times a
+        /// second snapped where one stepping 120 eased. Measured up four treads, the eye ended 1.640 m
+        /// above the feet at 30 steps a second against 1.636 at 120; now 1.636 at both.
         public var settleRate: Float = 12
 
         /// Half the width of the body's footprint, in metres.
@@ -697,10 +703,13 @@ public nonisolated struct CharacterController: Sendable {
             let pace = crouched ? tuning.walkSpeed * tuning.crouchedSpeedFraction : tuning.walkSpeed
             wantBob = gait * min(1, groundSpeed / max(pace, 1e-3))
         }
-        let ease = min(1, tuning.bobEase * dt)
-        bobAmount += (wantBob - bobAmount) * ease
+        // **Closed as the exponential it is** (0.18.0): a fraction closed per second leaves `e^(−rate·dt)`
+        // of the gap after a step, not `1 − rate·dt`, which is its first two terms — and which reaches
+        // zero at `dt = 1/rate` and would go negative past it, so a game stepping slowly snapped where a
+        // fast one eased. See ``Tuning/settleRate``.
+        bobAmount += (wantBob - bobAmount) * (1 - exp(-tuning.bobEase * dt))
         if bobAmount < 1e-4 && wantBob == 0 { bobAmount = 0 }
-        bobCatchUp *= 1 - min(1, tuning.settleRate * dt)
+        bobCatchUp *= exp(-tuning.settleRate * dt)
 
         if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
             if !wasMoving { setStridePhase(max(stridePhase, tuning.firstStepPhase)) }
@@ -718,9 +727,9 @@ public nonisolated struct CharacterController: Sendable {
             wasMoving = false
         }
 
-        // The eye catches up with the ground. Framed as a fraction per second, so the rate means the
-        // same thing whatever the step is.
-        settling *= 1 - min(1, tuning.settleRate * dt)
+        // The eye catches up with the ground. A rate per second, and the step takes exactly what a step
+        // of it leaves: the same curve at any step rate.
+        settling *= exp(-tuning.settleRate * dt)
 
         // The knees: a critically damped spring, kicked by a landing and left to recover.
         //

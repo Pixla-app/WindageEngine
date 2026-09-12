@@ -12,6 +12,28 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.18.0] — 2026-09-11
+
+**The eye settles as the exponential it is.** A rate per second was taken as `1 − rate·dt` a step — the
+first two terms of `e^(−rate·dt)`, short by the rest, and zero at `dt = 1/rate`: a game stepping twelve
+times a second closed the whole gap in one step and snapped where a faster one eased.
+
+### Changed
+
+- **`settling`, `bobCatchUp` and the head bob's easing take `e^(−rate·dt)`** — the curve their rates
+  describe. **The eye lags a little longer after a step up**, by the terms the old form dropped: 5% of a
+  step's share at 120 a second.
+
+### Measured
+
+Up four treads the eye ended **1.640 m above the feet at 30 steps a second and 1.636 at 120**; it is the
+same at every rate now. Two tests: a step leaves exactly `e^(−rate·dt)` of the lag at 10, 30 and 120 steps
+a second — and there is a lag to leave, where at 10 the old form left none at all — and a second of
+settling is the same in one step or a hundred. All three rates fail on the old form; the 10 passed it only
+because both its readings were zero, which is the snap.
+
+**Nothing the walks record moved**: 15 walks, 79 expectations, including the head bob to the millimetre.
+
 ## [0.17.0] — 2026-09-11
 
 **A landing hits at the speed the ground is reached at.** The impact reported was the speed at the end of
