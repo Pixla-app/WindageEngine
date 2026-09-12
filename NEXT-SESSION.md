@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-599 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+600 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,18 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a slide covers the ground its curve says (0.19.0)
+
+**The step takes the slide speed's average over the step** (`∫ r^e dr`), not one reading of a falling
+curve; a slide ending inside a step is spent for the part it lasted. The curve integrates to **16.138 m**:
+before, 15.847 / 15.997 / 16.069 / 16.093 at 30 / 60 / 120 / 240 steps a second; now 16.050 / 16.138 /
+16.138 / 16.121, the ends being the measuring window (the step a slide ends inside is over before it is
+looked at — 0.088 m at 30 a second, exactly the gap). One test, all four rates failing on the old reading.
+
+**Two traps, both in the test rather than the engine**: keys pressed by step index start the slide at a
+different moment at each rate; and a tolerance of `sprintSpeed·dt` (0.6 m at 30 a second) would have
+passed the old code at every rate — it is the crouched walk of one step, 0.09 m, that bounds the window.
 
 ## Done 2026-09-11 — the eye settles as the exponential it is (0.18.0)
 
@@ -1527,16 +1539,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
-   along `pow(remaining, slideEasing)`, taken once a step and held for the whole step — a Riemann sum of a
-   falling curve, so a coarse stepper under-counts it. Measured 2026-09-11, sprint then crouch on the
-   move: **15.847 m at 30 steps a second, 15.997 at 60, 16.069 at 120, 16.093 at 240** — 25 cm between the
-   ends, on a move whose whole point is where it puts you. The profile integrates in closed form over a
-   step (`∫ r^e dr = r^(e+1)/(e+1)`), as the jump's did. **Proved by** the same distance to a centimetre at
-   all four rates, and the walks' recorded positions unchanged at 120. (Checked on the way and already
-   right: a stick's turn is 91.6732° at every rate, and the distance a walk covers is the same.)
-
-2. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
+1. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
    a screenshot — shadows, the tone map, normal maps, the clustered lights, the lamps that cast — and
    nothing guards any of them: `swift test` never draws a pixel, and the walk check draws none either (it
    builds no sky at all). A `Tools/frames.py` beside `walks.py`: the sample renders the recorded viewpoints
@@ -1546,7 +1549,7 @@ below, never in this list.
    passing, and by failing with the shadow pass off, and again with the tone map's curve changed — each a
    change a person would see at once and a test cannot.
 
-3. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
+2. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
    the flight (0.16.0), the landing's impact (0.17.0), the eye (0.18.0), the slide next — and each has its
    own test. The capstone is one course that uses all of it: walk, jump, climb a ledge, sprint, slide, walk
    off the end, land. Measured 2026-09-11 as it stands: it ends at z **−32.890 at 30 steps a second,
@@ -1555,6 +1558,13 @@ below, never in this list.
    **Press its keys by elapsed time, not by step index**: pressing jump on "the step where i == 72" fired
    at a different moment at each rate and landed the body from a different height — 6.3 m/s against 4.66 —
    which is the test being wrong, not the controller.
+
+3. **The slide is a walk in the check.** It is the one move with no measurement in the sample at all:
+   0.19.0 proved it in tests, and the walks — which carry the crate, the lift, the stairs, the bob, the
+   look — never slide. The courtyard has the run for it: from the spawn, sprint down −z and crouch, and the
+   slide goes through the south wall's gap with nothing in the way (the crates stand at x ±1.25 and wider).
+   Record its distance and the eye's drop, as the others record their feet. **Proved by** the walk holding,
+   and by failing with the slide's easing changed — the one number nothing else would catch.
 
 ## Parked — not next, and why
 

@@ -627,6 +627,7 @@ public nonisolated struct CharacterController: Sendable {
             slideDirection = lastDirection
         }
         if !crouching || !moving { slideLeft = 0 }
+        let slideWas = slideLeft
         slideLeft = max(0, slideLeft - dt)
         wasCrouching = crouching
         wasSprinting = input.sprint && moving
@@ -661,9 +662,20 @@ public nonisolated struct CharacterController: Sendable {
             : (input.sprint ? tuning.sprintSpeed : tuning.walkSpeed)
         // Unless you are sliding, in which case the sprint's speed bleeds off into the crouch's —
         // held early and let go late, which reads as momentum rather than as being dragged to a halt.
-        if slideLeft > 0 {
-            let remaining = slideLeft / tuning.slideSeconds
-            speed += (tuning.sprintSpeed - speed) * pow(remaining, tuning.slideEasing)
+        //
+        // **The speed over the step, not the speed at one end of it** (0.19.0). What is left of the slide
+        // falls steadily, so `pow(remaining, easing)` is a curve across the step, and taking one reading
+        // of it made the whole slide shorter the more coarsely a game stepped: 15.847 m at 30 steps a
+        // second against 16.093 at 240, where the curve integrates to 16.138. Its integral is as plain as
+        // the curve — `∫ r^e dr = r^(e+1)/(e+1)` — so the step takes the average it actually holds, and a
+        // slide that ends inside a step is spent for the part of the step it lasted.
+        if slideWas > 0 {
+            let span = tuning.slideSeconds, easing = tuning.slideEasing
+            let from = min(1, slideWas / span), to = slideLeft / span
+            let share = dt > 0
+                ? span * (pow(from, easing + 1) - pow(to, easing + 1)) / ((easing + 1) * dt)
+                : pow(to, easing)
+            speed += (tuning.sprintSpeed - speed) * share
         }
 
         // --- Posture height, at a rate.

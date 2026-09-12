@@ -2019,6 +2019,36 @@ struct CharacterStepRateTests {
         Issue.record("never climbed the ledge at \(rate) a second")
     }
 
+    /// **A slide covers the ground its curve says, at any rate.** Its speed falls from a sprint's to a
+    /// crouch's along `r^0.35`, which integrates over the whole slide to `T·(crouched + (sprint −
+    /// crouched)/(e+1))` = 16.138 m. Read once a step and held, it came up short the coarser the steps:
+    /// 15.847 m at 30 a second, 15.997 at 60, 16.069 at 120, 16.093 at 240.
+    ///
+    /// **The keys go by the clock, not by the step count** — a slide begun on "the twelfth step" begins at
+    /// a different moment at each rate, and then the rates are being asked a different question.
+    @Test("A slide covers the same ground however often the game steps", arguments: [Float(30), 60, 120, 240])
+    func sameSlide(rate: Float) {
+        let dt = 1 / rate
+        var c = CharacterController(feet: .zero)
+        var slid: Float = 0, time: Float = 0
+        while time < 3 {
+            let sprinting = time < 1
+            let before = c.feet
+            c.step(yaw: 0, input: MovementInput(forward: 1, sprint: sprinting), crouching: !sprinting,
+                   deltaTime: dt, in: CharacterController.Surroundings())
+            if c.slideProgress > 0 { slid += simd_distance(before, c.feet) }
+            time += dt
+        }
+        let exact = tuning.slideSeconds
+            * (tuning.walkSpeed * tuning.crouchedSpeedFraction
+               + (tuning.sprintSpeed - tuning.walkSpeed * tuning.crouchedSpeedFraction) / (tuning.slideEasing + 1))
+        // The step a slide ends inside is not counted here — the slide is over by the time the step is
+        // looked at — so the window can fall short by that step's crouched walk, and no more.
+        let window = tuning.walkSpeed * tuning.crouchedSpeedFraction * dt
+        #expect(abs(slid - exact) < 0.01 + window,
+                "at \(rate) a second the slide covered \(slid) m, its curve integrates to \(exact)")
+    }
+
     /// A rate per second closes the same share of the gap in a second, however it is cut up: half of it
     /// in half a second, twice, is the same as all of it once.
     @Test("A settle of a whole second is the same in one step or a hundred", arguments: [Float(1), 2, 10, 100])

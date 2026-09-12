@@ -1057,6 +1057,19 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### A slide covers the ground its curve says (0.19.0)
+
+A slide's speed falls from a sprint's to a crouch's along `r^0.35`, and the step read that curve once and
+held the reading for the whole step — so the slide came up shorter the more coarsely a game stepped:
+15.847 m at 30 steps a second, 16.093 at 240, where the curve integrates to **16.138**. The step takes the
+average now, the curve's integral being as plain as the curve, and a slide that ends inside a step is
+spent for the part of the step it lasted. 16.138 m at any rate.
+
+**The test presses its keys by the clock, not by the step count.** A slide begun on "the twelfth step"
+begins at a different moment at each rate, and then the rates are answering different questions — which is
+how a first attempt at this had the body jumping from different heights and landing at 6.3 m/s against
+4.66.
+
 ### The eye settles as the exponential it is (0.18.0)
 
 The eye closes a fraction of its lag per second — which is an exponential, and was taken as `1 − rate·dt`

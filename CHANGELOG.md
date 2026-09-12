@@ -12,6 +12,34 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.19.0] — 2026-09-11
+
+**A slide covers the ground its curve says, at any step rate.** Its speed falls from a sprint's to a
+crouch's along `r^0.35`; the step took one reading of that curve and held it, so a slide came up shorter
+the more coarsely a game stepped.
+
+### Changed
+
+- **A slide's step takes the speed's average over the step**, `∫ r^e dr = r^(e+1)/(e+1)` — and a slide
+  that ends inside a step is spent for the part of the step it lasted. **Slides are a little longer**, by
+  what the readings lost.
+
+### Measured
+
+A slide of 1.15 s from 18 m/s to 2.7, whose curve integrates to **16.138 m**:
+
+| steps a second | 30 | 60 | 120 | 240 |
+|---|---|---|---|---|
+| before | 15.847 m | 15.997 | 16.069 | 16.093 |
+| after | 16.050 | 16.138 | 16.138 | 16.121 |
+
+(What is left at 30 and 240 is the measurement, not the slide: the step a slide ends inside is over before
+it is looked at, so the window misses that step's crouched walk — 0.088 m at 30 a second, and exactly the
+gap.) One test over four rates, failing at all four on the old reading — its keys pressed by the clock,
+since a slide begun on "the twelfth step" begins at a different moment at each rate.
+
+Nothing the walks record moved: no walk of theirs slides — which is the next thing to add.
+
 ## [0.18.0] — 2026-09-11
 
 **The eye settles as the exponential it is.** A rate per second was taken as `1 − rate·dt` a step — the
