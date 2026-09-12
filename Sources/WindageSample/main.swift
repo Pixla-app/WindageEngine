@@ -88,7 +88,8 @@ window.title = "\(Engine.name) \(Engine.version) — sample"
 window.center()
 window.acceptsMouseMovedEvents = true
 
-guard let engine = FrameRenderer(device: device) else {
+guard let engine = FrameRenderer(device: device,
+                                 simulationStepsPerSecond: SampleGame.stepsPerSecond) else {
     print("WindageSample: this GPU does not support Metal 4")
     exit(1)
 }

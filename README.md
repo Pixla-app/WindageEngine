@@ -1079,6 +1079,33 @@ courtyard). Two levers tried first moved nothing — `ToneMapping`'s default cur
 overrides, and the constant depth bias at 25×, too small to see against a cascade's depth range — and a
 lever that moves nothing proves nothing.
 
+### One course, four rates, one set of numbers (0.20.1)
+
+The four fixes below were each won over one thing, from rest, with a test of its own. **The capstone is
+one course that uses all of it** — walk, jump, three treads climbed, sprint, slide, off a cliff, land —
+so that every error it collects is carried into the next thing rather than started afresh. It ends in
+the same place at 30, 60, 120 and 240 steps a second, with the same three landing speeds, the same jump
+height and the same number of footfalls. **No engine code changed for it; it is the proof that none
+needed to.** In the sample the same is walked in the ruins, and every line of the report is identical at
+all four rates.
+
+**Every number in it is computed rather than read off a run**, because four wrong answers can agree with
+each other: the ending is what each part of the course is worth added up, and the landings are `√(2gh)`.
+Switched off one at a time, the old flight fails the jump and all three landings at all four rates, the
+old landing speed fails every landing (0.41 m/s out at 30), and the old slide fails the ending at all
+four.
+
+**The floor is the `Float`, not the physics.** A plain eight-second walk in a straight line — nothing but
+a step's travel added to a position — lands 0.1 mm from 48 m at 30 steps a second, 0.6 mm at 240 and
+1.8 mm at 480. A centimetre is as tight as a course of this length can honestly be asked.
+
+**And one law a course cannot pin, which is worth knowing before writing one.** The eye's settling is
+kicked when the feet climb something, and a climb happens on whichever step first overlaps the tread — a
+moment the step grid rounds by up to 33 ms at 30 a second, which is a third either way on the lag that
+follows. Placing a tread so contact falls exactly on a step boundary at every rate only moves the problem
+into a float comparison. A law whose clock starts at a collision is pinned between two consecutive steps
+of one run, which is what 0.18.0's own test does.
+
 ### A slide covers the ground its curve says (0.19.0)
 
 A slide's speed falls from a sprint's to a crouch's along `r^0.35`, and the step read that curve once and
@@ -1201,6 +1228,15 @@ dead zones, each at its defaults and each as the settings screen sets it from a 
 expectations. Double the mouse's look scale and both look walks fail on the mouse's turns alone. That
 needed one fix: a check polls the pad from its steps, the settings screen's pad input being read per
 frame, and a check drawing none — a scripted pad pressed its buttons and nothing read them.
+
+**And since 0.20.1 a walk may name the step rates it has to hold at.** The `course` walk — up the ruins'
+stairs, off the landing, a jump, a sprint and a slide — runs at **30, 60, 120 and 240 steps a second and
+prints the same report at every one of them**, to the centimetre, the footstep and the tenth of a metre a
+second. **Its segments are whole steps of the slowest rate**, because a key can only be held for a whole
+number of steps: 0.75 s at thirty a second is 0.733 or 0.767, and 10 cm of walking is the difference.
+That measurement is what found the walk runner rounding *each* segment from the last boundary rather than
+from the script's start, so forty of those roundings could add up; boundaries are absolute now, and every
+recorded walk is unchanged at 120. Sixteen walks, nineteen runs, 98 expectations, 43 s.
 
 **Four at a time since 0.16.1 — 25 s for eleven walks, where one at a time took 122** — and every value
 identical either way, a walk's result being its step count rather than the clock. Two things made that

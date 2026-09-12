@@ -19,6 +19,11 @@ length and a few seconds to start.
     python3 Tools/walks.py --record   every expectation with what the walk gives now
     python3 Tools/walks.py --serial   one at a time, rather than four at once
 
+A walk may name the step **rates** it has to hold at — the course walk runs at 30, 60, 120 and 240 steps
+a second and must give one set of numbers. Its segments are whole steps of the slowest (multiples of
+1/30 s), because a key can only be held for a whole number of steps: 0.75 s at thirty a second is 0.733
+or 0.767, and 10 cm of walking is the difference.
+
 **A recorded number is changed deliberately, with its reason in the CHANGELOG** — the world the walk goes
 through changed, and this is what it does now. `--record` is for reading those off; it writes nothing.
 The tolerance is wide enough (2 cm) to let a real change hide, which is the point of looking.
@@ -38,11 +43,17 @@ WALK_LINE = re.compile(r"walk '([^']+)' → feet \(([-0-9.]+), ([-0-9.]+), ([-0-
 LOOK_LINE = re.compile(r"look '([^']+)' → view turned ([-0-9.]+)° right, ([-0-9.]+)° up")
 
 
-def run(walk):
+def run(walk, rate=None):
     """The sample's log for one walk: launched as a check, stopped half a second after the last segment
-    reports — the lines that follow it (footsteps, a gap) arrive in that time."""
-    env = dict(os.environ, WINDAGE_SAMPLE_CHECK=re.sub(r"[^a-z]+", "-", walk["name"]),
+    reports — the lines that follow it (footsteps, a gap) arrive in that time.
+
+    `rate` steps the simulation that often a second instead of the engine's 120 — a walk that declares
+    `rates` is run once at each, and every number it records has to hold at all of them."""
+    name = re.sub(r"[^a-z]+", "-", walk["name"]) + (f"-{rate:g}" if rate else "")
+    env = dict(os.environ, WINDAGE_SAMPLE_CHECK=name,
                WINDAGE_SAMPLE_LEVEL=str(walk["level"]), WINDAGE_SAMPLE_WALK=walk["script"])
+    if rate:
+        env["WINDAGE_SAMPLE_RATE"] = f"{rate:g}"
     tokens = walk["script"].split()
     last, times = f"walk '{tokens[-1]}'", tokens.count(tokens[-1])   # a label can come more than once
     seconds = sum(float(t.split(":")[1]) for t in walk["script"].split()
@@ -142,29 +153,34 @@ def main():
     if built.returncode != 0:
         print(built.stdout[-2000:], built.stderr[-2000:])
         return 1
-    def walked(walk):
+    # A walk that names `rates` is one job per rate, each having to give the same recorded numbers.
+    jobs = [(w, r) for w in walks for r in (w.get("rates") or [None])]
+
+    def walked(job):
+        walk, rate = job
         started = time.time()
-        results = check(walk, run(walk), spec["tolerance"])
-        return walk, results, time.time() - started
+        results = check(walk, run(walk, rate), spec["tolerance"])
+        return walk, rate, results, time.time() - started
 
     started = time.time()
     if "--serial" in sys.argv:
-        done = [walked(w) for w in walks]
+        done = [walked(j) for j in jobs]
     else:
         # Four: each walk is a whole game, and this machine has other work to do.
         with futures.ThreadPoolExecutor(max_workers=4) as pool:
-            done = list(pool.map(walked, walks))
+            done = list(pool.map(walked, jobs))
 
     failed = 0
-    for walk, results, took in done:
+    for walk, rate, results, took in done:
         bad = [r for r in results if not r[3]]
         failed += bool(bad)
-        print(f"{'ok  ' if not bad else 'FAIL'} {walk['name']:<16} {len(results) - len(bad)}/{len(results)}"
+        label = walk["name"] + (f" @{rate:g}/s" if rate else "")
+        print(f"{'ok  ' if not bad else 'FAIL'} {label:<16} {len(results) - len(bad)}/{len(results)}"
               f"  ({took:.1f} s; recorded {walk['recorded']})")
         for what, wanted, got, ok in results:
             if not ok or recording:
                 print(f"    {'   ' if ok else '!! '}{what}: recorded {wanted}, now {got}")
-    print(f"{len(walks) - failed} of {len(walks)} walks as recorded, in {time.time() - started:.0f} s")
+    print(f"{len(jobs) - failed} of {len(jobs)} runs as recorded, in {time.time() - started:.0f} s")
     return 1 if failed else 0
 
 

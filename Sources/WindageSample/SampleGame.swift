@@ -128,7 +128,10 @@ final class SampleGame: GameLoop {
 
         private let segments: [Segment]
         private var index = 0
-        private var elapsed: Float = 0
+        /// Time since the script began, in whole steps.
+        private var clock: Float = 0
+        /// When the segment in progress is due to end, counted from the script's start.
+        private var due: Float = 0
         private var peak: Float = -.greatestFiniteMagnitude
         private var begun = false
 
@@ -185,23 +188,34 @@ final class SampleGame: GameLoop {
 
         /// What happens this step, in order: a segment whose time is up ends — its keys come up —
         /// and the next begins — its keys go down. **Checked before the body moves**, so a segment of
-        /// n seconds holds its keys for exactly the steps that fit in n.
+        /// n seconds holds its keys for the steps that fit in n.
+        ///
+        /// **Every boundary is a time from the script's start, not a length of its own segment** — the
+        /// difference only shows when a script is run at more than one step rate, which is what the
+        /// course walk does. A key can only be held for a whole number of steps, so a boundary lands on
+        /// the nearest one; measuring each segment from the last boundary let those roundings *add up*,
+        /// half a step at a time, over a script with forty segments in it. Counted from the start,
+        /// every boundary is within half a step of where it belongs however many came before.
+        ///
+        /// **And a walk to be run at several rates has its segments in whole steps of the slowest** —
+        /// a multiple of 1/30 s here. Nothing can make a 0.75 s press land anywhere but 0.733 or 0.767
+        /// at thirty steps a second, and 10 cm of walking is what that costs.
         mutating func advance(by seconds: Float, body: CharacterController) -> [Event] {
             var events: [Event] = []
             while index < segments.count {
                 let segment = segments[index]
                 if !begun {
                     begun = true
-                    elapsed = 0
+                    due += segment.seconds
                     peak = body.feet.y
                     events.append(.begin(segment))
                 }
                 peak = max(peak, body.feet.y)
-                // **Half a step of slack**, because `elapsed` is a sum of step lengths: sixty steps of
+                // **Half a step of slack**, because `clock` is a sum of step lengths: sixty steps of
                 // 1/120 s add to a hair under 0.5 in a Float, and a half-second segment held for a
                 // sixty-first step — found when a scripted stick turn came out one step's worth long.
-                guard elapsed >= segment.seconds - seconds / 2 else {
-                    elapsed += seconds
+                guard clock >= due - seconds / 2 else {
+                    clock += seconds
                     break
                 }
                 let f = body.feet
@@ -431,6 +445,13 @@ final class SampleGame: GameLoop {
     /// **Drawn before a single step**, so it is the same picture every time: the clock full, no crate
     /// collected, the lifts and the turntable where the level puts them.
     static let frameWanted = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_FRAME"]
+
+    /// **`WINDAGE_SAMPLE_RATE=<steps per second>` steps the simulation that often** — the default is the
+    /// engine's 120. A game picks its own rate once and lives with it; what a *sample* is for is showing
+    /// that the choice does not change the game. `Tools/walks.py` runs the course walk at 30, 60, 120 and
+    /// 240 and requires one set of numbers.
+    static let stepsPerSecond = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_RATE"]
+        .flatMap(Double.init) ?? 120
 
     static let checkName = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"]
     static var isCheck: Bool { checkName != nil }

@@ -15,7 +15,9 @@ what changed recently and what is next.
 pixel by pixel (`--record` to redraw them, and then look at what changed).
 — every documented walk, run invisibly, failing on more than 2 cm from its record. **Run it before
 committing anything that touches the sample's levels or the controller**, and add an item's proof walk
-to `Tools/walks.json` when it is measured.
+to `Tools/walks.json` when it is measured. A walk may name the step `rates` it has to hold at — the
+course walk gives one set of numbers at 30, 60, 120 and 240 (`WINDAGE_SAMPLE_RATE`), and its segments are
+whole steps of the slowest, because a key can only be held for whole steps.
 
 **Reproduce a screenshot:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_CAMERA=-4,20,4,0,-62 swift run
 WindageSample` — level index, then `x,y,z,yaw,pitch` with the angles in degrees. **A camera placed
@@ -65,9 +67,9 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
-## State — 2026-09-11
+## State — 2026-09-12
 
-600 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+604 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -80,6 +82,35 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-12 — one course, four rates, one set of numbers (0.20.1)
+
+**No engine code changed, and that is the result.** The capstone (`OneCourseTests`) walks, jumps, climbs
+three treads, sprints, slides, goes off a cliff and lands, at 30 / 60 / 120 / 240 steps a second: it ends
+at the **same 63.283 m** (the parts added up: 18 + 9 + 16.138 + 0.945 + 19.2), lands at **6.3, 6.928 and
+10.954 m/s**, reaches **0.9923 m** in the jump and puts a foot down **14 times** — everything computed
+first, since four wrong answers can agree. Switched off: the old flight fails the jump and all three
+landings at every rate; the old landing speed fails every landing (0.41 m/s out at 30); the old slide
+fails the ending at every rate (0.246 m short at 30).
+
+**Walked in the ruins too**, as a 16th walk run at all four rates (`Tools/walks.py` takes `rates`): up
+the stairs, off the landing, a jump, a sprint, a slide — **every line identical at 30, 60, 120 and 240**,
+the slide ending 16.81 m along at x −19.81. `WINDAGE_SAMPLE_RATE` is new.
+
+**The measurement found the walk runner rounding badly.** A 0.75 s strafe covered 4.40 m at 30 steps a
+second where it covers 4.50 at 120 — a key can only be held for whole steps, and each segment was being
+measured from the *last boundary*, so forty of those roundings could add up. Boundaries are absolute now;
+all 15 recorded walks are unchanged at 120. What cannot be fixed is the rounding itself, so **a walk to be
+run at several rates has its segments in whole steps of the slowest** — multiples of 1/30 s.
+
+**Two things worth keeping.** The floor on any of this is the `Float`: a plain eight-second walk in a
+straight line lands 0.1 mm from 48 m at 30 steps a second, 0.6 mm at 240, 1.8 mm at 480 — so a centimetre
+is as tight as a course this long can be asked, and the course's 1.5 mm is that and nothing else. And
+**a law whose clock starts at a collision cannot be pinned by a course**: the eye's settling is kicked by
+a climb, the climb lands on whichever step first overlaps the tread, and `e^(−12·Δ)` over a 33 ms rounding
+is a third either way. Switching 0.18.0 back to `1 − rate·dt` leaves the course untouched; it does move
+what the sample prints (eye 1.70 m above the feet at the top of the stairs at 30, where it reads 1.69),
+and that number is deliberately **not** recorded — it sits on the rounding of the printed centimetre.
 
 ## Done 2026-09-11 — the frames are a check, and a missing barrier (0.20.0)
 
@@ -1557,24 +1588,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
-   the flight (0.16.0), the landing's impact (0.17.0), the eye (0.18.0), the slide next — and each has its
-   own test. The capstone is one course that uses all of it: walk, jump, climb a ledge, sprint, slide, walk
-   off the end, land. Measured 2026-09-11 as it stands: it ends at z **−32.890 at 30 steps a second,
-   −32.734 at 60, −32.856 at 120, −32.917 at 240** — 18 cm between the ends, most of it the slide.
-   **Proved by** the course ending within a centimetre at all four rates, with the same landing impacts.
-   **Press its keys by elapsed time, not by step index**: pressing jump on "the step where i == 72" fired
-   at a different moment at each rate and landed the body from a different height — 6.3 m/s against 4.66 —
-   which is the test being wrong, not the controller.
-
-2. **The slide is a walk in the check.** It is the one move with no measurement in the sample at all:
-   0.19.0 proved it in tests, and the walks — which carry the crate, the lift, the stairs, the bob, the
-   look — never slide. The courtyard has the run for it: from the spawn, sprint down −z and crouch, and the
-   slide goes through the south wall's gap with nothing in the way (the crates stand at x ±1.25 and wider).
-   Record its distance and the eye's drop, as the others record their feet. **Proved by** the walk holding,
-   and by failing with the slide's easing changed — the one number nothing else would catch.
-
-3. **The editor is checked — and its edited copy must follow the check's container first.** The editor is
+1. **The editor is checked — and its edited copy must follow the check's container first.** The editor is
    the one large thing in the sample with no automated cover at all: adding by kind, the lamp keys, undo,
    ⌘S, and the edited copy that shadows the shipped level. **A hazard to clear before any of that**:
    `SampleLevel`'s edited-level path (Sources/WindageSampleCore/SampleLevel.swift, the
@@ -1584,6 +1598,23 @@ below, never in this list.
    that tabs in, adds a crate by kind, brightens a lamp and saves, checked against a recorded level file,
    and a frame with the editor's overlay open. **Proved by** the level file matching, the frame matching,
    and both failing when the lamp's step or the added kind changes.
+
+2. **An engine that says its own name.** Unreal and Unity both open with a mark, and this engine has
+   none — no wordmark, no `Brand/`, nothing a game could show even if it wanted to. What the engine owes
+   here is the *surface*, not the taste: a splash a game can put up while it loads, drawn through the
+   engine's own `HUDRenderer` so it needs no game art, timed and skippable, with `Engine.name` and
+   `Engine.version` on it. **Nothing in `LICENSE` requires it** — that file grants nothing to anybody yet —
+   so this is a choice about what the engine is, and the smallest honest first half is the mark itself.
+   **Proved by** the sample opening with it and going on to play, a frame of it in `Tools/frames.py`, and
+   a walk whose first segment is spent on the splash still ending where it ends today.
+
+3. **A course that is pushed, carried and turned.** The capstone covers what the body does on its own;
+   it says nothing about the three things the world does *to* it — a lift under the feet, a slider into
+   the ribs, a turntable beneath them — and every one of those is a game-supplied `motion` that has its
+   own claim to being rate-independent. The sample's movers are functions of absolute time, which is the
+   right shape, but the `SlideRun` state machine accumulates `dt` and eases, and nothing has ever asked
+   it for the same answer twice. **Proved by** a second course walk, at the same four rates, riding the
+   ruins' lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
 
 ## Parked — not next, and why
 

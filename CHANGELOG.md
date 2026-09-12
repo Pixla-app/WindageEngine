@@ -12,6 +12,49 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.20.1] — 2026-09-12
+
+**One course, four rates, one set of numbers.** The rate independence was won a piece at a time — the
+flight (0.16.0), a landing's impact (0.17.0), the eye's settling (0.18.0), the slide (0.19.0) — and each
+piece has a test of its own, over one thing, from rest. This is the capstone: one course that walks,
+jumps, climbs three treads, sprints, slides, walks off a cliff and lands, with every error it collects
+carried into the next thing. **No engine code changed; this is the proof that none needed to.**
+
+### Added
+
+- **A capstone test** (`OneCourseTests`) over the whole body at 30, 60, 120 and 240 steps a second.
+  Where it ends, what each of its three landings hit at, how high the jump inside it rose and how many
+  times a foot came down are all **computed, not read off a run** — four wrong answers can agree with
+  each other. Switched off one at a time: the old flight fails the jump and every landing at all four
+  rates; the old landing speed fails every landing (0.41 m/s out at 30); the old slide fails the ending
+  at all four (0.246 m short at 30, 0.033 at 240).
+- **The floor on any of this is the `Float`, not the physics.** A plain eight-second walk in a straight
+  line — no jump, no slide, nothing but a step's travel added to a position — lands 0.1 mm from 48 m at
+  30 steps a second, 0.6 mm at 240 and 1.8 mm at 480. The course agrees to 1.5 mm, which is that.
+
+### In the sample
+
+- **`WINDAGE_SAMPLE_RATE=<steps per second>`** steps the simulation that often instead of the engine's
+  120, so the sample can be run at four rates and asked for one answer.
+- **A scripted walk's segment boundaries are times from the script's start**, not lengths of their own
+  segments. A key can only be held for a whole number of steps, so a boundary lands on the nearest one;
+  measuring each segment from the last boundary let those roundings *add up* over a script with forty
+  segments in it. Every recorded walk is unchanged at 120 steps a second (15 walks, 79 expectations).
+- **A 16th walk, `course`, run at all four rates** (`Tools/walks.py` takes a `rates` list): up the
+  ruins' stairs, off the landing, a jump, a sprint and a slide. Every line of its report is identical at
+  30, 60, 120 and 240 — the feet to the centimetre, the two landings at 6.9 and 6.3 m/s, the dips at 7
+  and 6 cm, the footsteps 2/4/0/0/0/2/0, and the slide ending 16.81 m along at x −19.81.
+  **Its segments are whole steps of the slowest rate** (multiples of 1/30 s): nothing can make a 0.75 s
+  press land anywhere but 0.733 or 0.767 at thirty steps a second, and 10 cm of walking is the cost.
+
+### Not covered, and said so
+
+- **A law whose clock starts at a collision cannot be pinned by a course.** The eye's settling is kicked
+  when the feet climb something, and a climb happens on whichever step first overlaps the tread — a
+  moment rounded by up to 33 ms at 30 a second, which is `e^(−12·Δ)`, a third either way, on about a
+  centimetre of lag. Switching the exponential back to `1 − rate·dt` leaves the course's numbers alone.
+  It is pinned where it can be — between two consecutive steps of one run — by 0.18.0's own tests.
+
 ## [0.20.0] — 2026-09-11
 
 **The frames are a check — and drawing one found a missing barrier.** Every rendering capability here was
