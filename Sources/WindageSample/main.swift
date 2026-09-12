@@ -120,6 +120,12 @@ displayLink.add(to: .main, forMode: .common)
 
 game.viewportChanged(width: Int(view.drawableSize.width), height: Int(view.drawableSize.height))
 
+// **A frame into a file, and nothing else** — `Tools/frames.py`. Before any step, so the picture is the
+// same every time, and before the window is ever shown.
+if let path = SampleGame.frameWanted {
+    exit(game.writeFrame(to: path) ? 0 : 1)
+}
+
 // Reported so an automated check can capture *this* window rather than the whole screen.
 print("WindageSample: window \(window.windowNumber)")
 

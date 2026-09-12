@@ -331,12 +331,12 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     /// pass.** Scene colour is radiance and gets tone mapped; interface colour is a *specification* —
     /// a brand red is that red, not "that red as it would look lit by this sun". Tone map the HUD as
     /// well and every interface colour arrives desaturated with nothing to say why.
-    private func encodeToneMapAndInterface(to drawable: CAMetalDrawable,
+    private func encodeToneMapAndInterface(to target: MTLTexture,
                                            scene: MTLTexture,
                                            frameSlot: Int,
                                            game: GameLoop) {
         let descriptor = MTL4RenderPassDescriptor()
-        descriptor.colorAttachments[0].texture = drawable.texture
+        descriptor.colorAttachments[0].texture = target
         // Every pixel is written by the full-screen triangle, so there is nothing worth loading.
         descriptor.colorAttachments[0].loadAction = .dontCare
         descriptor.colorAttachments[0].storeAction = .store
@@ -345,6 +345,8 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
         encoder.label = "Tone Map and Interface"
+        // The scene target was written by the pass before this one, and is read here as a texture.
+        encoder.barrier(afterQueueStages: .fragment, beforeStages: .fragment, visibilityOptions: .device)
 
         if let toneMapPipeline {
             encoder.setRenderPipelineState(toneMapPipeline)
@@ -360,6 +362,61 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
 
         game.encodeHUD(into: encoder, frameSlot: frameSlot)
         encoder.endEncoding()
+    }
+
+    /// Draws one frame into a texture of your own instead of a window's drawable, and **waits for the
+    /// GPU**, so what is in it can be read the moment this returns.
+    ///
+    /// **A frame is not only for a screen.** A check that compares this frame against a recorded one, a
+    /// thumbnail, a photograph a game saves: each wants the frame the game draws, and none of them has a
+    /// drawable to draw it into. The texture wants ``colorPixelFormat`` and `.renderTarget`; to read it
+    /// afterwards it wants a shared or managed storage mode too.
+    ///
+    /// The same passes in the same order as a displayed frame — the pre-passes, the scene into its HDR
+    /// target, the tone map and the interface — so what comes out is what a player would have seen.
+    public func render(into texture: MTLTexture, interpolation: Float = 0) {
+        guard let game else { return }
+        updateRenderTargets(width: texture.width, height: texture.height)
+        guard let depthTexture, let sceneTexture else { return }
+
+        let previousValueToWaitFor = frameIndex - FrameRenderer.maxFramesInFlight
+        while !endFrameEvent.wait(untilSignaledValue: UInt64(previousValueToWaitFor), timeoutMS: 1000) {
+            NSLog("\(Engine.name): GPU has not completed frame \(previousValueToWaitFor) after 1 s; still waiting.")
+        }
+        let frameSlot = frameIndex % FrameRenderer.maxFramesInFlight
+        let allocator = commandAllocators[frameSlot]
+        allocator.reset()
+        commandBuffer.beginCommandBuffer(allocator: allocator)
+
+        game.encodePrePasses(into: commandBuffer, frameSlot: frameSlot, interpolation: interpolation)
+
+        let passDescriptor = MTL4RenderPassDescriptor()
+        passDescriptor.colorAttachments[0].texture = sceneTexture
+        passDescriptor.colorAttachments[0].loadAction = .clear
+        passDescriptor.colorAttachments[0].clearColor = clearColor
+        passDescriptor.colorAttachments[0].storeAction = .store
+        let depthAttachment = MTLRenderPassDepthAttachmentDescriptor()
+        depthAttachment.texture = depthTexture
+        depthAttachment.loadAction = .clear
+        depthAttachment.clearDepth = FrameRenderer.reversedZClearDepth
+        depthAttachment.storeAction = .dontCare
+        passDescriptor.depthAttachment = depthAttachment
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDescriptor) else { return }
+        encoder.label = "Scene, into a texture"
+        encoder.barrier(afterQueueStages: .fragment, beforeStages: .fragment, visibilityOptions: .device)
+        game.encode(into: encoder, frameSlot: frameSlot, interpolation: interpolation)
+        encoder.endEncoding()
+
+        encodeToneMapAndInterface(to: texture, scene: sceneTexture, frameSlot: frameSlot, game: game)
+        commandBuffer.endCommandBuffer()
+        commandQueue.commit([commandBuffer])
+        commandQueue.signalEvent(endFrameEvent, value: UInt64(frameIndex))
+        frameIndex += 1
+        // Nothing presents this one, so nothing else will wait for it: wait here.
+        while !endFrameEvent.wait(untilSignaledValue: UInt64(frameIndex - 1), timeoutMS: 5000) {
+            NSLog("\(Engine.name): the GPU has not finished the frame asked for into a texture.")
+        }
     }
 
     private func render(to drawable: CAMetalDrawable, interpolation alpha: Float) {
@@ -403,10 +460,17 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
             fatalError("Failed to create render command encoder")
         }
         encoder.label = "Scene"
+        // **Wait for what the pre-passes wrote.** Shadow maps are drawn into by a pass in this very
+        // command buffer and sampled here, and Metal 4 tracks no hazard for you: without this the scene
+        // may sample a shadow map the shadow pass has not finished writing. It looked right in play —
+        // the previous frame's maps are there to sample — and the first frame of all, with nothing in
+        // them yet, came out differently on every run: shadows from another run's memory, or a black
+        // scene. Found by drawing a frame into a texture with no window (0.20.0).
+        encoder.barrier(afterQueueStages: .fragment, beforeStages: .fragment, visibilityOptions: .device)
         game.encode(into: encoder, frameSlot: frameSlot, interpolation: alpha)
         encoder.endEncoding()
 
-        encodeToneMapAndInterface(to: drawable, scene: sceneTexture, frameSlot: frameSlot, game: game)
+        encodeToneMapAndInterface(to: drawable.texture, scene: sceneTexture, frameSlot: frameSlot, game: game)
 
         if let layerResidencySet = (drawable.layer as CAMetalLayer?)?.residencySet {
             commandBuffer.useResidencySet(layerResidencySet)

@@ -12,6 +12,45 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.20.0] — 2026-09-11
+
+**The frames are a check — and drawing one found a missing barrier.** Every rendering capability here was
+judged by looking at a screenshot, and guarded by nothing: `swift test` draws no pixel and the walk check
+draws none either.
+
+### Fixed
+
+- **The scene pass waits for the shadow pass, and the tone map for the scene.** Metal 4 tracks no hazard
+  between passes: the scene sampled shadow maps written by a pass in the very same command buffer, with
+  nothing telling the GPU to wait. In play it looked right — the previous frame's maps are there to
+  sample, so shadows were a frame stale — and **the first frame of all came out differently on every
+  run**: a black scene, or one blotched in cluster-sized squares, from whatever was in that memory. Two
+  consumer barriers (`barrierAfterQueueStages:beforeStages:`). Four runs of the same frame are now the
+  same bytes.
+
+### Added
+
+- **`FrameRenderer.render(into:)`** — one frame into a texture of your own instead of a window's
+  drawable, waiting for the GPU so it can be read at once. The same passes in the same order, so what
+  comes out is what a player would have seen.
+
+### In the sample
+
+- **`WINDAGE_SAMPLE_FRAME=<path>`** draws one frame to a PNG and quits — no window, before any step, so
+  the picture is the same every time.
+- **`Tools/frames.json`, `Tools/frames.py`, `Tools/frames/`** — four recorded viewpoints (the ruins from
+  above, the lintel at eye height, the courtyard, the turntable), drawn and compared pixel by pixel; a
+  frame fails when more than 0.5% of its pixels differ by more than 5 in any channel. All four match to
+  the bit; 15 s.
+
+### Measured
+
+Proved by failing: the sample's tone map from ACES to Reinhard fails all four (98% of pixels, worst
+channel 48); nothing drawn into the sun's shadow maps fails all four (5.5–7.6% in the courtyard).
+**Two first attempts proved nothing and were caught**: changing `ToneMapping`'s default curve, which the
+sample overrides; and multiplying the constant depth bias by 25, which is too small to see against a
+cascade's depth range.
+
 ## [0.19.0] — 2026-09-11
 
 **A slide covers the ground its curve says, at any step rate.** Its speed falls from a sprint's to a

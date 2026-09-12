@@ -1057,6 +1057,28 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### The frames are a check (0.20.0)
+
+Shadows, the tone map, normal maps, the clustered lights, the lamps that cast: every one was judged by
+looking at a screenshot, and guarded by nothing afterwards — the tests draw no pixel, and neither does the
+walk check. **`FrameRenderer.render(into:)`** draws a frame into a texture of your own, `Tools/frames.py`
+draws the recorded viewpoints with no window and compares them against the frames kept in `Tools/frames/`,
+and a frame fails when more than 0.5% of its pixels differ by more than 5 in a channel. Four viewpoints,
+15 s, and on this machine they match to the bit.
+
+**Drawing one found a bug that had been there all along.** Metal 4 tracks no hazard between passes, and
+the scene pass sampled shadow maps that a pass in the same command buffer was still writing. In play it
+looked right — the maps from the previous frame are there to sample, so every shadow was a frame stale —
+and the first frame of all, with nothing in them yet, came out differently on every run: once a black
+scene, once blotched in cluster-sized squares. Two consumer barriers, and four runs of the same frame are
+the same bytes.
+
+**A check is only a check if it fails.** The sample's tone map moved from ACES to Reinhard fails all four
+frames (98% of pixels); nothing drawn into the sun's shadow maps fails all four (5.5–7.6% of the
+courtyard). Two levers tried first moved nothing — `ToneMapping`'s default curve, which the sample
+overrides, and the constant depth bias at 25×, too small to see against a cascade's depth range — and a
+lever that moves nothing proves nothing.
+
 ### A slide covers the ground its curve says (0.19.0)
 
 A slide's speed falls from a sprint's to a crouch's along `r^0.35`, and the step read that curve once and

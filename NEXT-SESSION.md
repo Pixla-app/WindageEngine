@@ -11,6 +11,8 @@ what changed recently and what is next.
 > name is coupling.
 
 **Run it:** `swift run WindageSample` · **Test it:** `swift test` · **Walk it:** `python3 Tools/walks.py`
+· **Look at it:** `python3 Tools/frames.py` — four recorded viewpoints drawn with no window and compared
+pixel by pixel (`--record` to redraw them, and then look at what changed).
 — every documented walk, run invisibly, failing on more than 2 cm from its record. **Run it before
 committing anything that touches the sample's levels or the controller**, and add an item's proof walk
 to `Tools/walks.json` when it is measured.
@@ -78,6 +80,22 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — the frames are a check, and a missing barrier (0.20.0)
+
+**`FrameRenderer.render(into:)`** (a frame into your own texture, GPU waited for), **`WINDAGE_SAMPLE_FRAME`**
+(one frame to a PNG, no window, before any step), **`Tools/frames.py` + `frames.json` + four recorded
+frames** (the ruins from above, the lintel, the courtyard, the turntable). 15 s; they match to the bit here.
+
+**Drawing one found a real bug**: the scene pass sampled shadow maps a pass in the same command buffer was
+still writing — Metal 4 tracks no hazard, and the engine had no barrier anywhere. In play it looked right
+because the previous frame's maps are there (so every shadow was a frame stale); the first frame of all
+came out differently every run — black, or blotched in cluster-sized squares. Two consumer barriers fixed
+it: four runs, identical bytes.
+
+**Two proofs that proved nothing, caught**: `ToneMapping`'s default curve (the sample sets its own) and
+the constant depth bias × 25 (too small against a cascade's range) both left the frames identical. The
+levers that do move it: the sample's own curve (98% of pixels) and the sun's casters not drawn (5.5–7.6%).
 
 ## Done 2026-09-11 — a slide covers the ground its curve says (0.19.0)
 
@@ -1539,17 +1557,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
-   a screenshot — shadows, the tone map, normal maps, the clustered lights, the lamps that cast — and
-   nothing guards any of them: `swift test` never draws a pixel, and the walk check draws none either (it
-   builds no sky at all). A `Tools/frames.py` beside `walks.py`: the sample renders the recorded viewpoints
-   (`WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch`, which exists for exactly this) to a file with no window, and
-   the tool compares each against a reference frame kept in the repository — failing when more than 0.5%
-   of pixels differ by more than 2%. Start with the four the README shows. **Proved by** the frames
-   passing, and by failing with the shadow pass off, and again with the tone map's curve changed — each a
-   change a person would see at once and a test cannot.
-
-2. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
+1. **One course, four rates, one set of numbers.** The rate-independence has been won piece by piece —
    the flight (0.16.0), the landing's impact (0.17.0), the eye (0.18.0), the slide next — and each has its
    own test. The capstone is one course that uses all of it: walk, jump, climb a ledge, sprint, slide, walk
    off the end, land. Measured 2026-09-11 as it stands: it ends at z **−32.890 at 30 steps a second,
@@ -1559,12 +1567,23 @@ below, never in this list.
    at a different moment at each rate and landed the body from a different height — 6.3 m/s against 4.66 —
    which is the test being wrong, not the controller.
 
-3. **The slide is a walk in the check.** It is the one move with no measurement in the sample at all:
+2. **The slide is a walk in the check.** It is the one move with no measurement in the sample at all:
    0.19.0 proved it in tests, and the walks — which carry the crate, the lift, the stairs, the bob, the
    look — never slide. The courtyard has the run for it: from the spawn, sprint down −z and crouch, and the
    slide goes through the south wall's gap with nothing in the way (the crates stand at x ±1.25 and wider).
    Record its distance and the eye's drop, as the others record their feet. **Proved by** the walk holding,
    and by failing with the slide's easing changed — the one number nothing else would catch.
+
+3. **The editor is checked — and its edited copy must follow the check's container first.** The editor is
+   the one large thing in the sample with no automated cover at all: adding by kind, the lamp keys, undo,
+   ⌘S, and the edited copy that shadows the shipped level. **A hazard to clear before any of that**:
+   `SampleLevel`'s edited-level path (Sources/WindageSampleCore/SampleLevel.swift, the
+   `.applicationSupportDirectory` one) is hard-coded to `WindageSample`, so a check that edits would write
+   into the player's own folder — and the sample would load the check's edits in ordinary play. It wants
+   the container the saves take (`SampleGame.container`, which a check names after its walk). Then: a walk
+   that tabs in, adds a crate by kind, brightens a lamp and saves, checked against a recorded level file,
+   and a frame with the editor's overlay open. **Proved by** the level file matching, the frame matching,
+   and both failing when the lamp's step or the added kind changes.
 
 ## Parked — not next, and why
 

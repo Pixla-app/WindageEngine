@@ -1,0 +1,33 @@
+{
+  "about": "The viewpoints the sample is judged by. Tools/frames.py draws each with no window and compares it against the frame recorded beside it in Tools/frames/. A recorded frame changes only with a reason in the CHANGELOG — the picture is meant to change when the renderer does, and the point is that somebody looked.",
+  "tolerance": {
+    "channel": 5,
+    "pixels": 0.005
+  },
+  "frames": [
+    {
+      "name": "ruins-from-above",
+      "level": 1,
+      "camera": "-4,20,4,0,-62",
+      "shows": "the sun's cascades, six lamps casting into the atlas and cubes, the braziers' embers, the tone map"
+    },
+    {
+      "name": "ruins-lintel",
+      "level": 1,
+      "camera": "-1.2,1.7,4,0,-4",
+      "shows": "the lintel a body walks under, the stairs and the lift, normal-mapped stone and timber at eye height"
+    },
+    {
+      "name": "courtyard",
+      "level": 0,
+      "camera": "0,2.5,11,0,-12",
+      "shows": "the courtyard by day: the slider, the crates' emission, the towers, shadows across an open floor"
+    },
+    {
+      "name": "courtyard-turntable",
+      "level": 0,
+      "camera": "-5,3,10,-10,-18",
+      "shows": "the turntable, whose plan is a disc, and the stop crate beside the slider's run"
+    }
+  ]
+}

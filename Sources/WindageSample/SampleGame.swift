@@ -423,6 +423,15 @@ final class SampleGame: GameLoop {
     /// time do not clear each other's: one of them sets the head bob on the settings screen, and another
     /// launching beside it would wipe that as it started. The same lesson as `SampleRun.store`, which was
     /// one shared static until tests ran in parallel.
+    /// **`WINDAGE_SAMPLE_FRAME=<path>` draws one frame into a file and quits** — `Tools/frames.py` does
+    /// it for every viewpoint it keeps, and compares each against the frame recorded for it. No window
+    /// and no drawable: the engine draws into a texture (`FrameRenderer.render(into:)`), which is read
+    /// and written out as a PNG.
+    ///
+    /// **Drawn before a single step**, so it is the same picture every time: the clock full, no crate
+    /// collected, the lifts and the turntable where the level puts them.
+    static let frameWanted = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_FRAME"]
+
     static let checkName = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"]
     static var isCheck: Bool { checkName != nil }
     private static let container = switch checkName {
@@ -1525,9 +1534,10 @@ final class SampleGame: GameLoop {
     /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
     private func rebuildEnvironment() {
         matterLight = ParticleRenderer.matterLight(under: level.resolvedSky)
-        // **Nothing to reflect in, as a check** — which draws no frame at all — and prefiltering the sky
-        // is the slowest thing at start-up: 2.6 s of the 3.3 a walk waits before its first step.
-        guard !SampleGame.isCheck else { return }
+        // **Nothing to reflect in, as a walk's check** — which draws no frame at all — and prefiltering
+        // the sky is the slowest thing at start-up: 2.6 s of the 3.3 a walk waits before its first step.
+        // A frame's check draws, so it builds the sky like anything else.
+        guard !SampleGame.isCheck || SampleGame.frameWanted != nil else { return }
         let started = CFAbsoluteTimeGetCurrent()
         guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
             print("WindageSample: no environment — metal will have nothing to reflect")
@@ -1873,6 +1883,52 @@ final class SampleGame: GameLoop {
     /// key to both and hoping they do not collide is how an editor ends up walking the camera into a
     /// wall while you are trying to move a crate.
     // MARK: - Keys in
+
+    /// Draws one frame into `path` as a PNG, at the size a recorded frame is kept at, and says so.
+    ///
+    /// **Bottom-up and BGRA out of Metal**, top-down and RGBA into a bitmap: the rows are copied in
+    /// reverse and the two colour channels swapped, which is the whole of the difference.
+    func writeFrame(to path: String) -> Bool {
+        let width = 640, height = 400
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: FrameRenderer.colorPixelFormat, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .shared
+        guard let texture = engine.device.makeTexture(descriptor: descriptor) else { return false }
+        engine.residencySet.addAllocation(texture)
+        engine.commitResidency()
+        viewportChanged(width: width, height: height)
+        engine.render(into: texture)
+
+        var bgra = [UInt8](repeating: 0, count: width * height * 4)
+        bgra.withUnsafeMutableBytes {
+            texture.getBytes($0.baseAddress!, bytesPerRow: width * 4,
+                             from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        }
+        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                            isPlanar: false, colorSpaceName: .deviceRGB,
+                                            bytesPerRow: width * 4, bitsPerPixel: 32),
+              let rgba = bitmap.bitmapData else { return false }
+        for y in 0..<height {
+            for x in 0..<width {
+                let from = (y * width + x) * 4, to = (y * width + x) * 4
+                rgba[to] = bgra[from + 2]
+                rgba[to + 1] = bgra[from + 1]
+                rgba[to + 2] = bgra[from]
+                rgba[to + 3] = 255
+            }
+        }
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return false }
+        do {
+            try png.write(to: URL(fileURLWithPath: path))
+            print("WindageSample: frame \(width)×\(height) written to \(path)")
+            return true
+        } catch {
+            print("WindageSample: could not write \(path) — \(error)")
+            return false
+        }
+    }
 
     /// Whether a scripted walk is playing — and so the real keyboard and mouse are not listened to.
     var isScripted: Bool { scriptedWalk?.isRunning == true }
