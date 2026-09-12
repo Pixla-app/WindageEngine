@@ -69,7 +69,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-12
 
-604 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+616 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -81,7 +81,42 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
-`ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+`ShadowMap`, `ShadowAtlas` and `ShadowCubes` — and, since 0.20.2, **`EngineMark` and `SplashScreen`**,
+with the mark itself in `Brand/`.
+
+## Done 2026-09-12 — the engine says its own name (0.20.2)
+
+**`EngineMark`** (the device, as geometry — a straight rule where a shot was aimed, a square where it
+left, a path carried off it, a square where it arrived; drawn from the HUD's own primitives, so no
+texture, no resource, no pipeline), **`SplashScreen`** (fade, hold, fade, `skip()`, a `lead` line), and
+**`Brand/`** — two SVGs and the rules. **The SVGs are written from `EngineMark.pieces`** and a test fails
+if they and the code disagree: `WINDAGE_RECORD_MARK=1 swift test --filter EngineMarkTests`.
+
+**Achromatic, on purpose.** Every title has a colour lane and a title's accent outranks everything inside
+it; this mark appears inside somebody else's game, so a hue of its own would be a second brand competing
+with the one the player came for — and it would spend a lane the studio has not got many of.
+
+**Two things the pictures found that the arithmetic did not, and both are worth carrying.**
+
+- **A polyline drawn as a strip of quads has a seam at every joint.** A wedge as wide as the turn, zero
+  at the stroke's centre and `(t/2)·tan(Δθ/2)` at its edge. A comment of mine called that "under a tenth
+  of a pixel at any size" — arithmetic done without looking. At a splash filling a 1440-point window it
+  is two thirds of a point and the curve came out **visibly hatched**. Segments overlap by a twentieth of
+  their length now, never past the ends of the path.
+- **The frame check's tolerance is sized for a lit scene and cannot see a mark move.** Nudging the
+  curve's end by 4% of the mark's height changes **a quarter of a percent** of a 640 × 400 frame — well
+  inside the half-percent that is right for a scene with a GPU's last bit in it. A frame may carry its
+  own tolerance now; the splash's is `pixels: 0, channel: 2`, and it catches that nudge.
+
+**Proved by failing**, four ways: the mark nudged fails the splash frame *and* both SVGs; the splash
+turned off fails the frame; a splash that swallows the press that skips it makes the 17th walk stand at
+the spawn and fail all three of the crate walk's numbers (the ordinary crate walk passing beside it);
+and a fat finger on the fade lengths fails the two rules taste is not allowed to break — under three
+seconds, and less time fading than being read.
+
+**Looked at, which is how the seam was found**: run, the splash up, the splash gone and the game playing
+behind it with its clock already counting — the sample deliberately does not pause, which is what makes
+the walk worth anything.
 
 ## Done 2026-09-12 — one course, four rates, one set of numbers (0.20.1)
 
@@ -1599,22 +1634,22 @@ below, never in this list.
    and a frame with the editor's overlay open. **Proved by** the level file matching, the frame matching,
    and both failing when the lamp's step or the added kind changes.
 
-2. **An engine that says its own name.** Unreal and Unity both open with a mark, and this engine has
-   none — no wordmark, no `Brand/`, nothing a game could show even if it wanted to. What the engine owes
-   here is the *surface*, not the taste: a splash a game can put up while it loads, drawn through the
-   engine's own `HUDRenderer` so it needs no game art, timed and skippable, with `Engine.name` and
-   `Engine.version` on it. **Nothing in `LICENSE` requires it** — that file grants nothing to anybody yet —
-   so this is a choice about what the engine is, and the smallest honest first half is the mark itself.
-   **Proved by** the sample opening with it and going on to play, a frame of it in `Tools/frames.py`, and
-   a walk whose first segment is spent on the splash still ending where it ends today.
-
-3. **A course that is pushed, carried and turned.** The capstone covers what the body does on its own;
+2. **A course that is pushed, carried and turned.** The capstone covers what the body does on its own;
    it says nothing about the three things the world does *to* it — a lift under the feet, a slider into
-   the ribs, a turntable beneath them — and every one of those is a game-supplied `motion` that has its
-   own claim to being rate-independent. The sample's movers are functions of absolute time, which is the
-   right shape, but the `SlideRun` state machine accumulates `dt` and eases, and nothing has ever asked
-   it for the same answer twice. **Proved by** a second course walk, at the same four rates, riding the
-   ruins' lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
+   the ribs, a turntable beneath them — and every one of those is a game-supplied `motion` with its own
+   claim to being rate-independent. The sample's movers are functions of absolute time, which is the
+   right shape, but `SampleLevel.SlideRun` accumulates `dt` and eases, and nothing has ever asked it for
+   the same answer twice. **Proved by** a second course walk, at the same four rates, riding the ruins'
+   lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
+
+3. **A stroke that joins itself.** 0.20.2 found that `HUDRenderer` draws a polyline as a strip of quads
+   with a seam at every joint, and papered over it inside `EngineMark` by overlapping the segments — which
+   works for a gentle curve and will not for a sharp one, where the overlap has to grow until it shows on
+   the outside of the bend. **The engine has no polyline at all**: every consumer that wants one writes
+   this loop, and the sample and at least one game already do. `HUDRenderer.polyline(_:thickness:color:)`
+   with proper mitres, falling back to a bevel past a limit angle, is a contained piece of work with an
+   obvious test. **Proved by** a right-angled stroke drawn both ways in a recorded frame, and by the
+   splash frame not moving when `EngineMark` stops doing it by hand.
 
 ## Parked — not next, and why
 

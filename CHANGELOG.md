@@ -12,6 +12,59 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.20.2] — 2026-09-12
+
+**The engine says its own name.** Every engine somebody else ships with says so somewhere, and this one
+had no way to: no mark, no `Brand/`, nothing a game could show even if it wanted to. **Nothing in
+`LICENSE` requires it** — that file grants nothing to anybody yet — so this is a choice about what the
+engine is, and what the engine owes is the *surface*, not the decision.
+
+### Added
+
+- **`EngineMark`** — the device, as geometry: a straight rule where a shot was aimed, a square where it
+  left, a path carried off the rule, and a square where it arrived. *Windage* is that carry.
+  `draw(into:x:y:height:colour:)` puts it anywhere at any size out of the HUD's own primitives — **no
+  texture, no resource, no pipeline** — so a game can credit the engine in a corner or an about box for
+  nothing. Achromatic in two tones (`display`, `deep`): the mark appears inside somebody else's game, so
+  a hue of its own would be a second brand competing with the one the player came for.
+- **`SplashScreen`** — the mark over a ground, with the name and version under it. Fades up, holds,
+  fades away; `skip()`, `advance(by:)`, `isFinished`, `opacity`, and a `lead` line ("MADE WITH").
+  **Advance it from your step and draw it from your HUD**: it is an overlay and a clock, never a mode,
+  and `skip()` is a side effect of a press and never a consumer of one.
+- **`Brand/`** — `windage-engine.svg` and `windage-engine-display.svg`, and the rules. **Both are
+  written from `EngineMark.pieces`** and a test fails if the file on disk and the geometry disagree, so
+  there is one drawing of the mark. Re-record with
+  `WINDAGE_RECORD_MARK=1 swift test --filter EngineMarkTests`.
+
+### Fixed
+
+- **A polyline drawn as a strip of quads has a seam at every joint, and it shows.** Two quads meeting at
+  a point end square to their own directions, leaving a wedge as wide as the turn — zero at the stroke's
+  centre, `(t/2)·tan(Δθ/2)` at its edge. A comment here first called that "under a tenth of a pixel at
+  any size", which was arithmetic done without looking: at a splash filling a 1440-point window it is two
+  thirds of a point, and the curve came out visibly hatched. **Found by running the sample and looking at
+  it.** Segments overlap by a twentieth of their length now, never past the two ends of the path.
+
+### In the sample
+
+- **`WINDAGE_SAMPLE_SPLASH=1|0`** shows or hides it. Unset means on in ordinary play and **off in a check
+  or a recorded frame** — a recorded frame is a picture of the scene, and a splash across four of them
+  would be checking the splash four times and the scene never.
+- **The sample does not pause for it**, deliberately: the clock is already running when it fades. That is
+  what makes the walk below worth anything.
+
+### In the checks
+
+- **A fifth recorded frame, `splash`** — taken at the middle of its hold, and **without the version line,
+  which changes every release**: a frame carrying it would fail on the changelog rather than on the
+  picture. It carries a tolerance of its own, and needs one: **moving the mark's curve by 4% of its own
+  height changes a quarter of a percent of a 640 × 400 frame**, well inside the half-percent that is
+  right for a lit scene. At `pixels: 0, channel: 2` the same nudge fails it.
+- **A 17th walk, "crate behind the splash"** — the crate walk again, under the splash, checked against
+  the crate walk's own recorded numbers (`Tools/walks.json` takes `like`, so there is one set of them).
+  Make the splash swallow the press that skips it and the walk stands at the spawn and fails all three;
+  the ordinary crate walk passes throughout.
+
 ## [0.20.1] — 2026-09-12
 
 **One course, four rates, one set of numbers.** The rate independence was won a piece at a time — the

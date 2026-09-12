@@ -151,7 +151,8 @@ lighting** · **punctual, spot and point lights, binned into a cluster grid, wit
 shadow cubes** ·
 a versioned level format
 with an editor · a HUD renderer with a font atlas · positional audio · save persistence · a shader
-library that survives having no Xcode · and a complete sample game exercising all of it.
+library that survives having no Xcode · **a mark and a splash, so a game that wants to credit the engine
+has nothing to build** · and a complete sample game exercising all of it.
 
 ### Missing, and the order it is worth building in
 
@@ -1079,7 +1080,43 @@ courtyard). Two levers tried first moved nothing — `ToneMapping`'s default cur
 overrides, and the constant depth bias at 25×, too small to see against a cascade's depth range — and a
 lever that moves nothing proves nothing.
 
-### One course, four rates, one set of numbers (0.20.1)
+### The engine says its own name (0.20.2)
+
+Every engine somebody else ships with says so somewhere, and this one had no way to: no mark, no
+`Brand/`, nothing a game could show even if it wanted to. **Nothing in `LICENSE` requires it** — that
+file grants nothing to anybody yet — which makes this a choice about what the engine *is*, and the
+studio already made that argument when the engine moved to the root of the tree: a thing other people
+ship with, not an implementation detail of whoever happens to be building on it.
+
+**What the engine owes is the surface, not the decision.** `SplashScreen` does not install itself in
+the frame loop; nothing draws unless a game draws it. It needs no texture, no resource and no pipeline
+of its own — the mark comes out of the HUD's existing primitives — so a game that wants to credit the
+engine has nothing to build, and `EngineMark.draw` puts the same device in a corner or an about box.
+
+**The device is a picture of the engine's subject.** *Windage* is the sideways carry of a shot: a
+straight rule where it was aimed, a square where it left, a path bending off the rule, a square where it
+arrived. Not a monogram, and **not a wordmark** — the name under it is set in the host's own interface
+font and is a caption, because a line of capitals in one flat colour is not a mark.
+
+**There is one drawing of it.** `Brand/windage-engine.svg` is written *from* `EngineMark.pieces`, and a
+test fails if the file and the geometry disagree. The failure that prevents is the ordinary one:
+somebody nudges the curve in Swift because it looked thin, and the file a site is served from shows the
+old mark for a year.
+
+**It is an overlay and a clock, never a mode — and `skip()` must not consume the press.** A splash that
+swallows the first keystroke swallows the first keystroke of whatever the player was already doing. The
+17th walk is the crate walk run under the splash, checked against the crate walk's own numbers: make the
+splash eat the press and it stands at the spawn and fails all three.
+
+**Two things the pictures found that the arithmetic did not.** A polyline drawn as a strip of quads has
+a seam at every joint — a wedge as wide as the turn, zero at the stroke's centre and `(t/2)·tan(Δθ/2)`
+at its edge. A comment here called that "under a tenth of a pixel at any size"; at a splash filling a
+1440-point window it is two thirds of a point, and the curve came out visibly hatched. And **the frame
+check's tolerance is sized for a lit scene and is the wrong instrument for a mark**: moving the curve by
+4% of the mark's own height changes a quarter of a percent of a 640 × 400 frame, which the scene's
+half-percent lets straight through. The splash frame carries its own, and catches it.
+
+## One course, four rates, one set of numbers (0.20.1)
 
 The four fixes below were each won over one thing, from rest, with a test of its own. **The capstone is
 one course that uses all of it** — walk, jump, three treads climbed, sprint, slide, off a cliff, land —

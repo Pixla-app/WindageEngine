@@ -69,6 +69,10 @@ def draw(frame, path):
                WINDAGE_SAMPLE_FRAME=str(path),
                WINDAGE_SAMPLE_LEVEL=str(frame["level"]),
                WINDAGE_SAMPLE_CAMERA=frame["camera"])
+    # A frame that wants the engine's splash over it says so; every other frame is of the scene, and a
+    # splash across four of them would be checking the splash four times and the scene never.
+    if frame.get("splash"):
+        env["WINDAGE_SAMPLE_SPLASH"] = "1"
     done = subprocess.run([str(SAMPLE)], env=env, capture_output=True, text=True, timeout=120)
     return None if done.returncode == 0 and path.exists() else (done.stdout + done.stderr)[-400:]
 
@@ -116,13 +120,19 @@ def main():
             print(f"FAIL {frame['name']:<20} has no recorded frame — draw one with --record and look at it")
             failed += 1
             continue
-        measured, trouble = compare(drawn, recorded, spec["tolerance"]["channel"])
+        # **A frame may tighten its own tolerance, and one of them has to.** The default is sized for a
+        # lit scene, where a GPU's last bit and a cascade's edge are allowed to wander; it is far too
+        # loose for a small flat drawing. Moving the mark's curve by 4% of its own height changes a
+        # quarter of a percent of the frame — well inside the scene's half-percent, and invisible here
+        # until the splash frame was given a tolerance of its own.
+        tolerance = dict(spec["tolerance"], **frame.get("tolerance", {}))
+        measured, trouble = compare(drawn, recorded, tolerance["channel"])
         if trouble:
             print(f"FAIL {frame['name']:<20} {trouble}")
             failed += 1
             continue
         share, worst = measured
-        ok = share <= spec["tolerance"]["pixels"]
+        ok = share <= tolerance["pixels"]
         failed += not ok
         print(f"{'ok  ' if ok else 'FAIL'} {frame['name']:<20} {share * 100:5.2f}% of pixels differ"
               f" (worst channel {worst}); {frame['shows']}")

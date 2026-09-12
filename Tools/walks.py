@@ -19,6 +19,10 @@ length and a few seconds to start.
     python3 Tools/walks.py --record   every expectation with what the walk gives now
     python3 Tools/walks.py --serial   one at a time, rather than four at once
 
+A walk may say it is `like` another — same script, same recorded numbers — and change one thing about how
+it is run. That is how "crate behind the splash" checks that the engine's splash takes nothing from the
+game underneath it: same walk, same numbers, with `WINDAGE_SAMPLE_SPLASH=1`.
+
 A walk may name the step **rates** it has to hold at — the course walk runs at 30, 60, 120 and 240 steps
 a second and must give one set of numbers. Its segments are whole steps of the slowest (multiples of
 1/30 s), because a key can only be held for a whole number of steps: 0.75 s at thirty a second is 0.733
@@ -54,6 +58,8 @@ def run(walk, rate=None):
                WINDAGE_SAMPLE_LEVEL=str(walk["level"]), WINDAGE_SAMPLE_WALK=walk["script"])
     if rate:
         env["WINDAGE_SAMPLE_RATE"] = f"{rate:g}"
+    if walk.get("splash"):
+        env["WINDAGE_SAMPLE_SPLASH"] = "1"
     tokens = walk["script"].split()
     last, times = f"walk '{tokens[-1]}'", tokens.count(tokens[-1])   # a label can come more than once
     seconds = sum(float(t.split(":")[1]) for t in walk["script"].split()
@@ -146,6 +152,13 @@ def check(walk, lines, tolerance):
 
 def main():
     spec = json.loads((ROOT / "Tools/walks.json").read_text())
+    # A walk may say it is `like` another: same level, same script, same expectations, changing only
+    # what it declares itself. One set of numbers, so the two cannot be corrected apart.
+    by_name = {w["name"]: w for w in spec["walks"]}
+    for walk in spec["walks"]:
+        if "like" in walk:
+            for key, value in by_name[walk["like"]].items():
+                walk.setdefault(key, value)
     names = [a for a in sys.argv[1:] if not a.startswith("--")]
     recording = "--record" in sys.argv
     walks = [w for w in spec["walks"] if not names or any(n in w["name"] for n in names)]

@@ -33,6 +33,13 @@
       ]
     },
     {
+      "name": "crate behind the splash",
+      "recorded": "0.20.2 \u2014 the crate walk again, run under the engine's splash, which must take nothing from it",
+      "like": "crate",
+      "splash": true,
+      "about": "Not a second set of numbers: `like` takes the crate walk's script and expectations, so the two cannot be corrected apart. What it checks is that the splash is an overlay and a clock, never a mode and never a consumer of input \u2014 a splash that swallowed the press that skipped it would swallow this walk's first step, and it would end short of the crate."
+    },
+    {
       "name": "head bob",
       "recorded": "0.8.1 \u2014 head bob: a walk, back, a sprint, a crouch, then turned off on the settings screen",
       "level": 0,

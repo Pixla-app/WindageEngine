@@ -453,6 +453,18 @@ final class SampleGame: GameLoop {
     static let stepsPerSecond = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_RATE"]
         .flatMap(Double.init) ?? 120
 
+    /// **`WINDAGE_SAMPLE_SPLASH=1|0` shows or hides the engine's splash.**
+    ///
+    /// Unset means **on in ordinary play and off in a check or a recorded frame**, which is not
+    /// squeamishness: a recorded frame is a picture of the *scene*, and a splash over it would be
+    /// checking the splash in four places and the scene in none. The splash gets a recorded frame of
+    /// its own, and a walk of its own that runs behind it.
+    static let showsSplash = switch ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SPLASH"] {
+    case "0": false
+    case .some: true
+    case nil: frameWanted == nil && checkName == nil
+    }
+
     static let checkName = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_CHECK"]
     static var isCheck: Bool { checkName != nil }
     private static let container = switch checkName {
@@ -1919,6 +1931,16 @@ final class SampleGame: GameLoop {
         engine.residencySet.addAllocation(texture)
         engine.commitResidency()
         viewportChanged(width: width, height: height)
+        // **A frame of the splash is taken at its fullest.** It is drawn before any step, so its clock
+        // reads zero and its fade has not begun — a picture of a ramp at an arbitrary point is a picture
+        // of a number nobody chose. Run it to the middle of its hold instead.
+        if var shown = splash {
+            shown.advance(by: shown.fadeIn + shown.hold / 2)
+            // **Without the version**, which changes every release: a recorded frame carrying it would
+            // fail on the changelog rather than on the picture. The mark is what must not drift.
+            shown.showsVersion = false
+            splash = shown
+        }
         engine.render(into: texture)
 
         var bgra = [UInt8](repeating: 0, count: width * height * 4)
@@ -1957,6 +1979,7 @@ final class SampleGame: GameLoop {
     /// A key went down. **The game gets first refusal, then `InputState`** — a key the editor or the
     /// settings screen takes must not also walk the player.
     func keyPressed(_ code: UInt16, command: Bool) {
+        skipSplash()
         // Escape is the settings screen's first — it cancels a capture or closes the screen — and
         // otherwise the pointer's, which it releases. Never a binding: see `InputBindings.fixed`.
         if code == KeyCode.escape.rawValue {
@@ -2670,6 +2693,7 @@ final class SampleGame: GameLoop {
     /// under the crosshair, otherwise it captures the pointer for looking. Here rather than in the
     /// view so the scripted walk can click through the same path.
     func mousePressed() {
+        skipSplash()
         if isEditing { pickUnderCrosshair() } else { input.setMouseCaptured(true) }
     }
 
@@ -2729,7 +2753,21 @@ final class SampleGame: GameLoop {
         stepGap.longest = 0
     }
 
+    /// The engine's splash, while it lasts. **An overlay and a clock, not a mode** — the game steps
+    /// behind it, so a walk that begins under it ends exactly where it would have.
+    private var splash: SplashScreen? = SampleGame.showsSplash ? SplashScreen(lead: "MADE WITH") : nil
+
+    /// Any press cuts the splash short — **and goes on to do whatever it was going to do.** A splash
+    /// that swallowed it would swallow the first key of a scripted walk; there is a walk that checks.
+    private func skipSplash() {
+        splash?.skip()
+    }
+
     func step(deltaTime: Float) {
+        if splash != nil {
+            splash?.advance(by: deltaTime)
+            if splash?.isFinished == true { splash = nil }
+        }
         // **As a check there are no frames**, and the pad is polled in `beginFrame` — so a scripted pad
         // could press the settings screen's buttons and nothing read them: the dead-zone walk set nothing
         // and measured the defaults twice. Polled here instead, where the check's steps are. The keyboard
@@ -3501,6 +3539,8 @@ final class SampleGame: GameLoop {
         let dot = 3 * scale
         hud.rect(x: viewportSize.x / 2 - dot, y: viewportSize.y / 2 - dot,
                  width: dot * 2, height: dot * 2, color: white)
+        // **Last, over everything.** The engine's own name, for as long as it lasts.
+        splash?.draw(into: hud, viewport: viewportSize)
         hud.draw(into: encoder, frameSlot: frameSlot)
     }
 }
