@@ -65,7 +65,7 @@ What that means for the next session, concretely:
 
 ## State — 2026-09-11
 
-596 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+597 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -78,6 +78,21 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
+## Done 2026-09-11 — a landing hits at the ground's speed (0.17.0)
+
+**`√(v² + 2g·h)`**, the speed at the surface, not at the end of the step that crossed it (over by up to
+g·dt). A fall from 1 m: **6.3246 m/s at 30, 60, 120 and 240 steps a second**, where it read 6.667 / 6.333 /
+6.333 / 6.333. One test over four rates, all four failing on the old reading. The landing spring's kick is
+made from it, so the dip is the fall's.
+
+**In the sample**: the drop off the ruins' landing reads **6.9 m/s where it read 7.0** (it is 6.928) and a
+jump's landing 6.3 where it read 6.4. **The walk check reads impacts and dips now** — the stairs-and-jump
+walk carries both, and fails on the old reading, at 120 steps a second.
+
+**A claim of mine corrected by the test**: I had written that the error at 120 was a millimetre a second
+and the sample would not show it. It is up to g·dt — a sixth of a metre a second — and the sample showed
+it in the first run.
 
 ## Done 2026-09-11 — the walk check sees the look (0.16.2)
 
@@ -1497,16 +1512,7 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **A landing's impact is the speed at the ground, not at the end of the step.** 0.16.0 made the flight
-   exact; the landing still reports `verticalVelocity` after the step that crossed the ground, which is
-   the speed a little *below* it. Measured 2026-09-11, a fall from exactly 1 m (exact impact 6.3246 m/s):
-   **6.667 m/s at 30 steps a second**, 6.333 at 60, 120 and 240. A game at 30 lands 5% harder than the
-   ground it hit — and the impact drives the landing's loudness, its dust and the camera's dip. Solve the
-   crossing within the step (the same quadratic the exact flight uses) and report the speed there.
-   **Proved by** 6.3246 at all four rates, and in the sample by the landing dust and dip of the ruins'
-   drop, unchanged at 120 where the error is 1 mm/s.
-
-2. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
+1. **The eye settles as the exponential it is, at any step rate.** The last approximation left after
    0.16.0: `settling *= 1 − rate·dt` a step, where the curve is `exp(−rate·dt)`. Measured 2026-09-11,
    walking up four treads: the eye ends **1.640 m above the feet at 30 steps a second, 1.638 at 60, 1.636
    at 120 and 240** — 4 mm apart, and at a low enough rate `rate·dt` reaches 1 and the eye snaps instead of
@@ -1515,7 +1521,7 @@ below, never in this list.
    recorded eye heights unchanged at 120. Small in metres; the point is that a game at 30 and a game at
    120 are the same game.
 
-3. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
+2. **A slide covers the same ground at any step rate.** Its speed eases from a sprint's to a crouch's
    along `pow(remaining, slideEasing)`, taken once a step and held for the whole step — a Riemann sum of a
    falling curve, so a coarse stepper under-counts it. Measured 2026-09-11, sprint then crouch on the
    move: **15.847 m at 30 steps a second, 15.997 at 60, 16.069 at 120, 16.093 at 240** — 25 cm between the
@@ -1523,6 +1529,16 @@ below, never in this list.
    step (`∫ r^e dr = r^(e+1)/(e+1)`), as the jump's did. **Proved by** the same distance to a centimetre at
    all four rates, and the walks' recorded positions unchanged at 120. (Checked on the way and already
    right: a stick's turn is 91.6732° at every rate, and the distance a walk covers is the same.)
+
+3. **The frames are a check, as the walks are.** Every rendering capability here was judged by looking at
+   a screenshot — shadows, the tone map, normal maps, the clustered lights, the lamps that cast — and
+   nothing guards any of them: `swift test` never draws a pixel, and the walk check draws none either (it
+   builds no sky at all). A `Tools/frames.py` beside `walks.py`: the sample renders the recorded viewpoints
+   (`WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch`, which exists for exactly this) to a file with no window, and
+   the tool compares each against a reference frame kept in the repository — failing when more than 0.5%
+   of pixels differ by more than 2%. Start with the four the README shows. **Proved by** the frames
+   passing, and by failing with the shadow pass off, and again with the tone map's curve changed — each a
+   change a person would see at once and a test cannot.
 
 ## Parked — not next, and why
 

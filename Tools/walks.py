@@ -25,7 +25,9 @@ The tolerance is wide enough (2 cm) to let a real change hide, which is the poin
 
 Exit status 0 when every expectation holds, 1 otherwise. Positions are compared to the walk report's two
 decimals, so a feet expectation allows the tolerance plus half a centimetre of rounding. Footsteps and
-their surfaces must match exactly; the head bob, printed to a millimetre, may differ by one.
+their surfaces must match exactly; the head bob, printed to a millimetre, may differ by one; a landing's
+impact, printed to a tenth of a metre a second, by a tenth; the eye's dip, printed in whole centimetres,
+not at all.
 """
 import json, os, pathlib, re, subprocess, sys, threading, time
 from concurrent import futures
@@ -105,6 +107,16 @@ def check(walk, lines, tolerance):
                 m = re.search(r"footsteps? on ([a-z ]+?)(?:,|$)", heard, re.M)
                 surfaces = sorted(m.group(1).split(" and ")) if m else []
                 results.append((f"surfaces in {where}", sorted(want["on"]), surfaces, surfaces == sorted(want["on"])))
+            if "landed" in want:
+                # Printed to a tenth of a metre a second; a tenth either way is the rounding.
+                m = re.search(r"landed at ([0-9.]+) m/s", heard)
+                speed = float(m.group(1)) if m else None
+                ok = speed is not None and abs(speed - want["landed"]) <= 0.05 + 1e-6
+                results.append((f"landed at, {where}", want["landed"], speed, ok))
+            if "dip" in want:
+                m = re.search(r"eye dipped ([0-9]+) cm", heard)
+                dip = int(m.group(1)) if m else None
+                results.append((f"the eye's dip in {where}, cm", want["dip"], dip, dip == want["dip"]))
             if "bob" in want:
                 # Printed to a millimetre, so a millimetre either way is the rounding, not a change.
                 m = re.search(r"head bob ([0-9.]+) cm up and down, ([0-9.]+) cm side to side", heard)

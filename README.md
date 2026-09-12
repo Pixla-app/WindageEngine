@@ -1057,6 +1057,22 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
+### A landing hits at the ground's speed (0.17.0)
+
+0.16.0 made the flight exact; the landing still reported the speed at the *end* of the step that crossed
+the ground, which is the speed a little past it — over by as much as g·dt, two thirds of a metre a second
+at 30 steps and a sixth at 120. A fall from exactly 1 m, which reaches the ground at 6.3246 m/s:
+
+| steps a second | 30 | 60 | 120 | 240 |
+|---|---|---|---|---|
+| before | 6.667 | 6.333 | 6.333 | 6.333 |
+| after | 6.3246 at every one | | | |
+
+It is `√(v² + 2g·h)` — no search, no stepping: the same energy the flight is integrated from. **The
+landing spring is kicked by it**, so a dip is what the fall earns rather than what the stepper rounded to,
+and a game's landing sounds and dust are the same at any rate. In the sample the drop off the ruins'
+landing now reads **6.9 m/s where it read 7.0** — it is 6.928 — and the walk check reads impacts and dips.
+
 ### The same jump at any step rate (0.16.0)
 
 The fixed timestep exists so results do not depend on the frame rate — but the *step* rate is a game's

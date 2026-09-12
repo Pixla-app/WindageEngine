@@ -1972,6 +1972,24 @@ struct CharacterStepRateTests {
                 "at \(rate) steps a second the apex was \(apex), the height a \(tuning.jumpSpeed) m/s jump reaches is \(exact)")
     }
 
+    /// **A landing's impact is the speed at the ground.** A fall from exactly 1 m hits at √(2gh) =
+    /// 6.3246 m/s; the step's *final* speed made it 6.667 at 30 steps a second — 5% harder than the
+    /// ground it hit, and the impact is what a landing's loudness, its dust and the camera's dip are made
+    /// from.
+    @Test("A landing hits at the speed the ground is reached at, at any step rate", arguments: [Float(30), 60, 120, 240])
+    func sameImpact(rate: Float) {
+        let dt = 1 / rate, height: Float = 1
+        var c = CharacterController(feet: SIMD3(0, height, 0))
+        var impact: Float?
+        for _ in 0..<Int(rate * 2) {
+            c.step(yaw: 0, input: MovementInput(), deltaTime: dt, in: CharacterController.Surroundings())
+            for event in c.events { if case .landed(let speed) = event { impact = impact ?? speed } }
+        }
+        let exact = (2 * tuning.gravity * height).squareRoot()
+        #expect(impact.map { abs($0 - exact) < 1e-3 } ?? false,
+                "at \(rate) a second it landed at \(String(describing: impact)) m/s, the ground is reached at \(exact)")
+    }
+
     /// And it is in the air for 2v/g, within a step: the flight a game's timing is built around.
     @Test("A jump lasts the same however often the game steps", arguments: [Float(30), 60, 120, 240])
     func sameFlight(rate: Float) {

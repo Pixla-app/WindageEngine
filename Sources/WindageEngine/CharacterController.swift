@@ -1145,14 +1145,21 @@ public nonisolated struct CharacterController: Sendable {
             // cannot skip through a thin floor between two steps.
             let (support, solid) = supportHeight(at: feet, below: feet.y, in: world)
             if next <= support {
-                // **Speed at the moment of contact**, before it is zeroed — the number a landing's
-                // loudness, a camera dip or fall damage all want.
-                events.append(.landed(impactSpeed: -verticalVelocity))
+                // **Speed at the ground, not at the end of the step** (0.17.0) — the number a landing's
+                // loudness, a camera dip or fall damage all want, and it belongs to the moment of
+                // contact, which is somewhere inside the step. `v² = v₀² + 2g·h` gives it exactly, h
+                // being the drop from where the feet began the step to what they landed on. Taking the
+                // step's final speed is the speed a little *past* the ground — over by as much as g·dt,
+                // a sixth of a metre a second at 120 steps and two thirds at 30. Measured: a drop of
+                // exactly 1 m read **6.667 m/s at 30 steps a second** where it is 6.3246; and in the
+                // sample at 120, the drop off the ruins' landing read 7.0 m/s where it is 6.9.
+                let atGround = (rising * rising + 2 * tuning.gravity * max(0, feet.y - support)).squareRoot()
+                events.append(.landed(impactSpeed: atGround))
                 // **A kick, not a position**: the spring's velocity is what the landing sets, so the
                 // eye travels down to its lowest rather than teleporting there. For a critically
                 // damped spring from rest, an initial rate of ω·e·s peaks at exactly s.
                 let span = max(tuning.landingHardImpact - tuning.landingSoftImpact, 1e-3)
-                let strength = simd_clamp((-verticalVelocity - tuning.landingSoftImpact) / span, 0, 1)
+                let strength = simd_clamp((atGround - tuning.landingSoftImpact) / span, 0, 1)
                 compressionRate += strength * tuning.landingSpring * Float(M_E)
                 next = support
                 verticalVelocity = 0

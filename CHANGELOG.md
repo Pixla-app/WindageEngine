@@ -12,6 +12,35 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.17.0] — 2026-09-11
+
+**A landing hits at the speed the ground is reached at.** The impact reported was the speed at the end of
+the step that crossed the ground — the speed a little *past* it, over by as much as g·dt.
+
+### Changed
+
+- **`Event.landed(impactSpeed:)` is the speed at the surface**, `√(v² + 2g·h)` — the exact answer, h being
+  the drop from where the feet began the step. The landing spring's kick is made from it too, so a dip is
+  what the fall earns. **Impacts are lower**, by up to a sixth of a metre a second at 120 steps.
+
+### Measured
+
+A fall from exactly 1 m, which reaches the ground at 6.3246 m/s:
+
+| steps a second | 30 | 60 | 120 | 240 |
+|---|---|---|---|---|
+| before | 6.667 | 6.333 | 6.333 | 6.333 |
+| after | 6.3246 at every rate | | | |
+
+One test over four rates, failing at all four on the old reading. **In the sample**, the drop off the
+ruins' landing reads **6.9 m/s where it read 7.0** (it is 6.928: √(2g·1.2)), and the landing from a jump
+6.3 where it read 6.4 — both now the arithmetic. The eye's dip is unchanged at a centimetre's precision.
+
+### In the sample
+
+- **The walk check reads a landing's impact and the eye's dip** — the stairs-and-jump walk carries both
+  now, and fails on the old reading.
+
 ## [0.16.2] — 2026-09-11
 
 **The walk check sees the look.** Additive; no engine change.

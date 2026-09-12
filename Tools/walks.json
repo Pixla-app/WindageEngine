@@ -205,7 +205,7 @@
     },
     {
       "name": "stairs and jump",
-      "recorded": "0.6.6 — a body with feet: the README's walk",
+      "recorded": "0.6.6 — a body with feet: the README's walk (with 0.17.0's landing speeds)",
       "level": 1,
       "script": "d:0.75 w:1.0 w:0.4 wait:1 space:0.05 wait:1.2",
       "expect": [
@@ -228,6 +228,16 @@
         {
           "after": "wait:1.2",
           "highest": 0.99
+        },
+        {
+          "after": "wait:1",
+          "landed": 6.9,
+          "dip": 7
+        },
+        {
+          "after": "wait:1.2",
+          "landed": 6.3,
+          "dip": 6
         }
       ]
     },
