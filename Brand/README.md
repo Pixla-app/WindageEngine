@@ -1,67 +1,93 @@
 # Windage Engine — the mark
 
-**The aim, and the path carried off it.**
+**The Drift W: the initial, with the windage dialled in.**
 
-*Windage* is the sideways carry of a shot — the correction a marksman dials for wind, and the number a
-ballistics model exists to produce. The device is that, seen from above: a straight rule where the shot
-was aimed, a square where it left, a path bending off the rule, and a square where it actually arrived.
-The engine's subject, rather than a monogram.
+*Windage* is the sideways carry of a shot, and the correction a marksman dials against it. The mark is a
+W drawn as one continuous stroke whose **right half is carried up by 16% of its height**. The middle
+apex sits well below both shoulders, which is what makes it read as a W rather than two Vs; the lift is
+the windage.
 
-| | |
-|---|---|
-| `windage-engine.svg` | **deep** `#1B2027` — light grounds: a page, a printed mark, anything that must meet a contrast ratio |
-| `windage-engine-display.svg` | **display** `#F2F4F7` — dark grounds: a game, a splash, a store capsule |
+| file | what it is | use |
+|---|---|---|
+| `windage-engine.svg` | the mark in **deep** `#1B2027` | light grounds: a page, print, anything that must meet a contrast ratio |
+| `windage-engine-display.svg` | the mark in **display** `#F2F4F7` | dark grounds: a game, a splash, a store capsule |
+| `windage-engine-icon.svg` | the app icon on Apple's 1024 grid | a Dock, an App Store listing, anywhere an icon tile is expected |
+| `favicon.svg` | a full-bleed tile with the mark | a browser tab |
+| `exports/` | PNGs of all of the above | made by `Tools/make_brand_exports.sh` |
+| `web/` | the site for `windageengine.com` | a working draft; see `web/README.md` |
 
-Both are 240 × 100 in their own units and scale to anything; the mark is always **2.4 times as wide as
-it is high**.
+The mark is square. The icon tile is an 824 square inset 100 on a 1024 canvas with a 185.4 corner, the
+mark at 56% of the canvas; the favicon fills its square with the mark at 76%.
 
 ## There is one drawing of it, and it is in the code
 
-These files are **generated from `EngineMark.pieces`**, not drawn beside it. `EngineMarkTests` fails if
-the file on disk and the geometry in `Sources/WindageEngine/EngineMark.swift` disagree, so redrawing the
-mark is editing numbers there and re-recording:
+**Every file above is generated from `EngineMark.outline`**, and `EngineMarkTests` fails if a file on disk
+and the outline disagree. The outline is *constructed*, not traced: five points on the stroke's centre
+line — left shoulder, left valley, middle apex, right valley, right shoulder — and a stroke width measured
+across, as type is. Each arm's edges are its centre line moved half the width either way; every corner is
+where two of those edges meet; every end is cut flat. Thirteen points in all.
+
+To change the mark, change the construction in `Sources/WindageEngine/EngineMark.swift`, then:
 
 ```
 WINDAGE_RECORD_MARK=1 swift test --filter EngineMarkTests
+Tools/make_brand_exports.sh
+python3 Tools/frames.py --record splash     # and look at it
 ```
 
 The studio's brand notes make the case about a wordmark — *one drawing, or the imitations drift* — and a
-device is no different. The failure that prevents is the ordinary one: somebody nudges the curve in Swift
-because it looked thin on screen, and the file a site and a store page are served from goes on showing the
-old mark for a year.
+device is no different. `Tools/frames.py` keeps a recorded picture of the splash as well, so the same drift
+is caught on screen, at a tolerance of its own: a lit scene's half-percent could not see a mark move.
 
-`Tools/frames.py` keeps a recorded picture of the splash, so the same drift is caught on screen as well.
-**That frame carries a tolerance of its own** — the default is sized for a lit scene, and moving the
-curve by 4% of the mark's height changes only a quarter of a percent of a 640 × 400 frame, which the
-scene's half-percent would let straight through.
+## Why these numbers
 
-## It has no hue, on purpose
+- **16%, and about as far as it goes.** At 10% the lift passed for a lean, or an italic. Much past 20% the
+  stroke down into the right-hand valley shortens to a stub and the valley reads as a notch — the point at
+  which the W stops being one letter.
+- **The middle apex is cut flat and set low**, 46% down against shoulders at 22% and 6%. The first drawing
+  was two Vs overlapping, whose middle peak rose as high as their outer tops, and it read as VV.
+- **Stroke width 17% of the box.** That is what holds the letter at a 16 px favicon — checked by rendering
+  it into sixteen real pixels — and why there is no separate small cut: the same drawing survives.
+
+## No hue, and no accent
 
 Every title in the studio gets a colour lane, and a title's accent outranks everything inside that title.
-**This mark appears inside somebody else's game.** A hue of its own would be a second brand competing with
-the one the player came for, and it would spend a lane the studio has not got many of. So the mark is
-achromatic, in the two tones above — the same *one hue in two tones* rule the studio applies to a colour,
-with no hue to preserve.
+**This mark appears inside somebody else's game**, so a hue of its own would be a second brand competing with
+the one the player came for. It is achromatic, in two tones.
 
-Within a tone, pieces vary by opacity: the aim rule is at 45%, because it is where the shot was pointed
-and not where it went. **A tone, never a second colour.**
+An accent on the carried half was drawn and dropped. It split the letter into two pieces, which is the thing
+the drawing works hardest not to be.
 
-## The engine has a device, not a wordmark
+## What it replaced, and what else was drawn
 
-`SplashScreen` sets the name in the host's own interface font, and that is deliberate rather than
-temporary. A line of capitals in one flat colour is **not** a mark — it is the name shouting — so the
-drawing that carries the identity is the device, and the name under it is a caption. If the engine ever
-earns a drawn wordmark, it goes here, beside these, and the splash starts using it.
+**0.20.2's mark** was a thin rule, a curve and two squares, 2.4 times as wide as it was high. It read as a
+chart going up, had no silhouette at a tab's size, and could not be an app icon.
 
-## Where it is used
+Drawn on the way here, and why each lost:
 
-- `SplashScreen` — the engine's splash, which a game chooses to show. Nothing in `LICENSE` requires it;
-  showing it is a courtesy, and the engine provides the surface so that a game which wants to has
-  nothing to build.
-- Anywhere a game wants to credit the engine: `EngineMark.draw(into:x:y:height:colour:)` puts it in a
-  corner, a credits screen or an about box, at any size, with no texture and no pipeline.
+| direction | why not |
+|---|---|
+| **The carry**, solid — a bar with a blade lifting off it | a rising blade off a bar is a swoosh |
+| **The carry, as a wedge** — a tile split by a straight cut and a curved one | the strongest version of the idea, but the thin cut is gone by 16 px |
+| **Wind tunnel** — streamlines cut through a block | speed lines are every courier's mark |
+| **Vane** — three swept blades | reads as a fan or a pinwheel; the tips die small |
+| **Range flag** — the wind flag on a rifle range | a golf flag |
+| **Slid block** — a cube with its top slab pushed sideways | Unity's mark is a cube |
+
+## On the splash
+
+`SplashScreen` sets the lockup the way engines' splashes are set: **`MADE WITH` · the mark · `WINDAGE` over
+`ENGINE`**, one line across.
+
+- **No version.** No engine shows one in a shipped game; it belongs to an about box and a log.
+  `showsVersion` exists for development builds and is off.
+- **"Made with" stays.** A logo alone works for an engine every player recognises. Nobody recognises this one
+  yet, and two words say what they are looking at.
+- **The name is set, not drawn.** It is the host game's interface font. The engine has a drawn mark and no
+  drawn wordmark yet; when it has one, it goes here beside the mark, and the splash draws it.
 
 ## The name
 
-**Windage Engine**, title case, in every sentence, menu, window title, commit message and document.
-Never letterspaced in running text, never set in capitals as a label.
+**Windage Engine**, title case, in every sentence, menu, window title, commit message and document. The
+capitals — `WINDAGE ENGINE` — are the lockup's setting, not a second spelling: never a label, never
+letterspaced in running text.

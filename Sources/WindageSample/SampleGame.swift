@@ -1936,9 +1936,6 @@ final class SampleGame: GameLoop {
         // of a number nobody chose. Run it to the middle of its hold instead.
         if var shown = splash {
             shown.advance(by: shown.fadeIn + shown.hold / 2)
-            // **Without the version**, which changes every release: a recorded frame carrying it would
-            // fail on the changelog rather than on the picture. The mark is what must not drift.
-            shown.showsVersion = false
             splash = shown
         }
         engine.render(into: texture)

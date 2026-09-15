@@ -181,6 +181,129 @@ public final class HUDRenderer {
         rect(x: x + width - thickness, y: y, width: thickness, height: height, color: color)
     }
 
+    /// A filled polygon, **concave or convex**, given as its outline in order, either way round.
+    ///
+    /// **Arrived with the engine's mark (0.21.0)**, which is a letter and not a set of rectangles. Until
+    /// then this renderer drew rectangles, lines, rings and text, and a shape was approximated out of
+    /// those — which is how a curve built from quads came out hatched with a hairline seam at every
+    /// joint. A polygon is triangulated once, here, and its triangles share their vertices exactly, so
+    /// the rasteriser's fill rule leaves no seam between them.
+    ///
+    /// The outline must be *simple* — no edge crossing another. One that is not is still drawn, but
+    /// only in part: see ``triangulate(_:)``.
+    ///
+    /// **Its edges are feathered**, over `feather` of the HUD's own units — a pixel, when the viewport
+    /// is given in pixels as the sample gives it. This pipeline has no multisampling, so a filled shape
+    /// with any diagonal in it came out stair-stepped: the engine's mark on its own splash, the first
+    /// thing a player sees, with jagged edges at 640 × 400 and visibly so at a window's size. A strip
+    /// fading from the colour to nothing runs round the outline instead (``rim(of:width:)``); the
+    /// shader premultiplies, so the fade composites cleanly over whatever is beneath. Pass 0 for hard
+    /// edges — a shape that must tile against its neighbour exactly wants those.
+    public func fill(polygon points: [SIMD2<Float>], color: UIColor, feather: Float = 1) {
+        guard color.srgb.w > 0, points.count >= 3 else { return }
+        let placed = points.map(toDevice)
+        let solid = color.linear
+        for index in HUDRenderer.triangulate(points) {
+            vertices.append(Vertex(position: placed[index], uv: font.whiteTexelUV, color: solid))
+        }
+        guard feather > 0 else { return }
+        let outside = HUDRenderer.rim(of: points, width: feather).map(toDevice)
+        var clear = solid
+        clear.w = 0
+        for i in points.indices {
+            let j = (i + 1) % points.count
+            for (position, colour) in [(placed[i], solid), (placed[j], solid), (outside[j], clear),
+                                       (placed[i], solid), (outside[j], clear), (outside[i], clear)] {
+                vertices.append(Vertex(position: position, uv: font.whiteTexelUV, color: colour))
+            }
+        }
+    }
+
+    /// Every point of a simple outline moved outward by `width` — along the bisector of its two edges,
+    /// **mitred** so each edge moves out by the full width, and the mitre held to three widths so the
+    /// sharp valleys of a letter do not throw a spike.
+    public nonisolated static func rim(of points: [SIMD2<Float>], width: Float) -> [SIMD2<Float>] {
+        let count = points.count
+        guard count >= 3 else { return points }
+        var twiceArea: Float = 0
+        for i in 0..<count {
+            let a = points[i], b = points[(i + 1) % count]
+            twiceArea += a.x * b.y - b.x * a.y
+        }
+        // With a positive signed area the inside is where a corner turns positive (see `triangulate`),
+        // which puts `(d.y, −d.x)` on the outside of an edge running along `d`.
+        let side: Float = twiceArea > 0 ? 1 : -1
+        func outward(_ a: SIMD2<Float>, _ b: SIMD2<Float>) -> SIMD2<Float> {
+            let along = b - a
+            guard simd_length_squared(along) > 1e-12 else { return .zero }
+            let d = simd_normalize(along)
+            return SIMD2(d.y, -d.x) * side
+        }
+        return (0..<count).map { i in
+            let point = points[i]
+            let before = outward(points[(i + count - 1) % count], point)
+            let after = outward(point, points[(i + 1) % count])
+            let sum = before + after
+            guard simd_length_squared(sum) > 1e-12 else { return point + after * width }
+            let bisector = simd_normalize(sum)
+            let mitre = min(1 / max(simd_dot(bisector, after), 1e-3), 3)
+            return point + bisector * mitre * width
+        }
+    }
+
+    /// A simple polygon's triangles, as index triples into `points` — `n − 2` triangles for `n` points.
+    ///
+    /// **Ear clipping, not a fan.** A fan from one vertex is right for a convex shape and wrong for
+    /// anything else: fanned from its top-left corner, the engine's own W covers ground outside its
+    /// outline and leaves some of its inside empty (`HUDTriangulationTests` measures both). Clipping
+    /// takes one convex corner at a time whose triangle holds no other vertex, which every simple
+    /// polygon has. `O(n³)` in the worst case, which for an outline of a dozen points is nothing, and
+    /// which is why this is for interface shapes and not for meshes.
+    ///
+    /// Winding-agnostic: the outline's signed area says which way round it goes. **A polygon that is
+    /// not simple has no ears at some point**; rather than loop for ever, a vertex is dropped and the
+    /// shape drawn short of complete.
+    public nonisolated static func triangulate(_ points: [SIMD2<Float>]) -> [Int] {
+        let count = points.count
+        guard count >= 3 else { return [] }
+        func turn(_ o: SIMD2<Float>, _ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
+            (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+        }
+        var twiceArea: Float = 0
+        for i in 0..<count {
+            let a = points[i], b = points[(i + 1) % count]
+            twiceArea += a.x * b.y - b.x * a.y
+        }
+        var remaining = Array(0..<count)
+        if twiceArea < 0 { remaining.reverse() }
+
+        var triangles: [Int] = []
+        triangles.reserveCapacity((count - 2) * 3)
+        while remaining.count > 3 {
+            var clipped = false
+            for i in remaining.indices {
+                let before = remaining[(i + remaining.count - 1) % remaining.count]
+                let corner = remaining[i]
+                let after = remaining[(i + 1) % remaining.count]
+                let a = points[before], b = points[corner], c = points[after]
+                guard turn(a, b, c) > 0 else { continue }          // reflex, or flat
+                let holdsAnother = remaining.contains { j in
+                    guard j != before, j != corner, j != after else { return false }
+                    let p = points[j]
+                    return turn(a, b, p) >= 0 && turn(b, c, p) >= 0 && turn(c, a, p) >= 0
+                }
+                guard !holdsAnother else { continue }
+                triangles += [before, corner, after]
+                remaining.remove(at: i)
+                clipped = true
+                break
+            }
+            if !clipped { remaining.removeFirst() }
+        }
+        triangles += remaining
+        return triangles
+    }
+
     /// Characters already reported as missing, so the log says each one once rather than every frame.
     private nonisolated(unsafe) static var warnedAbout: Set<Character> = []
 

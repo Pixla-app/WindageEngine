@@ -1080,7 +1080,31 @@ courtyard). Two levers tried first moved nothing — `ToneMapping`'s default cur
 overrides, and the constant depth bias at 25×, too small to see against a cascade's depth range — and a
 lever that moves nothing proves nothing.
 
-### The engine says its own name (0.20.2)
+### The Drift W (0.21.0)
+
+**0.20.2's mark did not survive being looked at as a mark.** Drawn as a splash it was fine; drawn as a 16 px
+browser tab it was a smear, and as an app icon it was a chart. Six directions were drawn at the sizes that
+decide a mark and judged side by side — the reasons each lost are in `Brand/README.md` — and the engine's mark
+is now **a W drawn as one continuous stroke with its right half carried up 16% of its height.** The middle apex
+sits well below both shoulders, which is what stops it reading as two Vs; the lift is the windage. No hue, and
+no accent: an accent on the carried half split the letter in two.
+
+**It is constructed, not traced**, and there is one drawing of it: five points on the stroke's centre line and
+a stroke width measured across, each corner where two edges meet, each end cut flat. `EngineMark.outline` is
+that construction; the SVGs, the app icon and the favicon in `Brand/` are written from it and a test fails if
+any of them drifts.
+
+**A letter needed a primitive a HUD had not.** `HUDRenderer.fill(polygon:)` triangulates by ear clipping —
+fanned from a corner, the W covers the space between its own arms — and feathers the outline, because the HUD
+pipeline has no multisampling and the mark came out stair-stepped on its own splash. Switched off, each fails
+its check: unfeathered edges change 0.12% of the splash frame, which the splash's zero-pixel tolerance catches;
+a fan fails four tests.
+
+**The splash is one line across now** — `MADE WITH`, the W, `WINDAGE` over `ENGINE` — with no version, as no
+engine's shipped splash has. The name is still set in the host's font: the engine has a drawn mark and not yet
+a drawn wordmark.
+
+## The engine says its own name (0.20.2)
 
 Every engine somebody else ships with says so somewhere, and this one had no way to: no mark, no
 `Brand/`, nothing a game could show even if it wanted to. **Nothing in `LICENSE` requires it** — that

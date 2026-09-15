@@ -5,8 +5,8 @@
 
 import simd
 
-/// The engine saying its own name: ``EngineMark`` over a ground, with the name and version under it,
-/// for as long as a game wants and no longer.
+/// The engine saying its own name: a lockup of ``EngineMark`` and the name over a ground, for as long
+/// as a game wants and no longer.
 ///
 /// ### What the engine owes here, and what it does not
 ///
@@ -15,11 +15,25 @@ import simd
 /// to build. It does not owe the decision: nothing here runs unless a game runs it, and
 /// ``SplashScreen`` does not install itself in the frame loop.
 ///
+/// ### What goes on it, and what does not (0.21.0)
+///
+/// **One line across: a lead, the mark, the name** — `MADE WITH`, the W, `WINDAGE` over `ENGINE`. The
+/// shape most players have already seen on an engine splash, and for a reason: it reads in one glance.
+///
+/// - **No version.** No engine shows one in a shipped game — a version belongs to an editor's splash,
+///   an about box and a log. ``showsVersion`` is there for development builds and is off.
+/// - **The lead is worth its two words here.** A splash showing only a logo works for an engine every
+///   player already recognises; nobody recognises this one yet, and "made with" says what they are
+///   looking at. It is part of the lockup, set in the lockup's capitals, not a label floating over it.
+///
+/// The name is set in the host's own interface font. The engine has a drawn **mark**; it does not have
+/// a drawn wordmark, and until it does, the name beside the mark is set rather than drawn.
+///
 /// ### It does not stop the game, and it must not swallow the key that skips it
 ///
 /// **Advance it from your simulation step, draw it from your HUD.** It is an overlay and a clock, not
 /// a mode: the game goes on stepping behind it, which is what a game is usually *for* during a splash
-/// — loading. Two things follow, and both were worth finding out the hard way in the sample:
+/// — loading. Two things follow:
 ///
 /// - A game that suspends its step while this is up makes its own first second unrepeatable.
 /// - **``skip()`` must be a side effect of a press, never a consumer of it.** A splash that eats the
@@ -30,8 +44,7 @@ import simd
 /// ### The fades are ramps, so the picture is the same at any step rate
 ///
 /// Everything here is linear in ``elapsed``, and ``elapsed`` is a sum of step lengths. A game at 30
-/// steps a second and one at 240 show the same opacity at the same moment, which is the same promise
-/// the body makes (see `OneCourseTests`).
+/// steps a second and one at 240 show the same opacity at the same moment.
 public nonisolated struct SplashScreen: Sendable {
 
     /// Seconds fading up from nothing.
@@ -48,26 +61,23 @@ public nonisolated struct SplashScreen: Sendable {
     /// splash is gone before it has drawn once.
     public var ignoresSkipsFor: Float = 0.25
 
-    /// What is behind the mark. Near-black rather than black, so it reads as a surface.
+    /// What is behind the lockup. Near-black rather than black, so it reads as a surface.
     public var background = UIColor(hex: 0x0B0D10)
 
     /// The mark and the lettering. ``EngineMark/display``, because the ground is dark.
     public var foreground = EngineMark.display
 
-    /// A line in small capitals above the mark — `"MADE WITH"` is the usual one. Nil draws none.
+    /// Words set in small capitals to the left of the mark, one per line — `"MADE WITH"` is the usual
+    /// lead. Nil draws none, and the mark and name centre on their own.
     public var lead: String?
 
-    /// How wide the mark is drawn, as a share of the viewport's width. **The device leads and the
-    /// name follows it**, so this is set wide enough that the lettering never out-measures the mark —
-    /// a caption wider than the thing it captions reads as a title with a doodle over it.
-    public var markWidthFraction: Float = 0.34
+    /// How tall the mark is drawn, as a share of the viewport's width. Everything else in the lockup
+    /// is sized from the mark.
+    public var markWidthFraction: Float = 0.12
 
-    /// Whether ``Engine/version`` is drawn under the name.
-    ///
-    /// **A shipped game may not want it, and a recorded frame must not have it**: the version changes
-    /// every release, so a frame check that could see it would fail on the changelog rather than on
-    /// the picture. The sample turns it off for `Tools/frames.py` and leaves it on in play.
-    public var showsVersion = true
+    /// Whether ``Engine/version`` is drawn under the name. **Off**: no shipped game shows its engine's
+    /// version, and a recorded frame that could see it would fail on every release.
+    public var showsVersion = false
 
     /// Seconds since it went up.
     public private(set) var elapsed: Float = 0
@@ -113,11 +123,6 @@ public nonisolated struct SplashScreen: Sendable {
     }
 
     /// Draws it over the whole viewport. Call from `encodeHUD`, after everything else.
-    ///
-    /// The lettering is set in the host's own interface font, and that is on purpose: the engine has
-    /// a **device**, not a wordmark. A line of capitals in one flat colour is not a mark — it is the
-    /// name shouting — so the drawing that carries the identity is ``EngineMark`` and the name under
-    /// it is a caption.
     @MainActor
     public func draw(into hud: HUDRenderer, viewport: SIMD2<Float>) {
         let alpha = opacity
@@ -126,43 +131,69 @@ public nonisolated struct SplashScreen: Sendable {
         hud.rect(x: 0, y: 0, width: viewport.x, height: viewport.y,
                  color: background.withAlpha(background.srgb.w * alpha))
 
-        let markWidth = viewport.x * markWidthFraction
-        let markHeight = markWidth / EngineMark.aspect
         let ink = foreground.withAlpha(foreground.srgb.w * alpha)
+        let mark = viewport.x * markWidthFraction
+        let centre = viewport * 0.5
+        let gap = mark * 0.3
 
-        // **The group is centred, not the mark.** With the lead above it and the name below, centring
-        // the device alone puts the whole block low; this places it so the block's optical centre is
-        // the viewport's, with or without the version line.
-        let markTop = viewport.y * 0.5 - markHeight * 0.7
-        EngineMark.draw(into: hud, x: (viewport.x - markWidth) / 2, y: markTop,
-                        height: markHeight, colour: ink)
+        // The name as the lockup sets it: the first word large, the rest small and tracked out beneath.
+        let words = Engine.name.uppercased().split(separator: " ", maxSplits: 1).map(String.init)
+        let first = words.first ?? "", second = words.count > 1 ? words[1] : ""
+        let large = mark * 0.62, small = mark * 0.19
+        let nameWidth = max(hud.width(of: first, pointSize: large),
+                            SplashScreen.width(of: second, pointSize: small, tracking: small * 0.6, in: hud))
 
-        let namePoint = markHeight * 0.36
-        let leadPoint = markHeight * 0.2
+        let leadLines = (lead ?? "").uppercased().split(separator: " ").map(String.init)
+        let leadPoint = mark * 0.17, leadTracking = leadPoint * 0.3
+        let leadWidth = leadLines.map { SplashScreen.width(of: $0, pointSize: leadPoint, tracking: leadTracking, in: hud) }.max() ?? 0
 
-        if let lead, !lead.isEmpty {
-            let width = hud.width(of: lead, pointSize: leadPoint)
-            _ = hud.text(lead, x: (viewport.x - width) / 2, y: markTop - markHeight * 0.34,
-                         pointSize: leadPoint, color: ink.withAlpha(ink.srgb.w * 0.5))
+        let total = (leadLines.isEmpty ? 0 : leadWidth + gap) + mark + gap + nameWidth
+        var x = centre.x - total / 2
+
+        if !leadLines.isEmpty {
+            // Right-aligned against the mark, the block centred on the mark's height.
+            let line = leadPoint * 1.2
+            let firstBaseline = centre.y - line * Float(leadLines.count) / 2 + leadPoint * 0.95
+            for (index, words) in leadLines.enumerated() {
+                let width = SplashScreen.width(of: words, pointSize: leadPoint, tracking: leadTracking, in: hud)
+                SplashScreen.set(words, into: hud, x: x + leadWidth - width, y: firstBaseline + line * Float(index),
+                                 pointSize: leadPoint, tracking: leadTracking, color: ink.withAlpha(ink.srgb.w * 0.8))
+            }
+            x += leadWidth + gap
         }
 
-        // **Two tones, not two colours.** "Windage" carries the name and "Engine" says what it is, so
-        // the second word is set back — the studio's own rule for a two-tone wordmark, applied to the
-        // one thing available in a host's font.
-        let words = Engine.name.split(separator: " ", maxSplits: 1).map(String.init)
-        let first = words.first ?? Engine.name
-        let rest = words.count > 1 ? " " + words[1] : ""
-        let nameWidth = hud.width(of: first, pointSize: namePoint) + hud.width(of: rest, pointSize: namePoint)
-        let baseline = markTop + markHeight + namePoint * 1.5
-        var pen = (viewport.x - nameWidth) / 2
-        pen += hud.text(first, x: pen, y: baseline, pointSize: namePoint, color: ink)
-        _ = hud.text(rest, x: pen, y: baseline, pointSize: namePoint, color: ink.withAlpha(ink.srgb.w * 0.6))
+        EngineMark.draw(into: hud, x: x, y: centre.y - mark / 2, height: mark, colour: ink)
+        x += mark + gap
 
-        guard showsVersion else { return }
-        let versionPoint = markHeight * 0.2
-        let versionWidth = hud.width(of: Engine.version, pointSize: versionPoint)
-        _ = hud.text(Engine.version, x: (viewport.x - versionWidth) / 2,
-                     y: baseline + versionPoint * 2.3,
-                     pointSize: versionPoint, color: ink.withAlpha(ink.srgb.w * 0.45))
+        // Capitals stand about seven tenths of their point size above the baseline; the two lines are
+        // centred together on the mark.
+        let block = large * 0.72 + small * 0.55 + small * 0.72
+        let firstBaseline = centre.y - block / 2 + large * 0.72
+        _ = hud.text(first, x: x, y: firstBaseline, pointSize: large, color: ink)
+        let secondBaseline = firstBaseline + small * 0.55 + small * 0.72
+        SplashScreen.set(second, into: hud, x: x + mark * 0.02, y: secondBaseline,
+                         pointSize: small, tracking: small * 0.6, color: ink.withAlpha(ink.srgb.w * 0.7))
+
+        if showsVersion {
+            _ = hud.text(Engine.version, x: x, y: secondBaseline + small * 1.9, pointSize: small,
+                         color: ink.withAlpha(ink.srgb.w * 0.45))
+        }
+    }
+
+    /// A line with extra space between its letters — the HUD sets text solid, and small capitals
+    /// set solid run together.
+    @MainActor
+    static func set(_ string: String, into hud: HUDRenderer, x: Float, y: Float, pointSize: Float,
+                    tracking: Float, color: UIColor) {
+        var pen = x
+        for character in string {
+            pen += hud.text(String(character), x: pen, y: y, pointSize: pointSize, color: color) + tracking
+        }
+    }
+
+    @MainActor
+    static func width(of string: String, pointSize: Float, tracking: Float, in hud: HUDRenderer) -> Float {
+        guard !string.isEmpty else { return 0 }
+        return hud.width(of: string, pointSize: pointSize) + tracking * Float(string.count - 1)
     }
 }

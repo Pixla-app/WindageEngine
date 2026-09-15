@@ -119,4 +119,10 @@ struct SplashScreenTests {
         #expect(Engine.name == "Windage Engine")
         #expect(Engine.version == Engine.semanticVersion.description)
     }
+
+    /// No engine shows its version on a shipped game's splash; a development build turns it on.
+    @Test("The version is off unless a game asks for it")
+    func noVersion() {
+        #expect(!SplashScreen().showsVersion)
+    }
 }

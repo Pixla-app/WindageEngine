@@ -1,8 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100" width="240" height="100" role="img" aria-label="Windage Engine">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Windage Engine">
   <title>Windage Engine</title>
-  <desc>The aim, and the path carried off it. Generated from EngineMark.pieces — see Brand/README.md.</desc>
-  <polyline points="0,88 240,88" fill="none" stroke="#F2F4F7" stroke-opacity="0.45" stroke-width="5" stroke-linecap="butt" stroke-linejoin="round"/>
-  <polyline points="0,88 9,87.868 18,87.4722 27,86.8125 36,85.8889 45,84.7014 54,83.25 63,81.5347 72,79.5555 81,77.3125 90,74.8056 99,72.0347 108,69 117,65.7014 126,62.1389 135,58.3125 144,54.2222 153,49.8681 162,45.25 171,40.3681 180,35.2222 189,29.8125 198,24.1389 207,18.2014 216,12" fill="none" stroke="#F2F4F7" stroke-opacity="1" stroke-width="13" stroke-linecap="butt" stroke-linejoin="round"/>
-  <rect x="0" y="80" width="16" height="16" fill="#F2F4F7" fill-opacity="1"/>
-  <rect x="216" y="0" width="24" height="24" fill="#F2F4F7" fill-opacity="1"/>
+  <desc>The Drift W. Generated from EngineMark.outline — see Brand/README.md.</desc>
+  <polygon fill="#F2F4F7" points="3.5,22 20.5,22 32.82,66.1 41.5,46 58.5,46 65.46,56.25 79.5,6 96.5,6 77.5,74 60.5,74 51.89,61.31 39.5,90 22.5,90"/>
 </svg>

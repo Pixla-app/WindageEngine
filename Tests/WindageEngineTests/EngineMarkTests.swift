@@ -8,24 +8,20 @@ import Testing
 import simd
 @testable import WindageEngine
 
-/// **The mark on disk and the mark on screen are one drawing.**
+/// **The mark in `Brand/` and the mark on screen are one drawing.**
 ///
-/// `Brand/windage-engine.svg` is not a second copy of the device: it is written from
-/// ``EngineMark/pieces``, by the function below, and this suite fails if the file and the array
-/// disagree. Redraw the mark by editing the numbers in `EngineMark` and re-recording:
+/// Every file in `Brand/` that shows the mark is written from ``EngineMark/outline`` by the functions
+/// below, and this suite fails if a file on disk and the outline disagree. Redraw the mark by changing
+/// the construction in `EngineMark` and re-recording:
 ///
 /// ```
 /// WINDAGE_RECORD_MARK=1 swift test --filter EngineMarkTests
 /// ```
 ///
-/// The studio's brand notes make the case about a wordmark — *one drawing, or the imitations drift* —
-/// and a device is no different. The failure this prevents is the ordinary one: somebody nudges the
-/// curve in Swift because it looked thin on screen, and the file a site and a store page are served
-/// from goes on showing the old one for a year.
+/// The PNG exports are rasterised from these files by `Tools/make_brand_exports.sh`.
 @Suite("The engine's mark")
 struct EngineMarkTests {
 
-    /// Where `Brand/` is, from this file rather than from a working directory a test runner chooses.
     static var brand: URL {
         URL(fileURLWithPath: #filePath)          // …/Tests/WindageEngineTests/EngineMarkTests.swift
             .deletingLastPathComponent()          // …/Tests/WindageEngineTests
@@ -34,130 +30,140 @@ struct EngineMarkTests {
             .appendingPathComponent("Brand")
     }
 
-    /// A number as short as it can be written without changing it — so the file is stable from one
-    /// recording to the next and a diff shows a moved point rather than a reformatted one.
+    /// A number as short as it can be written without changing it, so a re-recording diffs as a moved
+    /// point and not as a reformatted file.
     static func number(_ value: Float) -> String {
-        let rounded = (Double(value) * 10_000).rounded() / 10_000
+        let rounded = (Double(value) * 100).rounded() / 100
         return rounded == rounded.rounded() ? String(Int(rounded)) : String(rounded)
     }
 
-    /// The mark as SVG at `scale` units per unit of the mark's height, in one flat colour.
-    static func svg(scale: Float, colour: String) -> String {
-        let width = EngineMark.aspect * scale
-        var lines = [
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(number(width)) \(number(scale))\""
-                + " width=\"\(number(width))\" height=\"\(number(scale))\" role=\"img\""
-                + " aria-label=\"\(Engine.name)\">",
-            "  <title>\(Engine.name)</title>",
-            "  <desc>The aim, and the path carried off it. Generated from EngineMark.pieces —"
-                + " see Brand/README.md.</desc>",
-        ]
-        for piece in EngineMark.pieces {
-            let thickness = number(piece.thickness * scale)
-            let opacity = number(piece.tone)
-            if piece.points.count == 1 {
-                let side = piece.thickness * scale
-                let centre = piece.points[0] * scale
-                lines.append("  <rect x=\"\(number(centre.x - side / 2))\" y=\"\(number(centre.y - side / 2))\""
-                             + " width=\"\(thickness)\" height=\"\(thickness)\""
-                             + " fill=\"\(colour)\" fill-opacity=\"\(opacity)\"/>")
-            } else {
-                let points = piece.points
-                    .map { "\(number($0.x * scale)),\(number($0.y * scale))" }
-                    .joined(separator: " ")
-                lines.append("  <polyline points=\"\(points)\" fill=\"none\" stroke=\"\(colour)\""
-                             + " stroke-opacity=\"\(opacity)\" stroke-width=\"\(thickness)\""
-                             + " stroke-linecap=\"butt\" stroke-linejoin=\"round\"/>")
-            }
-        }
-        lines.append("</svg>")
-        return lines.joined(separator: "\n") + "\n"
+    /// The outline placed in a square of `side` units, scaled by `share` about its centre.
+    static func points(side: Float, share: Float = 1) -> String {
+        EngineMark.outline
+            .map { SIMD2(repeating: side / 2) + ($0 - 0.5) * side * share }
+            .map { "\(number($0.x)),\(number($0.y))" }
+            .joined(separator: " ")
     }
 
-    /// The two files, and which ground each is for. **Two tones of one achromatic mark, not two
-    /// colours** — see ``EngineMark``.
-    static let files: [(name: String, colour: String, tone: UIColor)] = [
-        ("windage-engine.svg", "#1B2027", EngineMark.deep),
-        ("windage-engine-display.svg", "#F2F4F7", EngineMark.display),
+    static func header(_ side: Int, _ description: String) -> String {
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 \(side) \(side)\" width=\"\(side)\" height=\"\(side)\""
+            + " role=\"img\" aria-label=\"\(Engine.name)\">\n"
+            + "  <title>\(Engine.name)</title>\n"
+            + "  <desc>\(description) Generated from EngineMark.outline — see Brand/README.md.</desc>\n"
+    }
+
+    static func hex(_ colour: UIColor) -> String {
+        let c = SIMD3(colour.srgb.x, colour.srgb.y, colour.srgb.z) * 255
+        return String(format: "#%02X%02X%02X", Int(c.x.rounded()), Int(c.y.rounded()), Int(c.z.rounded()))
+    }
+
+    /// The mark alone, in one tone, filling its square.
+    static func mark(_ tone: UIColor) -> String {
+        header(100, "The Drift W.") + "  <polygon fill=\"\(hex(tone))\" points=\"\(points(side: 100))\"/>\n</svg>\n"
+    }
+
+    /// The app icon on Apple's grid: a 1024 canvas, an 824 tile inset 100 with a 185.4 corner, the
+    /// mark at 56% of the canvas.
+    static var icon: String {
+        header(1024, "App icon on the 1024 grid.")
+            + "  <defs><linearGradient id=\"ground\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\">"
+            + "<stop offset=\"0\" stop-color=\"#2A2F37\"/><stop offset=\"1\" stop-color=\"#0C0E11\"/></linearGradient></defs>\n"
+            + "  <rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"185.4\" fill=\"url(#ground)\"/>\n"
+            + "  <rect x=\"103\" y=\"103\" width=\"818\" height=\"818\" rx=\"182.4\" fill=\"none\" stroke=\"#FFFFFF\" stroke-opacity=\"0.07\" stroke-width=\"6\"/>\n"
+            + "  <polygon fill=\"\(hex(EngineMark.display))\" points=\"\(points(side: 1024, share: 0.56))\"/>\n</svg>\n"
+    }
+
+    /// A browser tab: the tile fills the square, the mark at 76%.
+    static var favicon: String {
+        header(100, "Favicon.")
+            + "  <rect width=\"100\" height=\"100\" rx=\"22\" fill=\"#16191E\"/>\n"
+            + "  <polygon fill=\"\(hex(EngineMark.display))\" points=\"\(points(side: 100, share: 0.76))\"/>\n</svg>\n"
+    }
+
+    static let files: [(name: String, contents: String)] = [
+        ("windage-engine.svg", mark(EngineMark.deep)),
+        ("windage-engine-display.svg", mark(EngineMark.display)),
+        ("windage-engine-icon.svg", icon),
+        ("favicon.svg", favicon),
     ]
 
-    @Test("The mark in Brand/ is the mark in the code", arguments: files.map(\.name))
-    func fileMatchesTheGeometry(name: String) throws {
-        let entry = try #require(Self.files.first { $0.name == name })
-        let wanted = Self.svg(scale: 100, colour: entry.colour)
+    @Test("Every mark in Brand/ is the mark in the code", arguments: files.map(\.name))
+    func fileMatchesTheOutline(name: String) throws {
+        let wanted = try #require(Self.files.first { $0.name == name }).contents
         let url = Self.brand.appendingPathComponent(name)
-
         if ProcessInfo.processInfo.environment["WINDAGE_RECORD_MARK"] != nil {
             try FileManager.default.createDirectory(at: Self.brand, withIntermediateDirectories: true)
             try wanted.write(to: url, atomically: true, encoding: .utf8)
             return
         }
         let onDisk = try String(contentsOf: url, encoding: .utf8)
-        let complaint = "\(name) is not what EngineMark.pieces draws. Re-record it: "
+        let complaint = "\(name) is not what EngineMark.outline draws. Re-record it: "
             + "WINDAGE_RECORD_MARK=1 swift test --filter EngineMarkTests"
         #expect(onDisk == wanted, "\(complaint)")
     }
 
-    /// The file's colour is the tone it is for, written out — so a hand edit to one of them fails here
-    /// rather than being discovered on a store page.
-    @Test("Each file carries its own tone", arguments: files.map(\.name))
-    func toneMatches(name: String) throws {
-        let entry = try #require(Self.files.first { $0.name == name })
-        let expected = SIMD3(entry.tone.srgb.x, entry.tone.srgb.y, entry.tone.srgb.z) * 255
-        let digits = entry.colour.dropFirst()
-        let value = UInt32(digits, radix: 16) ?? 0
-        let written = SIMD3(Float((value >> 16) & 0xFF), Float((value >> 8) & 0xFF), Float(value & 0xFF))
-        #expect(simd_distance(expected, written) < 0.5,
-                "\(name) is written \(entry.colour), and its tone is \(expected)")
+    @Test("The outline stays inside its own square")
+    func insideItsSquare() {
+        for (index, point) in EngineMark.outline.enumerated() {
+            #expect(point.x >= 0 && point.x <= 1 && point.y >= 0 && point.y <= 1, "point \(index) is at \(point)")
+        }
     }
 
-    /// **Every piece stays inside the box it declares.** The mark's width is promised by
-    /// ``EngineMark/width(forHeight:)`` and a game lays out against it; a piece hanging over the edge
-    /// would be clipped by a panel that trusted the number, and the first place it would show is
-    /// somebody else's title.
-    ///
-    /// **A stroke's thickness is perpendicular to it, not along it** — the first version of this
-    /// checked every point ± half the thickness in both axes and failed the aim rule, which runs from
-    /// one edge of the box to the other and, with butt caps, ends exactly there. A filled square *is*
-    /// its thickness in both axes, so those are checked whole.
-    @Test("Nothing hangs outside the mark's own box")
-    func insideItsBox() {
-        func inside(_ point: SIMD2<Float>, margin: Float, _ what: String) {
-            #expect(point.x >= -margin - 1e-5 && point.x <= EngineMark.aspect + margin + 1e-5,
-                    "\(what) reaches x \(point.x), and the box is 0…\(EngineMark.aspect)")
-            #expect(point.y >= -margin - 1e-5 && point.y <= 1 + margin + 1e-5,
-                    "\(what) reaches y \(point.y), and the box is 0…1")
+    /// **What makes it a W and not two Vs**: the middle apex well below both shoulders. The first
+    /// drawing of this mark was two Vs overlapping, whose middle peak reached as high as its outer
+    /// tops, and it read as VV.
+    @Test("The middle apex sits well below both shoulders")
+    func itIsAW() {
+        let o = EngineMark.outline
+        let apex = o[3].y, leftShoulder = o[0].y, rightShoulder = o[6].y
+        #expect(apex - max(leftShoulder, rightShoulder) > 0.2,
+                "the apex is at \(apex), the shoulders at \(leftShoulder) and \(rightShoulder)")
+        #expect(o[3].y == o[4].y, "the apex is not cut flat")
+    }
+
+    /// **The windage**: the right shoulder and the right valley both carried up by the offset, and
+    /// nothing else moved.
+    @Test("The right half is carried up by the offset, and only the right half")
+    func theRightHalfIsCarried() {
+        let o = EngineMark.outline, level = EngineMark.outline(offset: 0)
+        #expect(abs((level[6].y - o[6].y) - EngineMark.offset) < 1e-5, "right shoulder")
+        #expect(abs((level[8].y - o[8].y) - EngineMark.offset) < 1e-5, "right valley")
+        for index in [0, 1, 11, 12] {
+            #expect(simd_distance(o[index], level[index]) < 1e-5, "point \(index) on the left moved")
         }
-        for (index, piece) in EngineMark.pieces.enumerated() {
-            if piece.points.count == 1 {
-                let half = piece.thickness / 2
-                let centre = piece.points[0]
-                inside(centre + SIMD2(half, half), margin: 0, "square \(index)")
-                inside(centre - SIMD2(half, half), margin: 0, "square \(index)")
-            } else {
-                // The stroke can lie half its thickness off a point, in whichever direction the
-                // segment's normal points — so allow that much and no more.
-                for point in piece.points { inside(point, margin: piece.thickness / 2, "piece \(index)") }
+        #expect(abs(o[0].y - o[6].y - EngineMark.offset) < 1e-5 && abs(o[12].y - o[8].y - EngineMark.offset) < 1e-5)
+    }
+
+    /// The fill rule depends on it: an outline that crosses itself triangulates short.
+    @Test("The outline never crosses itself")
+    func simple() {
+        let o = EngineMark.outline, n = o.count
+        func crosses(_ a: SIMD2<Float>, _ b: SIMD2<Float>, _ c: SIMD2<Float>, _ d: SIMD2<Float>) -> Bool {
+            func turn(_ p: SIMD2<Float>, _ q: SIMD2<Float>, _ r: SIMD2<Float>) -> Float {
+                (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+            }
+            return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0
+        }
+        for i in 0..<n {
+            for j in 0..<n where j != i && (j + 1) % n != i && (i + 1) % n != j {
+                #expect(!crosses(o[i], o[(i + 1) % n], o[j], o[(j + 1) % n]), "edge \(i) crosses edge \(j)")
             }
         }
     }
 
-    /// The path is a ballistic curve, not a freehand line: it leaves along the aim and is carried off
-    /// it, so its first segment is flat and every one after that leans further.
-    @Test("The path leaves along the aim and never comes back to it")
-    func thePathIsCarriedOff() throws {
-        let path = try #require(EngineMark.pieces.first { $0.points.count > 2 }).points
-        #expect(abs((path.first?.y ?? 0) - EngineMark.aimY) < 1e-5,
-                "the path starts at \(String(describing: path.first)), off the aim")
-        var lastSlope: Float = 0
-        for index in 1..<path.count {
-            let step = path[index] - path[index - 1]
-            let slope = -step.y / step.x                      // upward on screen is negative y
-            #expect(slope > lastSlope, "segment \(index) leans \(slope) where the one before leant \(lastSlope)")
-            lastSlope = slope
-        }
-        // A ULP, not a mistake: `aimY - (aimY - endY)` is not bit-for-bit `endY` in a Float.
-        #expect(abs((path.last?.y ?? 0) - EngineMark.endY) < 1e-5,
-                "the path ends at \(String(describing: path.last)), not at \(EngineMark.endY)")
+    /// Filled, it covers exactly its outline: the triangles' areas add up to the polygon's.
+    @Test("Its triangles cover exactly its outline")
+    func trianglesCoverIt() {
+        let o = EngineMark.outline
+        let indices = HUDRenderer.triangulate(o)
+        #expect(indices.count == (o.count - 2) * 3)
+        #expect(abs(HUDTriangulationTests.area(of: indices, in: o) - HUDTriangulationTests.area(of: o)) < 1e-5)
+    }
+
+    /// The file's colour is the tone it is for, written out.
+    @Test("Each one-tone file carries its own tone")
+    func tones() {
+        #expect(Self.files[0].contents.contains("fill=\"#1B2027\""))
+        #expect(Self.files[1].contents.contains("fill=\"#F2F4F7\""))
     }
 }

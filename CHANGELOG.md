@@ -12,6 +12,52 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.21.0] — 2026-09-15
+
+**The Drift W.** 0.20.2 gave the engine a mark, and the mark was a diagram: a thin rule, a curve and two
+squares, 2.4 times as wide as it was high. It read as a chart going up, had no silhouette at a browser tab's
+size, and could not be an app icon. Six directions were drawn at every size that decides a mark — a 1024 icon,
+a Dock, a 16 px tab rendered into real pixels, a splash on dark and on white — and the one kept is **a W drawn
+as one continuous stroke with its right half carried up 16% of its height**. The initial, with the windage
+dialled in.
+
+### Changed — breaking
+
+- **`EngineMark` is the Drift W.** `outline` — thirteen points in a unit square, constructed from five points
+  on the stroke's centre line and a stroke width — replaces `pieces` and `Piece`. **`aspect` is 1**, where it
+  was 2.4: anything laid out against the old mark's width gets a square now. `offset` (0.16) is public, with
+  the reason it is about as far as the lift can go.
+- **`SplashScreen` sets one line across: the lead, the mark, `WINDAGE` over `ENGINE`** — the shape a player
+  has already seen on an engine splash. **`showsVersion` defaults to false**: no engine shows one in a shipped
+  game. `markWidthFraction` sizes a square mark now, default 0.12.
+
+### Added
+
+- **`HUDRenderer.fill(polygon:color:feather:)`** — a filled polygon, concave or convex, either way round.
+  The mark is a letter, and this renderer drew only rectangles, lines, rings and text.
+- **`HUDRenderer.triangulate(_:)`** — ear clipping, not a fan. Fanned from a corner, the W puts a triangle over
+  the space between its own arms.
+- **`HUDRenderer.rim(of:width:)`** — an outline moved outward, mitred, the mitre held to three widths.
+- **`Brand/`**: the app icon on Apple's 1024 grid and a favicon beside the two one-tone marks, all written from
+  `EngineMark.outline` and checked against it; `Tools/make_brand_exports.sh` rasterises them. And **`Brand/web/`**,
+  a working draft of `windageengine.com` — see its README for the four things in it that are ahead of the facts.
+
+### Fixed
+
+- **A filled shape's diagonals were stair-stepped.** The HUD pipeline has no multisampling, so the W on its
+  own splash came out jagged — at 640 × 400 and visibly at a window's size. `fill` feathers every edge over one
+  unit, fading to nothing; the shader premultiplies, so the fade composites cleanly. `feather: 0` for hard
+  edges. The polygon's own triangles share their vertices exactly, so there is no seam inside it either — the
+  hatching 0.20.2's quads needed a workaround for does not arise.
+
+### In the checks
+
+- **The splash frame re-recorded**, and each change shown to fail with it switched off: edges unfeathered, 0.12%
+  of the frame differs and the splash's zero-pixel tolerance fails it; a fan instead of ear clipping, four tests
+  fail (the fan spills outside the W, the triangles no longer add up to the outline, the rim reads as inside);
+  the offset at 10%, all four `Brand/` files disagree with the code and the splash frame fails by 0.16%.
+- 626 tests, 20 of 20 walk runs — the crate behind the splash included — 5 of 5 frames.
+
 ## [0.20.2] — 2026-09-12
 
 **The engine says its own name.** Every engine somebody else ships with says so somewhere, and this one

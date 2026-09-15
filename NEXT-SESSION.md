@@ -67,9 +67,9 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
-## State — 2026-09-12
+## State — 2026-09-15
 
-616 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
+626 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from
 JSON, an in-game level editor, positional audio, a win/lose loop, a save — and now **animated
 characters** — all against the public API only.
 
@@ -83,6 +83,29 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
 `ShadowMap`, `ShadowAtlas` and `ShadowCubes` — and, since 0.20.2, **`EngineMark` and `SplashScreen`**,
 with the mark itself in `Brand/`.
+
+## Done 2026-09-15 — the Drift W (0.21.0)
+
+**The mark is a W with its right half carried up 16%** — chosen from six directions drawn as a 1024 icon, a
+Dock, a 16 px tab rendered into real pixels, and a splash on dark and on white. 0.20.2's diagram of a mark read
+as a chart and died at tab size. `EngineMark.outline` is the construction (five centre-line points, a stroke
+width, corners where edges meet, ends cut flat); every file in `Brand/` — two one-tone marks, the app icon, the
+favicon — is written from it and checked. **No hue, no accent** (an accent split the letter in two). The whole
+selection, with the reason each rejected direction lost, is in `Brand/README.md`.
+
+**Two engine pieces a letter needed.** `HUDRenderer.fill(polygon:color:feather:)` — ear clipping (a fan
+spills between the W's arms) and a one-unit feather, because the HUD has no multisampling and the W came out
+stair-stepped on its own splash. Proofs: unfeathered, the splash frame fails at 0.12%; a fan fails four tests;
+the offset at 10% fails all four `Brand/` files and the frame at 0.16%.
+
+**The splash is one line across** — `MADE WITH` · W · `WINDAGE`/`ENGINE` — and **no version by default**: no
+engine's shipped splash shows one. The name is still set in the host's font; there is no drawn wordmark.
+
+**`Brand/web/`** — a working draft of `windageengine.com`, from the concept chosen: the product page's first
+screen ("Native to the Mac. Nothing in between.") and a game as a Swift file, then the proof-led argument ("A
+game engine that shows its work": the jump at four rates, the stale shadows, what's in it and isn't, how it's
+checked), and the docs' first page in their own shape. **Four things in it are ahead of the facts** — the
+licence, the package URL, the numbers, the placeholder imagery — listed in its README. No game is named on it.
 
 ## Done 2026-09-12 — the engine says its own name (0.20.2)
 
@@ -1642,14 +1665,13 @@ below, never in this list.
    the same answer twice. **Proved by** a second course walk, at the same four rates, riding the ruins'
    lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
 
-3. **A stroke that joins itself.** 0.20.2 found that `HUDRenderer` draws a polyline as a strip of quads
-   with a seam at every joint, and papered over it inside `EngineMark` by overlapping the segments — which
-   works for a gentle curve and will not for a sharp one, where the overlap has to grow until it shows on
-   the outside of the bend. **The engine has no polyline at all**: every consumer that wants one writes
-   this loop, and the sample and at least one game already do. `HUDRenderer.polyline(_:thickness:color:)`
-   with proper mitres, falling back to a bevel past a limit angle, is a contained piece of work with an
-   obvious test. **Proved by** a right-angled stroke drawn both ways in a recorded frame, and by the
-   splash frame not moving when `EngineMark` stops doing it by hand.
+3. **Lines and rings that are as smooth as fills.** 0.21.0 feathered `HUDRenderer.fill(polygon:)` because the
+   HUD has no multisampling and the W came out stair-stepped. `line(from:to:)` and `ring(centre:…)` are drawn
+   as bare quads in the same pipeline, so every diagonal line and every ring edge is still aliased — and a
+   game's HUD is mostly those: a reticle, a mil ladder, a chevron, a scope's surround. Draw them through the
+   same rim and feather rather than a second antialiasing path. **Proved by** a recorded frame holding a
+   diagonal line and a ring, failing with the feather off, and by looking at the game with a window's HUD at
+   full size, whose ladder and chevrons are lines.
 
 ## Parked — not next, and why
 
