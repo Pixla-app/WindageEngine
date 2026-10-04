@@ -625,7 +625,7 @@ normals and UVs per face-corner and Model I/O expands them; that is not a broken
 mapping is on `MDLSkeleton.jointPaths` instead, so a loader reading only the bind component will
 decide a skinned character is a statue.
 
-The tooling that does all of this is `Studio/Characters/` — see its README.
+The tooling that does all of this is `$PIXLA_ASSETS/Characters/` — see its README.
 
 > **What the 2026-09-06 probe did *not* prove:** the export above came from Blender-authored data,
 > not from an imported FBX. That is the gap the 2026-09-07 run closed.
