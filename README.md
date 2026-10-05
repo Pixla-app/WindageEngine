@@ -184,7 +184,7 @@ has nothing to build** · and a complete sample game exercising all of it.
 
 | | what it really costs |
 |---|---|
-| **A standalone editor application** | **Unity's editor is larger than its runtime.** This is where solo engines die. `LevelEditor` already gives the shape that matters — a game embeds it and edits in place, the way id and Valve games did. |
+| **A standalone editor application** | **Unity's editor is larger than its runtime.** This is where solo engines die. `LevelEditor` already gives the shape that matters — a game embeds it and edits in place, the way id and Valve games did. **Taken, as its own product: Worldra (2026-10-05)** — see *What NOT to do yet*. |
 | **Windows / console backends** | A real port of the platform layer, not an `#ifdef`. The single change that would most widen the audience, and the one Mac-first defers on purpose. |
 | **Physics** | Rigid bodies, constraints, a solver. Most engines license one rather than write it. |
 | **Networking** | Replication, prediction, reconciliation. A genre decision before an engineering one. |
@@ -2768,9 +2768,14 @@ or not a licence ever happens:
 - **Do not add a platform abstraction layer speculatively.** Windows support is a real port, not an
   `#ifdef`, and writing the abstraction before the second platform exists produces the wrong seams —
   the same trap as designing an engine from one game.
-- **Do not build a standalone editor application.** It is the single largest cost in an engine, and
-  `LevelEditor` already covers the shape that matters: a game embeds it and edits its own levels in
-  place.
+- **Do not build a standalone editor application *inside the engine*.** It is the single largest cost
+  in an engine, and `LevelEditor` already covers the shape a game needs: it embeds it and edits its own
+  levels in place. **The business decision this line deferred was made on 2026-10-05: Worldra
+  (`../Worldra`) is the studio's standalone world editor, a product of its own, and it draws with this
+  engine.** It does not move into the engine and does not replace `LevelEditor` — Worldra edits USD in
+  its own package and uses the engine to render. What it brings here is the ordinary way: LOD and
+  instancing once its scatter proves them, and Worldra joins the consumers an engine release is
+  followed into.
 - **Do not take on support obligations.** A licence means answering questions on someone else's
   schedule; that is a business decision, not an engineering one, and it competes directly with
   shipping games.
