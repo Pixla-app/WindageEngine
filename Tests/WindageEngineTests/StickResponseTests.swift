@@ -110,3 +110,19 @@ struct StickLookTests {
         #expect(byMouse.yaw < 0)
     }
 }
+
+@Suite("Stick response — values that used to break it")
+struct StickResponseGuardTests {
+    @Test("A negative, NaN or full dead zone, and a bad exponent, still give a finite answer")
+    func guarded() {
+        for deadzone in [Float(-1), .nan, 1, 2] {
+            for exponent in [Float(2), 0, -1, .nan] {
+                for raw in [SIMD2<Float>(0, 0), SIMD2(0.5, 0), SIMD2(1, 1)] {
+                    let out = StickResponse.shaped(raw, deadzone: deadzone, exponent: exponent)
+                    #expect(out.x.isFinite && out.y.isFinite, "\(raw) with \(deadzone), \(exponent) gave \(out)")
+                }
+            }
+        }
+        #expect(StickResponse.shaped(.zero, deadzone: -1, exponent: 2) == .zero, "a resting stick moved")
+    }
+}

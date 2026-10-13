@@ -7,15 +7,16 @@ description: The first-person Camera type, its view matrix, and the reversed-Z p
 ## The Camera type
 
 ```swift
-public nonisolated struct Camera: Sendable {
+public nonisolated struct Camera: Sendable, Equatable {
     public var position: SIMD3<Float>   // meters, Y is up
     public var yaw: Float               // radians, 0 looks down -Z, positive turns left
     public var pitch: Float             // radians, positive looks up
-    public init(position: SIMD3<Float> = .zero, yaw: Float = 0, pitch: Float = 0)
+    public var tuning: Tuning           // speeds and sensitivities
+    public init(position: SIMD3<Float> = .zero, yaw: Float = 0, pitch: Float = 0, tuning: Tuning = Tuning())
 }
 ```
 
-Orientation is yaw and pitch with no roll. Pitch is clamped to `Camera.pitchLimit`, 89 degrees: at exactly 90 the look direction is parallel to world up, the right vector is undefined, and the image snaps. Yaw is kept wrapped to `(-π, π]` by `Camera.wrapAngle(_:)`, because a session spinning steadily for an hour would otherwise reach angles a 32-bit float cannot resolve finely.
+Orientation is yaw and pitch with no roll. Pitch is clamped to `Camera.pitchLimit`, 89 degrees: at exactly 90 the look direction is parallel to world up, the right vector is undefined, and the image snaps. Yaw is kept wrapped to `(-π, π]` by `Float.wrappedAngle(_:)`, because a session spinning steadily for an hour would otherwise reach angles a 32-bit float cannot resolve finely. **Both hold however the angles are set** — `camera.pitch += recoil` is clamped, `camera.yaw += turned` is wrapped.
 
 The basis comes from those two angles:
 
@@ -30,10 +31,10 @@ The basis comes from those two angles:
 
 `advance(_:deltaTime:)` flies along the look direction, through anything. That is right for an editor, a photo mode, or a game that genuinely flies. A game with feet moves a `CharacterController` instead and puts the camera at its `eye` — see [character-controller](character-controller.html). Walking is along the ground plane, not the look direction, which is why the two are separate types.
 
-`advance` takes a `MovementInput` — axes rather than key names, so a stick or a replay can drive it as easily as a keyboard. Its direction is clamped to length 1, not normalized: two keys at once are not faster than one, and a stick pushed a third of the way goes a third as fast. Speeds are `Camera.walkSpeed` (6 m/s) and `Camera.sprintSpeed` (18 m/s).
+`advance` takes a `MovementInput` — axes rather than key names, so a stick or a replay can drive it as easily as a keyboard. Its direction is clamped to length 1, not normalized: two keys at once are not faster than one, and a stick pushed a third of the way goes a third as fast. Speeds are the camera's `tuning.walkSpeed` (6 m/s) and `tuning.sprintSpeed` (18 m/s).
 
 ```swift
-camera.advance(MovementInput(forward: 1, strafe: 0, vertical: 0, sprint: false),
+camera.advance(MovementInput(forward: 1, strafe: 0, vertical: 0, isSprinting: false),
                deltaTime: deltaTime)
 ```
 
@@ -44,7 +45,7 @@ There are two look methods, and mixing them up ruins the feel of one or the othe
 - `look(mouseDelta:)` is **not** scaled by time. A mouse delta is a displacement the player already made; scaling it by frame duration would make the same hand movement turn further on a slow frame.
 - `turn(rate:deltaTime:)` **is** scaled by time. A stick reports a held position, which is a rate: hold it twice as long and you turn twice as far.
 
-Sensitivities are `Camera.lookSensitivity` (radians per unit of mouse movement) and `Camera.stickLookSpeed` (radians per second at full deflection). See [input](input.html) for scaling them per device.
+Sensitivities are `tuning.lookSensitivity` (0.0022 radians per unit of mouse movement) and `tuning.stickLookSpeed` (3.2 radians per second at full deflection) — your game's to change, per camera. A player's own sensitivity goes on top, through [input](input.html).
 
 ## Reversed-Z, with an infinite far plane {#reversed-z}
 
@@ -100,5 +101,5 @@ Mouse look goes through `camera.look(mouseDelta:)` as events arrive. The sample'
 ## Gotchas
 
 - `MovementInput` has an explicit public initializer, so you can construct one from outside the module.
-- Setting `yaw` or `pitch` directly skips the wrap and the clamp that `init`, `look` and `turn` apply. Pass new values through `Camera.wrapAngle(_:)` and keep pitch within `Camera.pitchLimit`.
+- `Float.shortestAngle(from:to:)` is the signed shortest turn between two yaws — what `Camera.interpolated(from:to:alpha:)` blends by, so a frame across the ±π seam does not spin the long way round.
 - The camera knows nothing about collision. Put it at a body's eye if it should not walk through walls.

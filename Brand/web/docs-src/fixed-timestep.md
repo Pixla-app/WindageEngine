@@ -77,7 +77,7 @@ func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolatio
 
 ## Input belongs to frames, not steps
 
-A frame may run zero, one or several steps. Mouse movement is a displacement that already happened, so `InputState.consumePendingLook()` is read **once per frame**, in `beginFrame`. Applied in every step of a frame that ran three, it would turn three times as far. Held keys and stick rates, by contrast, are read per step and scaled by `deltaTime`. See [input](input.html).
+A frame may run zero, one or several steps. Mouse movement is a displacement that already happened, so `InputState.consumeLook()` is read **once per frame**, in `beginFrame`. Applied in every step of a frame that ran three, it would turn three times as far. Held keys and stick rates, by contrast, are read per step and scaled by `deltaTime`. See [input](input.html).
 
 ## Behaving the same at any step rate
 

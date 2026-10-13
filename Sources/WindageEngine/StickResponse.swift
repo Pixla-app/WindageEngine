@@ -18,6 +18,8 @@ public nonisolated enum StickResponse {
 
     /// 1 is linear. Above 1 gives fine control near the center and full speed at the edge, which is
     /// what aiming wants; movement stays nearly linear because walking speed should feel direct.
+    /// **The defaults** — a game sets its own curve in ``InputState/moveExponent`` and
+    /// ``InputState/lookExponent``.
     public static let moveExponent: Float = 1.3
     public static let lookExponent: Float = 2.0
 
@@ -34,7 +36,13 @@ public nonisolated enum StickResponse {
     /// The curve is applied to the magnitude after the deadzone is subtracted and the remainder
     /// rescaled, so the response starts at zero the instant the stick leaves the dead area rather
     /// than jumping to a step.
+    ///
+    /// **Any dead zone and exponent give a finite answer.** A dead zone is held to `0…0.99` — a
+    /// negative one divided a resting stick's zero by zero, and one of 1 divided by nothing at all —
+    /// and an exponent that is not a positive number is taken as linear.
     public static func shaped(_ raw: SIMD2<Float>, deadzone: Float, exponent: Float) -> SIMD2<Float> {
+        let deadzone = deadzone.isFinite ? min(max(deadzone, 0), 0.99) : 0
+        let exponent = exponent.isFinite && exponent > 0 ? exponent : 1
         let magnitude = simd_length(raw)
         guard magnitude > deadzone else { return .zero }
 

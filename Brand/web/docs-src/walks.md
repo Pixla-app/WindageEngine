@@ -74,7 +74,7 @@ A walk entry names its `level` and `script`, and each item under `expect` says w
 
 The engine does not ship a script reader. These are the parts the sample's is built on, and each one is public:
 
-- **`KeyCode(named:)`** turns `"W"`, `"space"` or `"shift"` into a key code. Feed the codes through your own key handling, then `InputState.keyDown(_:)` and `keyUp(_:)`.
+- **`KeyCode(named:)`** turns `"W"`, `"space"` or `"shift"` into a `KeyCode`. Feed the keys through your own key handling, then `InputState.keyDown(_:)` and `keyUp(_:)` — or, for a modifier, `flagsChanged(key:modifierFlags:)` with its `modifierFlag`.
 - **`InputState.useGamepad(_:)`** reads a pad you supply. `GCController.withExtendedGamepad()` makes one whose buttons are set from code. Push its d-pad through `setValueForXAxis(_:yAxis:)`, because setting `dpad.down` as a button is accepted and does nothing.
 - **`FrameRenderer.runsWhileHidden`** keeps the [simulation stepping](running-hidden.html) with the window never shown, so a check runs out of the way.
 - **`FrameRenderer(device:simulationStepsPerSecond:)`** sets the [step rate](fixed-timestep.html). The fixed timestep is what makes the same keys reach the same place.

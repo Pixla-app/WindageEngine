@@ -1454,7 +1454,7 @@ it was napped a minute in: see 0.13.2.
 ### Something set down at an angle (0.12.1)
 
 The controller saw every solid as its world-aligned box, and a turned crate's box is bigger than the
-crate: a 1.5 m crate at 45° has one 2.12 m across. **`Surroundings.footprints`** gives each solid its
+crate: a 1.5 m crate at 45° has one 2.12 m across. **`Surroundings.Solid.footprint`** gives each solid its
 real plan — a rectangle turned about the vertical, `Footprint(of:)` from a `Volume` — and the body
 collides with that: two rectangles tested on their separating axes, the world's two and the solid's
 own two. The box still says how high a solid reaches. **Against a turned face a move slides along it**
@@ -1491,7 +1491,7 @@ jump adds the ground's speed to its own, a step off an edge falls away at it, an
 carries on through the air (`airVelocity`) until a landing, or a wall, stops it. A turntable throws
 you along its rim, at ω·r. `groundVelocity` is the ground's speed this step.
 
-**So `Surroundings.motion` has to be movement.** A solid put back at its start in one step must report
+**So `Surroundings.Solid.motion` has to be movement.** A solid put back at its start in one step must report
 no motion that step, or whoever leaves it next leaves at the speed of the jump back.
 
 **Measured in the sample**, jumping from the ruins' lift at mid-rise, where it rises at 0.54 m/s:
@@ -1507,7 +1507,7 @@ no motion that step, or whoever leaves it next leaves at the speed of the jump b
 
 ### Something that turns underfoot (0.11.1)
 
-`Surroundings.turns` says how far each solid turned since the last step, and about which centre. A body
+`Surroundings.Solid.turn` says how far each solid turned since the last step, and about which centre. A body
 standing on one is carried round it — through collision, like any carry, and with no footsteps — and
 `turned` reports the angle, **for the game to add to the view**: the controller walks by the yaw it is
 given and does not own the camera, and a player carried round with a fixed view faces one way while the
@@ -1570,7 +1570,7 @@ renumbers it — keyed by index, an edit to one brazier restarted the other's fi
 
 ### And something that moves underfoot (0.10.1)
 
-`Surroundings.motion` says how far each solid moved since the last step, in the order of `solids`; a
+`Surroundings.Solid.motion` says how far each solid moved since the last step, in the order of `solids`; a
 body standing on one that moved **goes with it, first**, before its own walking — so walking on a
 moving platform is walking relative to it, and riding one standing still makes no footsteps and no
 bob. Up and down is rigid (the eye does not ease after a lift the way it eases up a stair); across goes
@@ -1591,7 +1591,7 @@ walk off onto the landing at 1.20 — no footsteps the whole ride.
 
 **Letting go of crouch is a request, not a promise of room.** Under a beam the controller keeps the
 body down — at crouched height, a crouched walk's speed, no sprint, a crouched stride — and stands the
-moment the footprint is clear; `isHeldDown` says so, for a game to put on screen. Room is the lowest
+moment the footprint is clear; `isCrouchForced` says so, for a game to put on screen. Room is the lowest
 underside of anything over the footprint and above the soles, with the collision test's own tolerance.
 
 **What it replaced was worse than the parked note said.** Standing up under a 1.5 m beam put the top of
@@ -1619,7 +1619,7 @@ still, which reads as swimming.
 - **A step up jumps the stride phase to a footfall**, and a bob read straight off the phase jumped with
   it — 2.86 cm in one frame on every tread, measured by a test that fails without the fix. The jump is
   carried and eased out at the eye's settling rate, the way the eye follows the step itself.
-- **The view's, never the aim's**, like the dips. `PlayerSettings.headBob` is 0…1 with **0 as off**:
+- **The view's, never the aim's**, like the dips. `PlayerSettings.headBobAmount` is 0…1 with **0 as off**:
   bob is a known cause of motion sickness, so off has to exist, and most players who find it too much
   want less rather than none.
 
@@ -1645,7 +1645,7 @@ them. The sample has a settings screen on **O**.
 sample shipped like that with "shift sprint" printed on its screen. Rebinding is what found it,
 because it made every key go through one path — and a modifier had no path.
 
-So modifiers are keys: a window forwards `flagsChanged` to `InputState.flagsChanged(keyCode:
+So modifiers are keys: a window forwards `flagsChanged` to `InputState.flagsChanged(key:
 modifierFlags:)`, which reads the **device-specific bit** for the physical key — the generic Shift flag
 is set while *either* Shift is down, so releasing the left one with the right still held would read as
 still pressed. Sprint, or crouch, can then be bound to Control like anything else. The sample's

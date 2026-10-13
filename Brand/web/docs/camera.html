@@ -33,24 +33,25 @@
     <h1>Camera</h1>
 <p><code>Camera</code> is an eye in the world: a position in meters, a yaw and a pitch, and the view matrix that follows from them. Pair it with <code>simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)</code> for the projection, and you have everything a frame needs to know about where it is looking from.</p>
 <h2 id="the-camera-type">The Camera type</h2>
-<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> Camera: Sendable {
+<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> Camera: Sendable, Equatable {
     <span class="k">public</span> <span class="k">var</span> position: SIMD3&lt;Float&gt;   <span class="c">// meters, Y is up</span>
     <span class="k">public</span> <span class="k">var</span> yaw: Float               <span class="c">// radians, 0 looks down -Z, positive turns left</span>
     <span class="k">public</span> <span class="k">var</span> pitch: Float             <span class="c">// radians, positive looks up</span>
-    <span class="k">public</span> <span class="k">init</span>(position: SIMD3&lt;Float&gt; = .zero, yaw: Float = 0, pitch: Float = 0)
+    <span class="k">public</span> <span class="k">var</span> tuning: Tuning           <span class="c">// speeds and sensitivities</span>
+    <span class="k">public</span> <span class="k">init</span>(position: SIMD3&lt;Float&gt; = .zero, yaw: Float = 0, pitch: Float = 0, tuning: Tuning = Tuning())
 }</pre>
-<p>Orientation is yaw and pitch with no roll. Pitch is clamped to <code>Camera.pitchLimit</code>, 89 degrees: at exactly 90 the look direction is parallel to world up, the right vector is undefined, and the image snaps. Yaw is kept wrapped to <code>(-π, π]</code> by <code>Camera.wrapAngle(_:)</code>, because a session spinning steadily for an hour would otherwise reach angles a 32-bit float cannot resolve finely.</p>
+<p>Orientation is yaw and pitch with no roll. Pitch is clamped to <code>Camera.pitchLimit</code>, 89 degrees: at exactly 90 the look direction is parallel to world up, the right vector is undefined, and the image snaps. Yaw is kept wrapped to <code>(-π, π]</code> by <code>Float.wrappedAngle(_:)</code>, because a session spinning steadily for an hour would otherwise reach angles a 32-bit float cannot resolve finely. <strong>Both hold however the angles are set</strong> — <code>camera.pitch += recoil</code> is clamped, <code>camera.yaw += turned</code> is wrapped.</p>
 <p>The basis comes from those two angles:</p>
 <div class="table"><table><thead><tr><th>Property</th><th>What it is</th></tr></thead><tbody><tr><td><code>forward</code></td><td>The look direction.</td></tr><tr><td><code>right</code></td><td>Horizontal only, so strafing never drifts up or down while looking at the sky.</td></tr><tr><td><code>up</code></td><td><code>right × forward</code>.</td></tr><tr><td><code>viewMatrix</code></td><td>World space to view space. Right-handed: the camera looks down <strong>-Z</strong>, so anything in front of it has a negative view-space Z.</td></tr></tbody></table></div>
 <h2 id="an-eye-not-a-body">An eye, not a body</h2>
 <p><code>advance(_:deltaTime:)</code> flies along the look direction, through anything. That is right for an editor, a photo mode, or a game that genuinely flies. A game with feet moves a <code>CharacterController</code> instead and puts the camera at its <code>eye</code> — see <a href="character-controller.html">character-controller</a>. Walking is along the ground plane, not the look direction, which is why the two are separate types.</p>
-<p><code>advance</code> takes a <code>MovementInput</code> — axes rather than key names, so a stick or a replay can drive it as easily as a keyboard. Its direction is clamped to length 1, not normalized: two keys at once are not faster than one, and a stick pushed a third of the way goes a third as fast. Speeds are <code>Camera.walkSpeed</code> (6 m/s) and <code>Camera.sprintSpeed</code> (18 m/s).</p>
-<pre class="code-swift">camera.advance(MovementInput(forward: 1, strafe: 0, vertical: 0, sprint: <span class="k">false</span>),
+<p><code>advance</code> takes a <code>MovementInput</code> — axes rather than key names, so a stick or a replay can drive it as easily as a keyboard. Its direction is clamped to length 1, not normalized: two keys at once are not faster than one, and a stick pushed a third of the way goes a third as fast. Speeds are the camera's <code>tuning.walkSpeed</code> (6 m/s) and <code>tuning.sprintSpeed</code> (18 m/s).</p>
+<pre class="code-swift">camera.advance(MovementInput(forward: 1, strafe: 0, vertical: 0, isSprinting: <span class="k">false</span>),
                deltaTime: deltaTime)</pre>
 <h2 id="looking-mouse-and-stick-are-different-quantities">Looking: mouse and stick are different quantities</h2>
 <p>There are two look methods, and mixing them up ruins the feel of one or the other.</p>
 <ul><li><code>look(mouseDelta:)</code> is <strong>not</strong> scaled by time. A mouse delta is a displacement the player already made; scaling it by frame duration would make the same hand movement turn further on a slow frame.</li><li><code>turn(rate:deltaTime:)</code> <strong>is</strong> scaled by time. A stick reports a held position, which is a rate: hold it twice as long and you turn twice as far.</li></ul>
-<p>Sensitivities are <code>Camera.lookSensitivity</code> (radians per unit of mouse movement) and <code>Camera.stickLookSpeed</code> (radians per second at full deflection). See <a href="input.html">input</a> for scaling them per device.</p>
+<p>Sensitivities are <code>tuning.lookSensitivity</code> (0.0022 radians per unit of mouse movement) and <code>tuning.stickLookSpeed</code> (3.2 radians per second at full deflection) — your game's to change, per camera. A player's own sensitivity goes on top, through <a href="input.html">input</a>.</p>
 <h2 id="reversed-z">Reversed-Z, with an infinite far plane</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">extension</span> simd_float4x4 {
     <span class="k">init</span>(perspectiveFovY fovY: Float, aspectRatio: Float, nearZ: Float,
@@ -79,7 +80,7 @@ camera.turn(rate: input.lookRate * settings.stickLookScale, deltaTime: deltaTime
 <span class="k">let</span> viewProjection = simd_mul(projection, view.viewMatrix)</pre>
 <p>Mouse look goes through <code>camera.look(mouseDelta:)</code> as events arrive. The sample's view also adds a head bob and a slide's dip to the <em>displayed</em> camera only, never to <code>camera</code> itself — the view moves, the aim does not.</p>
 <h2 id="gotchas">Gotchas</h2>
-<ul><li><code>MovementInput</code> has an explicit public initializer, so you can construct one from outside the module.</li><li>Setting <code>yaw</code> or <code>pitch</code> directly skips the wrap and the clamp that <code>init</code>, <code>look</code> and <code>turn</code> apply. Pass new values through <code>Camera.wrapAngle(_:)</code> and keep pitch within <code>Camera.pitchLimit</code>.</li><li>The camera knows nothing about collision. Put it at a body's eye if it should not walk through walls.</li></ul>
+<ul><li><code>MovementInput</code> has an explicit public initializer, so you can construct one from outside the module.</li><li><code>Float.shortestAngle(from:to:)</code> is the signed shortest turn between two yaws — what <code>Camera.interpolated(from:to:alpha:)</code> blends by, so a frame across the ±π seam does not spin the long way round.</li><li>The camera knows nothing about collision. Put it at a body's eye if it should not walk through walls.</li></ul>
   </main>
 
   <aside class="docs-toc" aria-label="On this page">

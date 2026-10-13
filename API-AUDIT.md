@@ -48,34 +48,34 @@ Most are one of these, repeated across files; the full lines follow below.
 ## All findings, by area
 
 ### Input and the character
-[MUST] InputBindings.swift:132 — `Action` is a closed enum including `brace`; titles can't add actions; fire/aim can't be rebound — open action identity with engine statics, titles add their own — Coldkeel, sample
-[MUST] InputState.swift:281,296,337,339,343 — `isFiring`, `isSteadying`, brace, R3 magnification are one sniper scheme in engine API — move to that title's bindings over the generic layer — Coldkeel, sample
-[MUST] Camera.swift:64-71 — `walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` are fixed statics, also `CharacterController.Tuning` defaults — instance properties or `Camera.Tuning` — Coldkeel, sample
-[MUST] Camera.swift:48-54 — `position/yaw/pitch` settable past the documented clamp/wrap — `didSet` clamp/wrap or setter — Coldkeel, sample
-[SHOULD] InputState.swift:175-176 — deadzones unvalidated; negative gives NaN movement — clamp in `didSet`, guard `StickResponse.shaped` — sample
-[SHOULD] InputState.swift:70,171,175 — `PlayerSettings` applied half by InputState, half by the caller — `InputState.apply(_:)` — sample
-[SHOULD] StickResponse.swift:21-22 — response exponents are fixed statics — `InputState` properties with these defaults — engine
-[SHOULD] InputState.swift:219,238,247,388 — raw `UInt16`/`UInt` key codes beside the public `KeyCode` — take `KeyCode`/`NSEvent.ModifierFlags` — Coldkeel, sample
-[SHOULD] InputBindings.swift:62,69 — raw modifier bit masks — typed flags — sample
-[SHOULD] InputState.swift:328 — crouch can only be toggled; no `standUp()` (brace has `releaseBrace()`) — add one — Coldkeel, sample
-[SHOULD] CharacterController.swift:83,95,119 — `Surroundings` keeps four parallel arrays in lock-step by index — one `Solid` struct — sample
-[SHOULD] CharacterController.swift:134 — `Footprint.radius` settable, inconsistent with shape — `let` fields or a shape enum — sample
-[SHOULD] CharacterController.swift:384,376,454 — `slideLeft`, `height`, `isHeldDown` misleading — `slideTimeRemaining`, `eyeHeight`, `isCrouchForced` — sample
-[SHOULD] CharacterController.swift:540-543, Camera.swift:19 — Bool labels not phrased as assertions (`jump:`, `crouching:`, `sprint`) — `isJumpHeld:`, `isCrouching:`, `isSprinting` — Coldkeel, sample
-[SHOULD] InputBindings.swift:304 vs CharacterController.swift:510 — `headBob` means two things — `headBobAmount` (keep old decode key) — sample
-[SHOULD] InputState.swift:191 — `padMenuPressed` naming and placement — `wasPadMenuPressed` or `PadButton.menu` — sample
-[SHOULD] InputState.swift:117,260,368,547 — `consumeScroll/Next/Steps/PendingLook` inconsistent; `pendingNext` public — `consumeLook()`, private `pendingNext` — Coldkeel, sample
-[SHOULD] CharacterController.swift:401 — `Event` will grow; adding a case breaks switches — decide cases now or require `default` — sample
-[SHOULD] Camera.swift:45 — `Camera` lacks `Equatable` — add — Coldkeel, sample
-[SHOULD] CharacterController.swift (various) — units in some names, not others; `Turn.radians` vs `Footprint.yaw` — one convention — sample
-[CONSIDER] InputState.swift:132,140 — `init()` starts global controller discovery; a second instance stops the first's — explicit `start()/stop()` — Coldkeel, sample
-[CONSIDER] InputState.swift:283,380 — trigger thresholds fixed at 0.5 — configurable — Coldkeel
-[CONSIDER] InputState.swift:101 — `scrollNotch` static — instance var — engine
-[CONSIDER] InputBindings.swift:172 — `Outcome` shared by two types but nested in one — top-level `BindingOutcome` — sample
-[CONSIDER] InputBindings.swift:136, PadBindings.swift:21 — English display strings in engine API — leave names to the game or localize — sample
-[CONSIDER] InputBindings.swift:16-17 — `KeyCode` has two inits and magic numbers — named statics — sample
-[CONSIDER] Camera.swift:166,177 — `wrapAngle`/`shortestAngle` hang off `Camera` — free math helpers — Coldkeel, sample
-[CONSIDER] CharacterController.swift:364 — no `teleport(to:)`; respawn resets tuning silently — add it — sample
+[MUST] InputBindings.swift:132 — `Action` is a closed enum including `brace`; titles can't add actions; fire/aim can't be rebound — open action identity with engine statics, titles add their own — Coldkeel, sample → DONE: top-level `InputAction` (a stable name, not a closed enum; chose top-level over nested since `PadBindings` shares it), engine statics `.forward…sprint`, games add theirs with `InputBindings.adding(_:defaultKey:)` / `PadBindings.adding(_:defaultButton:)` or `init(defaults:)`; a saved binding for an action the engine does not know is kept until the game adds it
+[MUST] InputState.swift:281,296,337,339,343 — `isFiring`, `isSteadying`, brace, R3 magnification are one sniper scheme in engine API — move to that title's bindings over the generic layer — Coldkeel, sample → DONE: removed from the engine; generic `isHeld(_:)`, `isKeyHeld`/`isPadHeld`, `consumePresses(of:)`, mouse-button and trigger reads, `padSprintLatches`; Coldkeel's `ColdkeelCore/Controls.swift` rebuilds fire, aim, steady, brace and R3 magnification on them, behavior unchanged (tested)
+[MUST] Camera.swift:64-71 — `walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` are fixed statics, also `CharacterController.Tuning` defaults — instance properties or `Camera.Tuning` — Coldkeel, sample → DONE: `Camera.Tuning` (chosen over loose instance properties, matching `CharacterController.Tuning`), same defaults, `camera.tuning`; `CharacterController.Tuning` speeds default to literal 6 and 18; Coldkeel's own speeds are `Footing.walkSpeed`/`sprintSpeed`
+[MUST] Camera.swift:48-54 — `position/yaw/pitch` settable past the documented clamp/wrap — `didSet` clamp/wrap or setter — Coldkeel, sample → DONE: `didSet` wraps yaw and clamps pitch on every assignment (position has no limit to keep)
+[SHOULD] InputState.swift:175-176 — deadzones unvalidated; negative gives NaN movement — clamp in `didSet`, guard `StickResponse.shaped` — sample → DONE: clamped to `PlayerSettings.deadzoneRange` in `didSet` (NaN → default); `StickResponse.shaped` holds the dead zone to 0…0.99 and a non-positive exponent to linear
+[SHOULD] InputState.swift:70,171,175 — `PlayerSettings` applied half by InputState, half by the caller — `InputState.apply(_:)` — sample → DONE: `InputState.apply(_:)` sets both bindings, dead zones and the per-device look scales, which `consumeLook()`/`lookRate` now apply
+[SHOULD] StickResponse.swift:21-22 — response exponents are fixed statics — `InputState` properties with these defaults — engine → DONE: `InputState.moveExponent`/`lookExponent`, defaulting to `StickResponse`'s, validated
+[SHOULD] InputState.swift:219,238,247,388 — raw `UInt16`/`UInt` key codes beside the public `KeyCode` — take `KeyCode`/`NSEvent.ModifierFlags` — Coldkeel, sample → DONE: `keyDown(_:)`/`keyUp(_:)` take `KeyCode`, `flagsChanged(key:modifierFlags:)` takes `NSEvent.ModifierFlags`; `isEscape(_:)` removed for `key == .escape`
+[SHOULD] InputBindings.swift:62,69 — raw modifier bit masks — typed flags — sample → DONE: `NSEvent.ModifierFlags`, built from IOKit's `NX_DEVICE…KEYMASK` names
+[SHOULD] InputState.swift:328 — crouch can only be toggled; no `standUp()` (brace has `releaseBrace()`) — add one — Coldkeel, sample → DONE: `standUp()`
+[SHOULD] CharacterController.swift:83,95,119 — `Surroundings` keeps four parallel arrays in lock-step by index — one `Solid` struct — sample → DONE: `Surroundings.solids: [Solid]` with `bounds`, `footprint`, `motion`, `turn`
+[SHOULD] CharacterController.swift:134 — `Footprint.radius` settable, inconsistent with shape — `let` fields or a shape enum — sample → DONE: `let` fields (chosen over a shape enum: the two initializers already say which shape, and no call site has to switch)
+[SHOULD] CharacterController.swift:384,376,454 — `slideLeft`, `height`, `isHeldDown` misleading — `slideTimeRemaining`, `eyeHeight`, `isCrouchForced` — sample → DONE: `slideTimeRemaining`, `eyeHeight`, `isCrouchForced`
+[SHOULD] CharacterController.swift:540-543, Camera.swift:19 — Bool labels not phrased as assertions (`jump:`, `crouching:`, `sprint`) — `isJumpHeld:`, `isCrouching:`, `isSprinting` — Coldkeel, sample → DONE: `step(yaw:input:isJumpHeld:isCrouching:deltaTime:in:)`, `MovementInput.isSprinting`
+[SHOULD] InputBindings.swift:304 vs CharacterController.swift:510 — `headBob` means two things — `headBobAmount` (keep old decode key) — sample → DONE: `PlayerSettings.headBobAmount`, still coded as `headBob`
+[SHOULD] InputState.swift:191 — `padMenuPressed` naming and placement — `wasPadMenuPressed` or `PadButton.menu` — sample → DONE: `wasPadMenuPressed` (not `PadButton.menu`, which would make the menu button bindable)
+[SHOULD] InputState.swift:117,260,368,547 — `consumeScroll/Next/Steps/PendingLook` inconsistent; `pendingNext` public — `consumeLook()`, private `pendingNext` — Coldkeel, sample → DONE: `consumeLook()`; `pendingNext` private; all reads are `consume…()`
+[SHOULD] CharacterController.swift:401 — `Event` will grow; adding a case breaks switches — decide cases now or require `default` — sample → DONE: decided — the three cases are the set, documented as closed; a new kind of event waits for a major version rather than requiring `default` everywhere
+[SHOULD] Camera.swift:45 — `Camera` lacks `Equatable` — add — Coldkeel, sample → DONE: `Equatable`
+[SHOULD] CharacterController.swift (various) — units in some names, not others; `Turn.radians` vs `Footprint.yaw` — one convention — sample → DONE: names say what a number is, units go in the doc comment — `slideDuration`, `coyoteTime`, `jumpBufferTime`, `slideDip`, `Turn.angle`
+[CONSIDER] InputState.swift:132,140 — `init()` starts global controller discovery; a second instance stops the first's — explicit `start()/stop()` — Coldkeel, sample → DONE: `init()` has no side effects; `start()`/`stop()` (was `shutdown()`)
+[CONSIDER] InputState.swift:283,380 — trigger thresholds fixed at 0.5 — configurable — Coldkeel → DONE: the thresholds left the engine with fire and aim; the engine exposes `leftTrigger`/`rightTrigger`, Coldkeel owns `Controls.triggerThreshold`
+[CONSIDER] InputState.swift:101 — `scrollNotch` static — instance var — engine → DONE: instance property, validated
+[CONSIDER] InputBindings.swift:172 — `Outcome` shared by two types but nested in one — top-level `BindingOutcome` — sample → DONE: top-level `BindingOutcome`
+[CONSIDER] InputBindings.swift:136, PadBindings.swift:21 — English display strings in engine API — leave names to the game or localize — sample → DONE for actions: `title` removed, the game names its actions (the sample keeps its words). `PadButton.name` kept — it is a hardware legend like `KeyCode.name`, and `name(on:)` already asks the pad for the localized one
+[CONSIDER] InputBindings.swift:16-17 — `KeyCode` has two inits and magic numbers — named statics — sample → DONE: named statics for every key in the legend table (plus `forwardDelete`); the unlabeled init removed, `init(rawValue:)` for event codes
+[CONSIDER] Camera.swift:166,177 — `wrapAngle`/`shortestAngle` hang off `Camera` — free math helpers — Coldkeel, sample → DONE: `Float.wrappedAngle(_:)` and `Float.shortestAngle(from:to:)` beside `Float.radians(fromDegrees:)`
+[CONSIDER] CharacterController.swift:364 — no `teleport(to:)`; respawn resets tuning silently — add it — sample → DONE: `teleport(to:)`, which keeps the tuning; the sample's level change uses it
 
 ### World, animation, audio, saving
 [MUST] TransformHierarchy.swift:166 — `matrix_without_scale(_:)` C-style name — member `withoutScale` — sample → DONE: `simd_float4x4.withoutScale`, a property, moved to Math.swift with the other renames (core pass).

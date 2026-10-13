@@ -143,6 +143,26 @@ public extension Float {
     nonisolated static func degrees(fromRadians radians: Float) -> Float {
         (radians / .pi) * 180
     }
+
+    /// `angle`, in radians, wrapped to `(-π, π]`.
+    ///
+    /// **What keeps a yaw from growing**: a session spinning steadily for an hour would otherwise
+    /// reach tens of thousands of radians, where a 32-bit float can no longer resolve a tenth of a
+    /// degree and aim gets visibly coarse. ``Camera/yaw`` is kept wrapped by it.
+    nonisolated static func wrappedAngle(_ angle: Float) -> Float {
+        var wrapped = angle.truncatingRemainder(dividingBy: 2 * .pi)
+        if wrapped > .pi { wrapped -= 2 * .pi }
+        if wrapped <= -.pi { wrapped += 2 * .pi }
+        return wrapped
+    }
+
+    /// The signed shortest turn, in radians, from one angle to another — within `(-π, π]`.
+    ///
+    /// Without it, interpolating across the ±π seam spins the long way round: turning from 179° to
+    /// -179° is 2° of movement, but a naive blend travels 358° of it in one frame.
+    nonisolated static func shortestAngle(from start: Float, to end: Float) -> Float {
+        wrappedAngle(end - start)
+    }
 }
 
 /// The transform that keeps a normal perpendicular to its surface: the inverse transpose of the

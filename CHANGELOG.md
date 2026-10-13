@@ -16,6 +16,13 @@ throwing initializers that say why, one style for the HUD's drawing calls, and t
 only for tests made internal. Every game in the studio was moved in the same pass. Nothing draws differently:
 the sample's walks and recorded frames are unchanged, pixel for pixel.
 
+**API audit, input and the character.** The engine's input knows the actions it acts on — walking, jumping,
+crouching, sprinting — and a game names the rest itself, bound, rebound and saved like the engine's. One
+sniper's controls (fire, aim, steady, the bipod's brace, R3 magnification) moved out of the engine into
+Coldkeel's own code, unchanged. The camera's speeds and sensitivities are per camera, its angles hold their
+limits however they are set, and the character controller's world is one list of solids. The sample's walks
+and frames are unchanged.
+
 ### Changed — breaking
 
 - **The maths have Swift names.** `matrix4x4_translation(x, y, z)` → `simd_float4x4(translation: SIMD3(x, y, z))`;
@@ -70,6 +77,46 @@ the sample's walks and recorded frames are unchanged, pixel for pixel.
   `aspect`, `Material.roughness(fromSpecularExponent:)`, `InterfaceColor.toLinear(_:)`.
 - **`matrix_float4x4` and `matrix_float3x3` are spelled `simd_float4x4` and `simd_float3x3` throughout the
   engine.** The same types; one spelling.
+- **Actions are open: `InputBindings.Action` is the top-level `InputAction`**, a name rather than a closed
+  enum. The engine's are `.forward`, `.back`, `.left`, `.right`, `.jump`, `.crouch`, `.sprint`; a game adds its
+  own (`InputAction("reload")`) with `InputBindings.adding(_:defaultKey:)` and `PadBindings.adding(_:defaultButton:)`,
+  or builds a set with `init(defaults:)`. `InputBindings.Action.allCases` and `PadBindings.actions` (static) →
+  each bindings' `actions`; the subscript returns `KeyCode?`. `InputBindings.Outcome` is the top-level
+  `BindingOutcome`. `Action.title` is gone — what a settings screen calls an action is the game's to say. A
+  settings file's binding for an action the engine does not know is kept and found when the game adds it.
+- **`brace` is no longer an engine action**, and **R3 is no longer the engine's**: `PadBindings.fixed` is gone,
+  and `PadBindings.standard` binds jump, crouch and sprint only.
+- **`InputState` reads key events as `KeyCode`s:** `keyDown(_:)`, `keyUp(_:)` take a `KeyCode`;
+  `flagsChanged(keyCode:modifierFlags:)` → `flagsChanged(key:modifierFlags:)`, flags an `NSEvent.ModifierFlags`.
+  `KeyCode.modifierFlag` and `isDown(inModifierFlags:)` use `NSEvent.ModifierFlags`, named by IOKit's device
+  bits. `KeyCode(_:)` is gone — `init(rawValue:)` for an event's code, and named statics (`.w`, `.space`,
+  `.leftShift`, `.digit1`, …) for every key in the legend table. `InputState.isEscape(_:)` → `key == .escape`.
+- **`InputState` starts nothing in its initializer.** `start()` listens for controllers, `stop()` (was
+  `shutdown()`) stops; a second instance — a test, a replay — no longer stops the first's discovery.
+- **`consumePendingLook()` is `consumeLook()`**, and it and `lookRate` come out through the player's
+  sensitivity and invert (`mouseLookScale`, `stickLookScale`, set by `apply(_:)`); `pendingNext` is private
+  (`consumeNext()` reads it); `padMenuPressed` → `wasPadMenuPressed`.
+- **`InputState.scrollNotch` is an instance property**, and the stick curves are `moveExponent` and
+  `lookExponent` on `InputState`, defaulting to `StickResponse`'s.
+- **`Camera`'s tuning is per camera:** the statics `walkSpeed`, `sprintSpeed`, `lookSensitivity` and
+  `stickLookSpeed` → `camera.tuning` (`Camera.Tuning`, same defaults). `CharacterController.Tuning`'s speeds
+  default to 6 and 18 of their own. `Camera.wrapAngle(_:)` and `shortestAngle(from:to:)` →
+  `Float.wrappedAngle(_:)` and `Float.shortestAngle(from:to:)`.
+- **`MovementInput.sprint` is `isSprinting`**, and `CharacterController.step(yaw:input:jump:crouching:deltaTime:in:)`
+  is `step(yaw:input:isJumpHeld:isCrouching:deltaTime:in:)`.
+- **`CharacterController.Surroundings.solids` is `[Solid]`** — `bounds`, `footprint`, `motion`, `turn` — in place
+  of `solids: [BoundingBox]` and the parallel `footprints`, `motion` and `turns` arrays that had to be kept in
+  step by index. `Turn.radians` → `angle`. `Footprint`'s fields are `let`: a disc's radius could be set on a
+  rectangle.
+- **`CharacterController` names:** `height` → `eyeHeight`, `slideLeft` → `slideTimeRemaining`, `isHeldDown` →
+  `isCrouchForced`; `Tuning.slideSeconds` → `slideDuration`, `coyoteSeconds` → `coyoteTime`,
+  `jumpBufferSeconds` → `jumpBufferTime`, `slideDipRadians` → `slideDip`. Names say what a number is; units
+  are in the documentation.
+- **The sample declares `brace` as its own action** — inert, as it always was there — to show a game adding
+  one; its settings screen lists the same rows. R3 can be bound in it now, and L2 no longer holds off its
+  sprint latch: the sample has no aiming.
+- **`PlayerSettings.headBob` is `headBobAmount`** — `CharacterController.headBob` is the bob itself, this is how
+  much of it to show. Still stored under `headBob`, so a settings file keeps it.
 
 ### Added
 
@@ -81,6 +128,15 @@ the sample's walks and recorded frames are unchanged, pixel for pixel.
   handed to the main actor without a wrapper of the game's own.
 - `Frustum` is `nonisolated`, `Sendable` and `Equatable`; `SemanticVersion` is `Hashable` and
   `LosslessStringConvertible`.
+- `InputState.isHeld(_:)`, `isKeyHeld(_:)`, `isPadHeld(_:)` and `consumePresses(of:)` — any action, the
+  engine's or a game's; `isLeftMouseHeld`, `isRightMouseHeld`, `leftTrigger` and `rightTrigger`.
+- `InputState.padSprintLatches`, for a game whose stick click has a second job while something applies.
+- `InputState.apply(_:)` hands over everything input reads from `PlayerSettings` in one call.
+- `InputState.standUp()`, beside `toggleCrouch()`.
+- `PlayerSettings(bindings:padBindings:)`, for a game whose defaults include its own actions.
+- `CharacterController.teleport(to:)` — a respawn that keeps the tuning, where a new controller silently
+  reset it.
+- `Camera` is `Equatable`. `KeyCode.forwardDelete`.
 
 ### Fixed
 
@@ -91,6 +147,16 @@ the sample's walks and recorded frames are unchanged, pixel for pixel.
   a layout with anything before the position simplified the wrong numbers.
 - **`HUDRenderer.draw(into:frameSlot:)` checks its slot**, which could write past the vertex buffer.
 - **`FrameRenderer`'s initializer no longer traps** when the device will not make a command allocator.
+- **`Camera.yaw` and `pitch` hold their limits when set**: yaw wraps and pitch clamps on every assignment, not
+  only in `init`, `look` and `turn`. A game nudging the view for recoil could leave a pitch past 89°.
+- **`StickResponse.shaped` gives a finite answer for any dead zone and exponent**, and `InputState`'s dead zones
+  are held to `PlayerSettings.deadzoneRange`: a negative dead zone divided a resting stick's zero by zero.
+
+### Removed
+
+- **`InputState.isFiring`, `isAiming`, `isSteadying`, `isBraced`, `toggleBrace()`, `releaseBrace()`** and R3's
+  scroll notch: one sniper game's controls. They are Coldkeel's `Controls`, on top of the generic reads above,
+  and behave as they did.
 
 ## [0.28.0] — 2026-10-13
 

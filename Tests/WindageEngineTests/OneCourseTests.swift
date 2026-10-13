@@ -78,9 +78,9 @@ struct OneCourseTests {
         CharacterController.Surroundings(
             groundHeight: { _, z in z > -50 ? 0 : -3 },
             solids: [
-                BoundingBox(minimum: SIMD3(-3, 0, -10.2), maximum: SIMD3(3, 0.4, -8.8)),
-                BoundingBox(minimum: SIMD3(-3, 0, -11.6), maximum: SIMD3(3, 0.8, -10.2)),
-                BoundingBox(minimum: SIMD3(-3, 0, -13.0), maximum: SIMD3(3, 1.2, -11.6)),
+                .init(bounds: BoundingBox(minimum: SIMD3(-3, 0, -10.2), maximum: SIMD3(3, 0.4, -8.8))),
+                .init(bounds: BoundingBox(minimum: SIMD3(-3, 0, -11.6), maximum: SIMD3(3, 0.8, -10.2))),
+                .init(bounds: BoundingBox(minimum: SIMD3(-3, 0, -13.0), maximum: SIMD3(3, 1.2, -11.6))),
             ]
         )
     }
@@ -95,9 +95,9 @@ struct OneCourseTests {
         for i in 0..<Int(rate * 8.2) {
             let t = Float(i) / rate
             c.step(yaw: 0,
-                   input: MovementInput(forward: 1, sprint: t >= 3.0 && t < 3.5),
-                   jump: t >= 0.5 && t < 0.6,
-                   crouching: t >= 3.5 && t < 5.0,
+                   input: MovementInput(forward: 1, isSprinting: t >= 3.0 && t < 3.5),
+                   isJumpHeld: t >= 0.5 && t < 0.6,
+                   isCrouching: t >= 3.5 && t < 5.0,
                    deltaTime: dt,
                    in: w)
             // The jump is over well before the first tread, so this is the jump's height and not a stair's.
@@ -130,11 +130,11 @@ struct OneCourseTests {
     static var courseLength: Float {
         let t = tuning
         let crouched = t.walkSpeed * t.crouchedSpeedFraction
-        let slide = t.slideSeconds * (crouched + (t.sprintSpeed - crouched) / (t.slideEasing + 1))
+        let slide = t.slideDuration * (crouched + (t.sprintSpeed - crouched) / (t.slideEasing + 1))
         return t.walkSpeed * 3.0
             + t.sprintSpeed * 0.5
             + slide
-            + crouched * (1.5 - t.slideSeconds)   // what is left of the crouch once the slide is spent
+            + crouched * (1.5 - t.slideDuration)   // what is left of the crouch once the slide is spent
             + t.walkSpeed * 3.2
     }
 

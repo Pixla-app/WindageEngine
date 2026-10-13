@@ -11,6 +11,14 @@ import simd
 import WindageEngine
 import WindageSampleCore
 
+extension InputAction {
+    /// **The sample's own action, and it does nothing.** It is here to show a game adding an action the
+    /// engine has never heard of: it is bound to B and L1, rebinds, swaps and saves like the engine's
+    /// own, and the settings screen lists it. It was the engine's until the engine's actions became
+    /// only the ones it acts on, and a player's saved key for it is still found.
+    nonisolated static let brace = InputAction("brace")
+}
+
 /// **The whole game.** Walk around a level you can edit, with a line of text saying where you are.
 ///
 /// It is deliberately dull. Its job is not to be a good game; it is to be the thing that proves the
@@ -222,7 +230,7 @@ final class SampleGame: GameLoop {
                 let report = segment.isLook ? nil : String(
                     format: "WindageSample: walk '%@' → feet (%.2f, %.2f, %.2f), highest %.2f, %@, eye %.2f m up%@",
                     segment.label, f.x, f.y, f.z, peak, body.isGrounded ? "on the ground" : "in the air",
-                    body.eye.y - f.y, body.isHeldDown ? ", no room to stand" : "")
+                    body.eye.y - f.y, body.isCrouchForced ? ", no room to stand" : "")
                 events.append(.end(segment, report: report))
                 index += 1
                 begun = false
@@ -235,9 +243,9 @@ final class SampleGame: GameLoop {
     private struct SettingsMenu {
         enum Row: Equatable {
             /// A keyboard binding.
-            case bind(InputBindings.Action)
+            case bind(InputAction)
             /// A controller binding — shown only while a pad is connected.
-            case pad(InputBindings.Action)
+            case pad(InputAction)
             case mouseSensitivity, invertMouse
             /// The stick's own look settings — shown only while a pad is connected, beside its buttons.
             case stickSensitivity, invertStick, moveDeadzone, lookDeadzone
@@ -247,8 +255,8 @@ final class SampleGame: GameLoop {
         /// **Rebuilt every frame from whether a pad is connected**, so picking one up mid-screen adds
         /// its rows, and putting it down takes them away rather than leaving rows that do nothing.
         static func rows(withPad pad: Bool) -> [Row] {
-            InputBindings.Action.allCases.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
-                + (pad ? PadBindings.actions.map { .pad($0) }
+            SampleGame.defaultSettings.bindings.actions.map { .bind($0) } + [.mouseSensitivity, .invertMouse]
+                + (pad ? SampleGame.defaultSettings.padBindings.actions.map { .pad($0) }
                     + [.stickSensitivity, .invertStick, .moveDeadzone, .lookDeadzone] : [])
                 + [.headBob, .volume, .ambienceVolume, .brightness, .reset]
         }
@@ -487,7 +495,29 @@ final class SampleGame: GameLoop {
         if isCheck { store.clear(); settingsStore.clear() }
         return store
     }()
-    private var settings = SampleGame.isCheck ? PlayerSettings() : SampleGame.settingsStore.load() ?? PlayerSettings()
+    private var settings = SampleGame.isCheck
+        ? SampleGame.defaultSettings
+        : SampleGame.settingsStore.load().map(SampleGame.withSampleActions) ?? SampleGame.defaultSettings
+
+    /// The engine's settings with the sample's own action added — see `InputAction.brace`. **After
+    /// loading**, so a key the player gave it is found in the file and kept.
+    nonisolated private static func withSampleActions(_ loaded: PlayerSettings) -> PlayerSettings {
+        var settings = loaded
+        settings.bindings = settings.bindings.adding(.brace, defaultKey: .b)
+        settings.padBindings = settings.padBindings.adding(.brace, defaultButton: .leftShoulder)
+        return settings
+    }
+    private static let defaultSettings = withSampleActions(PlayerSettings())
+
+    /// What the settings screen calls each action. **The game's words, not the engine's**: an action's
+    /// name is an identifier a file stores, and what a player reads is the game's to say.
+    private static func title(of action: InputAction) -> String {
+        let titles: [InputAction: String] = [
+            .forward: "Forward", .back: "Back", .left: "Left", .right: "Right",
+            .jump: "Jump", .crouch: "Crouch", .sprint: "Sprint", .brace: "Brace",
+        ]
+        return titles[action] ?? action.name
+    }
     private var menu: SettingsMenu?
 
     /// The game's own exposure, before the player's brightness. **The game's dial**: ACES lifts
@@ -497,8 +527,7 @@ final class SampleGame: GameLoop {
 
     /// Keys this game takes before `InputState` sees them, whatever it is doing — so they cannot be
     /// bound to anything, or the binding would never fire. Tab and Escape are refused by the engine.
-    private static let reservedKeys: Set<KeyCode> = ["P", "R", "N", "M", "O"].compactMap(KeyCode.init(named:))
-        .reduce(into: []) { $0.insert($1) }
+    private static let reservedKeys: Set<KeyCode> = [.p, .r, .n, .m, .o]
 
     // MARK: - Particles
 
@@ -832,8 +861,8 @@ final class SampleGame: GameLoop {
     private var slideRun = SampleLevel.SlideRun()
     private var pistonClock: Float = 0, pistonOffset: Float = 0
 
-    /// Moves every slider and piston a step along its run. **After the lifts**, which set the whole of
-    /// `surroundings.motion`; a mover's entries are its own.
+    /// Moves every slider and piston a step along its run. **After the lifts**, which set every solid's
+    /// `motion`; a mover's own are its own.
     private func advanceSliders(_ dt: Float) {
         guard !sliders.isEmpty else { return }
         let slideDelta = slideRun.advance(by: dt)
@@ -844,9 +873,6 @@ final class SampleGame: GameLoop {
     }
 
     private func placeSliders(slide: Float, slideDelta: Float, piston: Float, pistonDelta: Float) {
-        if surroundings.motion.count != surroundings.solids.count {
-            surroundings.motion = Array(repeating: .zero, count: surroundings.solids.count)
-        }
         for slider in sliders {
             let offset = slider.facing * (slider.piston ? piston : slide)
             let delta = slider.facing * (slider.piston ? pistonDelta : slideDelta)
@@ -856,9 +882,9 @@ final class SampleGame: GameLoop {
             drawables[slider.drawable].transform = transform
             volumes[slider.drawable].transform = transform
             if let solid = slider.solid {
-                surroundings.solids[solid] = volumes[slider.drawable].worldBounds
-                surroundings.footprints[solid] = .init(of: volumes[slider.drawable])
-                surroundings.motion[solid] = SIMD3(delta.x, 0, delta.y)
+                surroundings.solids[solid].bounds = volumes[slider.drawable].worldBounds
+                surroundings.solids[solid].footprint = .init(of: volumes[slider.drawable])
+                surroundings.solids[solid].motion = SIMD3(delta.x, 0, delta.y)
             }
         }
     }
@@ -876,8 +902,8 @@ final class SampleGame: GameLoop {
     private var turntableAngle: Float = 0
 
     /// Turns every turntable a step, and tells the body how far each solid turned and about where.
-    /// **After the lifts**, which set `surroundings.motion`; a turntable does not move, so it only adds
-    /// to `surroundings.turns`.
+    /// **After the lifts**, which set every solid's `motion`; a turntable does not move, so it only sets
+    /// its `turn`.
     private func advanceTurntables(_ dt: Float) {
         guard !turntables.isEmpty else { return }
         let step = SampleLevel.turntableRate * dt
@@ -886,20 +912,18 @@ final class SampleGame: GameLoop {
     }
 
     private func placeTurntables(turnedBy step: Float) {
-        var turns = [CharacterController.Surroundings.Turn](
-            repeating: .init(about: .zero, by: 0), count: surroundings.solids.count)
+        for index in surroundings.solids.indices { surroundings.solids[index].turn = nil }
         for table in turntables {
             let transform = Level.transform(yaw: table.yaw + turntableAngle, scale: table.scale, at: table.position)
             drawables[table.drawable].transform = transform
             volumes[table.drawable].transform = transform
             if let solid = table.solid {
-                surroundings.solids[solid] = volumes[table.drawable].worldBounds
-                surroundings.footprints[solid] = footprint(of: volumes[table.drawable],
-                                                           mesh: level.placements[solidPlacements[solid]].mesh)
-                turns[solid] = .init(about: SIMD2(table.position.x, table.position.z), by: step)
+                surroundings.solids[solid].bounds = volumes[table.drawable].worldBounds
+                surroundings.solids[solid].footprint = footprint(of: volumes[table.drawable],
+                                                                 mesh: level.placements[solidPlacements[solid]].mesh)
+                surroundings.solids[solid].turn = .init(about: SIMD2(table.position.x, table.position.z), by: step)
             }
         }
-        surroundings.turns = turns
     }
 
     /// Seconds into the lifts' cycle, and how high they stand above where the level put them.
@@ -919,19 +943,18 @@ final class SampleGame: GameLoop {
     /// Puts the lifts at `offset` above where the level has them — the drawable, the volume and the
     /// solid the body stands on — and says each solid moved by `delta`.
     private func placeLifts(offset: Float, delta: Float) {
-        var motion = [SIMD3<Float>](repeating: .zero, count: surroundings.solids.count)
+        for index in surroundings.solids.indices { surroundings.solids[index].motion = .zero }
         for lift in lifts {
             var transform = lift.base
             transform.columns.3.y += offset
             drawables[lift.drawable].transform = transform
             volumes[lift.drawable].transform = transform
             if let solid = lift.solid {
-                surroundings.solids[solid] = volumes[lift.drawable].worldBounds
-                surroundings.footprints[solid] = .init(of: volumes[lift.drawable])
-                motion[solid] = SIMD3(0, delta, 0)
+                surroundings.solids[solid].bounds = volumes[lift.drawable].worldBounds
+                surroundings.solids[solid].footprint = .init(of: volumes[lift.drawable])
+                surroundings.solids[solid].motion = SIMD3(0, delta, 0)
             }
         }
-        surroundings.motion = motion
     }
     private var solidVolumes: [Volume] = []
     /// Which placement each of `solidVolumes` came from — so the controller's `groundSolid`, an
@@ -1322,8 +1345,10 @@ final class SampleGame: GameLoop {
         // the three things they reach — the bindings, the mixer and the exposure — are set once.
         engine.toneMapping = ToneMapping(curve: .aces, exposureStops: SampleGame.baseExposure)
         applySettings()
+        // Controllers connecting and going away, from here on — the engine starts nothing on its own.
+        input.start()
         print("WindageSample: settings from \(SampleGame.settingsStore.url.path) — forward "
-              + "\(settings.bindings[.forward].name), jump \(settings.bindings[.jump].name), "
+              + "\(settings.bindings[.forward]?.name ?? ""), jump \(settings.bindings[.jump]?.name ?? ""), "
               + "pad jump \(settings.padBindings[.jump]?.rawValue ?? "")")
     }
 
@@ -1693,11 +1718,11 @@ final class SampleGame: GameLoop {
         // the box alone a crate at 45° held the player up three quarters of a metre short of its face,
         // and let them slide along a wall of air. Every placement turns only about the vertical, so
         // every one has a footprint.
-        surroundings = CharacterController.Surroundings(groundHeight: { _, _ in 0 },
-                                                        solids: solidVolumes.map(\.worldBounds))
-        surroundings.footprints = zip(solidVolumes, solidPlacements).map {
-            footprint(of: $0, mesh: level.placements[$1].mesh)
-        }
+        surroundings = CharacterController.Surroundings(
+            groundHeight: { _, _ in 0 },
+            solids: zip(solidVolumes, solidPlacements).map {
+                .init(bounds: $0.worldBounds, footprint: footprint(of: $0, mesh: level.placements[$1].mesh))
+            })
         // A rebuild puts everything back where the level has it; the lifts go back to where they
         // had got to, without a jump for anyone riding one.
         placeLifts(offset: liftOffset, delta: 0)
@@ -1869,9 +1894,9 @@ final class SampleGame: GameLoop {
 
         // Spawn where *this* level says, not where the last one did.
         let spawn = level.markers(ofKind: "spawn").first
-        // A fresh body, not the old one moved: last level's fall, crouch or slide has no business
-        // arriving in this one.
-        body = CharacterController(feet: spawn?.position ?? SIMD3(0, 0, 12))
+        // Teleported, which drops everything the body was doing — last level's fall, crouch or slide has
+        // no business arriving in this one — and keeps its tuning.
+        body.teleport(to: spawn?.position ?? SIMD3(0, 0, 12))
         camera.position = body.eye
         camera.yaw = spawn?.yaw ?? 0
         camera.pitch = Float.radians(fromDegrees: Float(spawn?.values["pitch"] ?? 0))
@@ -2023,65 +2048,64 @@ final class SampleGame: GameLoop {
 
     /// A key went down. **The game gets first refusal, then `InputState`** — a key the editor or the
     /// settings screen takes must not also walk the player.
-    func keyPressed(_ code: UInt16, command: Bool) {
+    func keyPressed(_ key: KeyCode, command: Bool) {
         skipSplash()
         // Escape is the settings screen's first — it cancels a capture or closes the screen — and
         // otherwise the pointer's, which it releases. Never a binding: see `InputBindings.fixed`.
-        if code == KeyCode.escape.rawValue {
-            if !handleKey(code, command: false) { input.setMouseCaptured(false) }
+        if key == .escape {
+            if !handleKey(key, command: false) { input.setMouseCaptured(false) }
             return
         }
-        if handleKey(code, command: command) { return }
-        input.keyDown(code)
+        if handleKey(key, command: command) { return }
+        input.keyDown(key)
     }
 
-    func keyReleased(_ code: UInt16) { input.keyUp(code) }
+    func keyReleased(_ key: KeyCode) { input.keyUp(key) }
 
     /// A modifier changed — Shift, Control, Option, Command. **A key like any other once it gets
     /// here**, which is what lets the settings screen bind one and `InputState` sprint on one.
-    func modifiersChanged(_ code: UInt16, flags: UInt) {
-        let key = KeyCode(code)
+    func modifiersChanged(_ key: KeyCode, flags: NSEvent.ModifierFlags) {
         if menu != nil {
             // Captured on the way down; everything else a modifier does is swallowed while the
             // screen is open, or a held Shift would carry a sprint out of it.
             if key.isDown(inModifierFlags: flags), case .bind(let action) = menu?.capturing { bind(action, to: key) }
-            if !key.isDown(inModifierFlags: flags) { input.flagsChanged(keyCode: code, modifierFlags: flags) }
+            if !key.isDown(inModifierFlags: flags) { input.flagsChanged(key: key, modifierFlags: flags) }
             return
         }
-        input.flagsChanged(keyCode: code, modifierFlags: flags)
+        input.flagsChanged(key: key, modifierFlags: flags)
     }
 
-    func handleKey(_ code: UInt16, command: Bool) -> Bool {
-        if menu != nil { return handleMenuKey(KeyCode(code)) }
-        if code == KeyCode.escape.rawValue { return false }
-        if code == KeyCode(named: "O")!.rawValue && !isEditing { openMenu(); return true }
-        if code == 48 {                                     // tab — in and out of edit mode
+    func handleKey(_ key: KeyCode, command: Bool) -> Bool {
+        if menu != nil { return handleMenuKey(key) }
+        if key == .escape { return false }
+        if key == .o && !isEditing { openMenu(); return true }
+        if key == .tab {                                    // in and out of edit mode
             isEditing.toggle()
             input.setMouseCaptured(!isEditing)
             return true
         }
         // These work whether or not the editor is open, because a paused game you cannot unpause
         // is a hang with a label on it.
-        switch code {
-        case 35: run.togglePause(); return true              // p
-        case 15: if !command { run.restart(); return true }  // r — but ⌘R is redo
-        case 45: load(level: levelIndex + 1); return true    // n — next level
-        case 46: cycleToneMapping(); return true             // m — clamp, Reinhard, ACES
+        switch key {
+        case .p: run.togglePause(); return true
+        case .r: if !command { run.restart(); return true }  // but ⌘R is redo
+        case .n: load(level: levelIndex + 1); return true    // next level
+        case .m: cycleToneMapping(); return true             // clamp, Reinhard, ACES
         default: break
         }
 
         guard isEditing else { return false }
 
         if command {
-            switch code {
-            case 1:                                          // cmd-S — save
+            switch key {
+            case .s:                                         // save
                 do {
                     try editor.save(to: levelURL)
                     print("WindageSample: saved \(levelURL.path)")
                 } catch { print("WindageSample: save failed — \(error)") }
-            case 6: editor.undo(); rebuild()                 // cmd-Z
-            case 15: editor.redo(); rebuild()                // cmd-R
-            case 51:                                         // cmd-⌫ — throw the edited copy away
+            case .z: editor.undo(); rebuild()
+            case .r: editor.redo(); rebuild()
+            case .delete:                                    // throw the edited copy away
                 // **The way back to the level this repository ships.** Once the editor has saved,
                 // that copy shadows the shipped file for ever, so editing `courtyard.json` in the
                 // source tree appears to do nothing. Without this the only cure is knowing where
@@ -2100,38 +2124,38 @@ final class SampleGame: GameLoop {
         // Nudges are along the world axes rather than the camera's, so a number typed into the file
         // afterwards means the same thing as a key pressed here.
         let d = LevelEditor.nudge
-        switch code {
-        case 123: editor.move(by: SIMD3(-d, 0, 0))           // ←
-        case 124: editor.move(by: SIMD3(d, 0, 0))            // →
-        case 126: editor.move(by: SIMD3(0, 0, -d))           // ↑ — away, down the -z the camera faces
-        case 125: editor.move(by: SIMD3(0, 0, d))            // ↓
-        case 12: editor.move(by: SIMD3(0, d, 0))             // q — up
-        case 14: editor.move(by: SIMD3(0, -d, 0))            // e — down
-        case 0: editor.rotate(by: -LevelEditor.turn)         // a
-        case 2: editor.rotate(by: LevelEditor.turn)          // d
-        case 27: editor.scale(by: 1 / 1.25)                  // -
-        case 24: editor.scale(by: 1.25)                      // =
-        case 51, 117: editor.delete()                        // delete / fn-delete
-        case 11: editor.duplicate()                          // b — duplicate
-        case 49: pickUnderCrosshair(); return true           // space — pick, for hands already on
+        switch key {
+        case .left: editor.move(by: SIMD3(-d, 0, 0))
+        case .right: editor.move(by: SIMD3(d, 0, 0))
+        case .up: editor.move(by: SIMD3(0, 0, -d))           // away, down the -z the camera faces
+        case .down: editor.move(by: SIMD3(0, 0, d))
+        case .q: editor.move(by: SIMD3(0, d, 0))             // up
+        case .e: editor.move(by: SIMD3(0, -d, 0))            // down
+        case .a: editor.rotate(by: -LevelEditor.turn)
+        case .d: editor.rotate(by: LevelEditor.turn)
+        case .minus: editor.scale(by: 1 / 1.25)
+        case .equal: editor.scale(by: 1.25)
+        case .delete, .forwardDelete: editor.delete()
+        case .b: editor.duplicate()
+        case .space: pickUnderCrosshair(); return true       // pick, for hands already on
                                                              // the keys and for automated checks
         // The selection's lamp: give or take away, hang it higher or lower, brighter or dimmer.
-        case 37:                                             // l — lamp on / off
+        case .l:                                             // lamp on / off
             guard let selected = editor.selected else { return true }
             editor.setLight(selected.light == nil ? newLamp(for: selected.mesh) : nil)
             reportLamp()
-        case 30: editor.raiseLight(by: LevelEditor.lampRaise); reportLamp()          // ]
-        case 33: editor.raiseLight(by: -LevelEditor.lampRaise); reportLamp()         // [
-        case 47: editor.brightenLight(by: LevelEditor.lampBrighten); reportLamp()    // .
-        case 43: editor.brightenLight(by: 1 / LevelEditor.lampBrighten); reportLamp() // ,
+        case .rightBracket: editor.raiseLight(by: LevelEditor.lampRaise); reportLamp()
+        case .leftBracket: editor.raiseLight(by: -LevelEditor.lampRaise); reportLamp()
+        case .period: editor.brightenLight(by: LevelEditor.lampBrighten); reportLamp()
+        case .comma: editor.brightenLight(by: 1 / LevelEditor.lampBrighten); reportLamp()
         // Adding: t steps through the kinds of thing this level already has, i drops one.
-        case 17:                                             // t — the next kind to add
+        case .t:                                             // the next kind to add
             let kinds = addableKinds
             guard !kinds.isEmpty else { return true }
             addKind = (addKind + 1) % kinds.count
             print("WindageSample: next to add is \(kindName(kinds[addKind]))")
             return true
-        case 34: addUnderCrosshair()                         // i — insert it at the crosshair
+        case .i: addUnderCrosshair()                         // insert it at the crosshair
         default: return false
         }
         rebuild()
@@ -2237,9 +2261,9 @@ final class SampleGame: GameLoop {
             let selected = index == menu.selected
             let (label, value): (String, String) = switch row {
             case .bind(let action):
-                (action.title, menu.capturing == row ? "press a key..." : settings.bindings[action].name)
+                (SampleGame.title(of: action), menu.capturing == row ? "press a key..." : settings.bindings[action]?.name ?? "")
             case .pad(let action):
-                ("Pad " + action.title.lowercased(), menu.capturing == row
+                ("Pad " + SampleGame.title(of: action).lowercased(), menu.capturing == row
                     ? "press a button..." : (settings.padBindings[action]?.name(on: input.gamepad) ?? ""))
             case .mouseSensitivity: ("Mouse sensitivity", String(format: "%.1f", settings.mouseSensitivity))
             case .invertMouse: ("Invert mouse", settings.invertMouse ? "on" : "off")
@@ -2247,7 +2271,7 @@ final class SampleGame: GameLoop {
             case .invertStick: ("Invert stick", settings.invertStick ? "on" : "off")
             case .moveDeadzone: ("Move stick dead zone", "\(Int((settings.moveDeadzone * 100).rounded()))%")
             case .lookDeadzone: ("Look stick dead zone", "\(Int((settings.lookDeadzone * 100).rounded()))%")
-            case .headBob: ("Head bob", settings.headBob == 0 ? "off" : "\(Int((settings.headBob * 100).rounded()))%")
+            case .headBob: ("Head bob", settings.headBobAmount == 0 ? "off" : "\(Int((settings.headBobAmount * 100).rounded()))%")
             case .volume: ("Volume", "\(Int((settings.volume * 100).rounded()))%")
             case .ambienceVolume: ("Ambience", "\(Int((settings.ambienceVolume * 100).rounded()))%")
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
@@ -2307,7 +2331,7 @@ final class SampleGame: GameLoop {
         guard input.isGamepadConnected else { return }
         let steps = input.consumeSteps()
         guard var current = menu else {
-            if input.padMenuPressed && !isEditing { openMenu() }
+            if input.wasPadMenuPressed && !isEditing { openMenu() }
             return
         }
         current.rows = SettingsMenu.rows(withPad: true)
@@ -2315,14 +2339,14 @@ final class SampleGame: GameLoop {
         menu = current
 
         if case .pad(let action) = current.capturing {
-            if input.padMenuPressed {
+            if input.wasPadMenuPressed {
                 menu?.capturing = nil
             } else if let button = input.padButtonsPressed.sorted(by: { $0.rawValue < $1.rawValue }).first {
                 bind(action, toButton: button)
             }
             return
         }
-        if input.padMenuPressed { perform(.close); return }
+        if input.wasPadMenuPressed { perform(.close); return }
         for _ in 0..<abs(steps.y) { perform(steps.y > 0 ? .up : .down) }
         for _ in 0..<abs(steps.x) { perform(steps.x > 0 ? .right : .left) }
         if input.padButtonsPressed.contains(.south) { perform(.activate) }
@@ -2344,7 +2368,7 @@ final class SampleGame: GameLoop {
             return true
         }
         switch key {
-        case .escape, KeyCode(named: "O")!: perform(.close)
+        case .escape, .o: perform(.close)
         case .up: perform(.up)
         case .down: perform(.down)
         case .left: perform(.left)
@@ -2375,7 +2399,7 @@ final class SampleGame: GameLoop {
                  .headBob, .volume, .ambienceVolume, .brightness:
                 adjust(current.row, by: 1)
             case .reset:
-                settings = PlayerSettings()
+                settings = SampleGame.defaultSettings
                 current.message = "Everything back to the defaults"
                 saveAndApplySettings()
             }
@@ -2383,14 +2407,14 @@ final class SampleGame: GameLoop {
         menu = current
     }
 
-    private func bind(_ action: InputBindings.Action, to key: KeyCode) {
+    private func bind(_ action: InputAction, to key: KeyCode) {
         let outcome = settings.bindings.bind(action, to: key, reserving: SampleGame.reservedKeys)
         switch outcome {
         case .bound:
-            menu?.message = "\(action.title) is \(key.name)"
+            menu?.message = "\(SampleGame.title(of: action)) is \(key.name)"
         case .swapped(let other):
-            menu?.message = "\(action.title) is \(key.name) — \(other.title) moved to "
-                + settings.bindings[other].name
+            menu?.message = "\(SampleGame.title(of: action)) is \(key.name) — \(SampleGame.title(of: other)) moved to "
+                + (settings.bindings[other]?.name ?? "")
         case .refused:
             menu?.message = InputBindings.fixed.contains(key)
                 ? "\(key.name) cannot be bound"
@@ -2400,13 +2424,13 @@ final class SampleGame: GameLoop {
         saveAndApplySettings()
     }
 
-    private func bind(_ action: InputBindings.Action, toButton button: PadButton) {
+    private func bind(_ action: InputAction, toButton button: PadButton) {
         let name = button.name(on: input.gamepad)
         switch settings.padBindings.bind(action, to: button) {
         case .bound:
-            menu?.message = "Pad \(action.title.lowercased()) is \(name)"
+            menu?.message = "Pad \(SampleGame.title(of: action).lowercased()) is \(name)"
         case .swapped(let other):
-            menu?.message = "Pad \(action.title.lowercased()) is \(name) — \(other.title.lowercased()) moved to "
+            menu?.message = "Pad \(SampleGame.title(of: action).lowercased()) is \(name) — \(SampleGame.title(of: other).lowercased()) moved to "
                 + (settings.padBindings[other]?.name(on: input.gamepad) ?? "")
         case .refused:
             menu?.message = "\(name) cannot be bound"
@@ -2432,8 +2456,8 @@ final class SampleGame: GameLoop {
         // Quarters, so off is two presses from half and four from full — and activating it from
         // full wraps to off, which is the press a player looking for "off" makes.
         case .headBob:
-            let next = settings.headBob + 0.25 * step
-            settings.headBob = next > 1.001 ? 0 : (next < -0.001 ? 1 : (next * 4).rounded() / 4)
+            let next = settings.headBobAmount + 0.25 * step
+            settings.headBobAmount = next > 1.001 ? 0 : (next < -0.001 ? 1 : (next * 4).rounded() / 4)
         case .volume: settings.volume = Self.tenths(settings.volume + 0.1 * step)
         case .ambienceVolume: settings.ambienceVolume = Self.tenths(settings.ambienceVolume + 0.1 * step)
         case .brightness: settings.brightness += 0.25 * step
@@ -2455,10 +2479,7 @@ final class SampleGame: GameLoop {
     }
 
     private func applySettings() {
-        input.bindings = settings.bindings
-        input.padBindings = settings.padBindings
-        input.moveDeadzone = settings.moveDeadzone
-        input.lookDeadzone = settings.lookDeadzone
+        input.apply(settings)
         audio?.masterVolume = settings.volume
         audio?.ambienceVolume = settings.ambienceVolume
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
@@ -2480,7 +2501,7 @@ final class SampleGame: GameLoop {
                            high: SIMD2<Float>(repeating: -.greatestFiniteMagnitude))
 
     /// The head bob as shown: the body's, times the player's setting.
-    private var shownBob: SIMD2<Float> { body.headBob * settings.headBob }
+    private var shownBob: SIMD2<Float> { body.headBob * settings.headBobAmount }
     /// Last step's, so a frame between two steps shows a bob between them — like the camera.
     private var previousBob = SIMD2<Float>.zero
 
@@ -2585,11 +2606,12 @@ final class SampleGame: GameLoop {
     /// radians — for the line a segment prints when it ends.
     private var viewTurned = SIMD2<Float>.zero
 
-    /// A mouse movement, through the mouse's own sensitivity and invert. **The one place a mouse turns
-    /// the view**, whether the movement came from the hand or from a script.
+    /// A mouse movement, already through the mouse's own sensitivity and invert. **The one place a
+    /// mouse turns the view**, whether the movement came from the hand — `InputState.consumeLook()`
+    /// scales it — or from a script, which scales its own by the same `InputState.mouseLookScale`.
     private func lookWithMouse(_ delta: SIMD2<Float>) {
         let before = camera
-        camera.look(mouseDelta: delta * settings.mouseLookScale)
+        camera.look(mouseDelta: delta)
         noteTurn(from: before)
     }
 
@@ -2606,13 +2628,13 @@ final class SampleGame: GameLoop {
         let r = body.tuning.radius, at = SIMD2(body.feet.x, body.feet.z)
         let square = [SIMD2<Float>(-r, -r), SIMD2(r, -r), SIMD2(r, r), SIMD2(-r, r)].map { at + $0 }
         var best: (name: String, yaw: Float, center: SIMD2<Float>, gap: Float, boxGap: Float?)?
-        for (index, footprint) in surroundings.footprints.enumerated() {
-            guard let footprint, abs(sin(2 * footprint.yaw)) > 0.01,
+        for (index, solid) in surroundings.solids.enumerated() {
+            guard let footprint = solid.footprint, abs(sin(2 * footprint.yaw)) > 0.01,
                   simd_distance(footprint.center, at) < 3 + simd_length(footprint.halfSize) else { continue }
             let h = footprint.halfSize
             let outline = [SIMD2(-h.x, -h.y), SIMD2(h.x, -h.y), SIMD2(h.x, h.y), SIMD2(-h.x, h.y)]
                 .map { footprint.center + Level.turned($0, by: footprint.yaw) }
-            let box = surroundings.solids[index]
+            let box = solid.bounds
             let boxOutline = [SIMD2(box.minimum.x, box.minimum.z), SIMD2(box.maximum.x, box.minimum.z),
                               SIMD2(box.maximum.x, box.maximum.z), SIMD2(box.minimum.x, box.maximum.z)]
             let gap = SampleGame.gap(between: square, and: outline)
@@ -2652,19 +2674,19 @@ final class SampleGame: GameLoop {
                 viewTurned = .zero
                 if let yaw = segment.yaw { camera.yaw = yaw }
                 if let pitch = segment.pitch { camera.pitch = pitch }
-                if let mouse = segment.mouse { lookWithMouse(mouse) }
+                if let mouse = segment.mouse { lookWithMouse(mouse * input.mouseLookScale) }
                 for key in segment.keys {
                     if let flag = key.modifierFlag {
-                        modifiersChanged(key.rawValue, flags: flag)
+                        modifiersChanged(key, flags: flag)
                     } else {
-                        keyPressed(key.rawValue, command: false)
+                        keyPressed(key, command: false)
                     }
                 }
                 for name in segment.pads { setScriptPad(name, down: true) }
                 if segment.clicks { mousePressed() }
             case .end(let segment, let report):
                 for key in segment.keys {
-                    if key.isModifier { modifiersChanged(key.rawValue, flags: 0) } else { keyReleased(key.rawValue) }
+                    if key.isModifier { modifiersChanged(key, flags: []) } else { keyReleased(key) }
                 }
                 for name in segment.pads { setScriptPad(name, down: false) }
                 if simd_length(viewTurned) > 1e-5 {
@@ -2696,8 +2718,8 @@ final class SampleGame: GameLoop {
                         let speed = (body.feet.x - previousFeet.x) / Float(engine.timestep.stepDuration)
                         print(String(format: "WindageSample:     slider's face at x %.3f, feet %.3f m ahead of it, going %.3f m/s, the slider %.3f%@",
                                      box.maximum.x, body.feet.x - box.maximum.x, speed,
-                                     surroundings.motion.indices.contains(slider.solid ?? -1)
-                                        ? surroundings.motion[slider.solid!].x / Float(engine.timestep.stepDuration) : 0,
+                                     surroundings.solids.indices.contains(slider.solid ?? -1)
+                                        ? surroundings.solids[slider.solid!].motion.x / Float(engine.timestep.stepDuration) : 0,
                                      body.pinnedBy != nil ? ", PINNED" : ""))
                     }
                     if let near = nearestTurnedSolid() {
@@ -2780,7 +2802,7 @@ final class SampleGame: GameLoop {
         }
         input.pollFrame()
         handleMenuPad()
-        let look = input.consumePendingLook()
+        let look = input.consumeLook()
         // **A scripted walk holds its heading.** Otherwise whatever the mouse is doing over the
         // window steers it, and the same script ends somewhere different each time — which was the
         // first thing it did.
@@ -2838,7 +2860,7 @@ final class SampleGame: GameLoop {
         // pauses the run, and one that only advanced while playing would wait for ever.
         runScript(deltaTime)
         let before = camera
-        camera.turn(rate: input.lookRate * settings.stickLookScale, deltaTime: deltaTime)
+        camera.turn(rate: input.lookRate, deltaTime: deltaTime)
         noteTurn(from: before)
         // **A pause is "do not advance", not "stop the loop".** The frame loop keeps running, the
         // scene still draws and the window still resizes — which is why pausing is a game's decision
@@ -2917,8 +2939,8 @@ final class SampleGame: GameLoop {
                 let wasOn = body.groundSolid
                 body.step(yaw: camera.yaw,
                           input: input.movement,
-                          jump: input.isJumpHeld,
-                          crouching: input.isCrouching,
+                          isJumpHeld: input.isJumpHeld,
+                          isCrouching: input.isCrouching,
                           deltaTime: deltaTime,
                           in: surroundings)
                 camera.position = body.eye
@@ -2957,7 +2979,7 @@ final class SampleGame: GameLoop {
                 // **The view turns with whatever turned the feet.** The controller carries the body round
                 // a turntable and says how far; the camera is the game's, so the game adds it — or the
                 // player faces one fixed way while the floor spins under them.
-                if body.turned != 0 { camera.yaw = Camera.wrapAngle(camera.yaw + body.turned) }
+                if body.turned != 0 { camera.yaw += body.turned }
                 playFootfalls()
                 tally.deepestDip = max(tally.deepestDip, body.landingCompression)
                 bobSeen.low = simd_min(bobSeen.low, shownBob)
@@ -3602,7 +3624,7 @@ final class SampleGame: GameLoop {
         }
         // **Said, not left to be discovered.** Crouch let go under a beam does nothing you can see
         // except not standing; without a word, that reads as the key being broken.
-        if self.body.isHeldDown && !isEditing {
+        if self.body.isCrouchForced && !isEditing {
             _ = hud.text("NO ROOM TO STAND",
                          atBaseline: SIMD2((viewportSize.x - hud.width(of: "NO ROOM TO STAND", pointSize: body)) / 2,
                                            viewportSize.y * 0.62),
@@ -3649,7 +3671,7 @@ final class SampleGame: GameLoop {
             // **From the bindings, not typed in.** The hint that said "shift sprint" while Shift did
             // nothing was written by hand; one that reads the bindings cannot disagree with them.
             let b = settings.bindings
-            let directions = [b[.forward], b[.left], b[.back], b[.right]].map(\.name)
+            let directions = [b[.forward], b[.left], b[.back], b[.right]].map { $0?.name ?? "" }
             let move = directions.allSatisfy { $0.count == 1 }
                 ? directions.joined() : directions.joined(separator: "/")
             let moving = input.isGamepadConnected
@@ -3657,8 +3679,8 @@ final class SampleGame: GameLoop {
                     + "\((settings.padBindings[.jump]?.name(on: input.gamepad) ?? "").lowercased()) jump · "
                     + "\((settings.padBindings[.crouch]?.name(on: input.gamepad) ?? "").lowercased()) crouch · "
                     + "menu button settings"
-                : "\(move) move · \(b[.sprint].name.lowercased()) sprint · "
-                    + "\(b[.jump].name.lowercased()) jump · \(b[.crouch].name.lowercased()) crouch · "
+                : "\(move) move · \((b[.sprint]?.name ?? "").lowercased()) sprint · "
+                    + "\((b[.jump]?.name ?? "").lowercased()) jump · \((b[.crouch]?.name ?? "").lowercased()) crouch · "
                     + "click to capture"
             _ = hud.text(moving, atBaseline: SIMD2(margin, viewportSize.y - margin - hint * 1.4),
                          pointSize: hint, color: white)

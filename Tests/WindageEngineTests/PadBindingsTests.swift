@@ -14,7 +14,8 @@ struct PadBindingsTests {
     @Test("The standard layout is the console convention")
     func standard() {
         let b = PadBindings.standard
-        #expect(b[.jump] == .south && b[.crouch] == .east && b[.sprint] == .leftStick && b[.brace] == .leftShoulder)
+        #expect(b[.jump] == .south && b[.crouch] == .east && b[.sprint] == .leftStick)
+        #expect(b.actions == [.jump, .crouch, .sprint])
         #expect(b[.forward] == nil, "walking is the stick, not a button")
     }
 
@@ -25,11 +26,10 @@ struct PadBindingsTests {
         #expect(b[.crouch] == .south && b[.jump] == .east)
     }
 
-    /// R3 is the scroll notch; walking has no button.
-    @Test("R3, a reserved button and a movement action are refused")
+    /// Walking has no button; a game keeps its own buttons free with `reserving:`.
+    @Test("A reserved button and a movement action are refused")
     func refusals() {
         var b = PadBindings.standard
-        #expect(b.bind(.jump, to: .rightStick) == .refused)
         #expect(b.bind(.jump, to: .west, reserving: [.west]) == .refused)
         #expect(b.bind(.forward, to: .north) == .refused)
         #expect(b == .standard)
@@ -39,7 +39,19 @@ struct PadBindingsTests {
     @Test("A reserved-by-convention face button can be bound when the game does not reserve it")
     func conventionIsNotARule() {
         var b = PadBindings.standard
-        #expect(b.bind(.brace, to: .west) == .bound)
+        #expect(b.bind(.crouch, to: .west) == .bound)
+        #expect(b.bind(.jump, to: .rightStick) == .bound, "the engine keeps no button for itself")
+    }
+
+    @Test("A game's action is added on its button, and its saved button is found")
+    func gameAction() throws {
+        let lean = InputAction("lean")
+        var b = PadBindings.standard.adding(lean, defaultButton: .leftShoulder)
+        #expect(b[lean] == .leftShoulder && b.actions.last == lean)
+        b.bind(lean, to: .rightShoulder)
+        let read = try JSONDecoder().decode(PadBindings.self, from: try JSONEncoder().encode(b))
+        #expect(read[lean] == nil)
+        #expect(read.adding(lean, defaultButton: .leftShoulder) == b)
     }
 
     @Test("Stored by position, and read back")
@@ -89,6 +101,34 @@ struct InputStatePadTests {
         #expect(input.isGamepadConnected)
         #expect(PadButton.south.name(on: pad) == "A", "\(PadButton.south.name(on: pad))")
         #expect(PadButton.south.name(on: nil) == "Cross / A")
+    }
+
+    /// **The generic layer**: a game's action on a button, read as held and as a press edge, once.
+    @Test("A game's action on a button is held and pressed, once, and not while a menu has the pad")
+    func gameAction() {
+        let (input, pad) = rig()
+        let lean = InputAction("lean")
+        input.padBindings = PadBindings.standard.adding(lean, defaultButton: .leftShoulder)
+        pad.leftShoulder.setValue(1)
+        input.pollFrame()
+        input.pollFrame()
+        #expect(input.isHeld(lean) && input.isPadHeld(lean) && !input.isKeyHeld(lean))
+        #expect(input.consumePresses(of: lean) == 1, "a held button was a press every frame")
+        pad.leftShoulder.setValue(0)
+        input.pollFrame()
+        input.acceptsPadActions = false
+        pad.leftShoulder.setValue(1)
+        input.pollFrame()
+        #expect(!input.isHeld(lean) && input.consumePresses(of: lean) == 0)
+    }
+
+    @Test("The triggers are read as axes")
+    func triggers() {
+        let (input, pad) = rig()
+        #expect(input.leftTrigger == 0 && input.rightTrigger == 0)
+        pad.leftTrigger.setValue(0.25)
+        pad.rightTrigger.setValue(1)
+        #expect(input.leftTrigger == 0.25 && input.rightTrigger == 1)
     }
 
     @Test("The default buttons do what the convention says")
@@ -143,7 +183,7 @@ struct InputStatePadTests {
         #expect(input.padButtonsPressed.isEmpty, "a held button was reported as pressed again")
         pad.buttonMenu.setValue(1)
         input.pollFrame()
-        #expect(input.padMenuPressed)
+        #expect(input.wasPadMenuPressed)
     }
 
     /// **A menu that has the pad must not crouch the player behind it.**
@@ -159,19 +199,39 @@ struct InputStatePadTests {
         #expect(!input.isJumpHeld)
     }
 
-    @Test("Sprint follows its binding, and steadies while aiming")
+    @Test("Sprint follows its binding, and latches")
     func sprintFollows() {
         let (input, pad) = rig()
-        input.padBindings.bind(.sprint, to: .leftShoulder)     // swaps with brace
-        pad.leftTrigger.setValue(1)                           // aiming
+        input.padBindings.bind(.sprint, to: .leftShoulder)
+        pad.leftThumbstick.setValueForXAxis(0, yAxis: 1)
+        pad.leftThumbstickButton?.setValue(1)                 // L3 is nothing now
+        input.pollFrame()
+        #expect(!input.movement.isSprinting)
+        pad.leftThumbstickButton?.setValue(0)
         pad.leftShoulder.setValue(1)
         input.pollFrame()
-        #expect(input.isSteadying)
         pad.leftShoulder.setValue(0)
-        pad.leftThumbstickButton?.setValue(1)                 // L3 is brace now
         input.pollFrame()
-        #expect(!input.isSteadying)
-        #expect(input.isBraced)
+        #expect(input.movement.isSprinting, "a press latched nothing")
+    }
+
+    /// **A second job for the stick click** — through a scope it steadies — must neither keep a sprint
+    /// latched nor latch one for later.
+    @Test("With the latch off, a latched sprint drops and a press latches nothing")
+    func latchOff() {
+        let (input, pad) = rig()
+        pad.leftThumbstick.setValueForXAxis(0, yAxis: 1)
+        pad.leftThumbstickButton?.setValue(1)
+        input.pollFrame()
+        #expect(input.movement.isSprinting)
+        input.padSprintLatches = false
+        input.pollFrame()
+        #expect(!input.movement.isSprinting)
+        pad.leftThumbstickButton?.setValue(0)
+        input.pollFrame()
+        pad.leftThumbstickButton?.setValue(1)
+        input.pollFrame()
+        #expect(input.isHeld(.sprint) && !input.movement.isSprinting)
     }
 
     /// **A worn stick resting at 20%** — past the engine's dead zones, so it walks and turns with
@@ -187,8 +247,7 @@ struct InputStatePadTests {
         var settings = PlayerSettings()
         settings.moveDeadzone = 0.25
         settings.lookDeadzone = 0.25
-        input.moveDeadzone = settings.moveDeadzone
-        input.lookDeadzone = settings.lookDeadzone
+        input.apply(settings)
         #expect(input.movement.forward == 0 && input.lookRate == .zero, "the setting did not stop the drift")
 
         // **Still a full throw above it**: the response starts at zero at the new edge and reaches full

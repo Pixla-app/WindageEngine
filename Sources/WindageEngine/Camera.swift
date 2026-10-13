@@ -16,16 +16,17 @@ public nonisolated struct MovementInput: Equatable, Sendable {
     public var strafe: Float = 0
     /// +1 up, -1 down, along **world** up rather than the camera's.
     public var vertical: Float = 0
-    public var sprint: Bool = false
+    /// Whether the player asked to go fast.
+    public var isSprinting: Bool = false
 
     /// **Spelled out rather than synthesized.** A memberwise initializer stays `internal`, so a
     /// consumer outside this module can read a `MovementInput` and never construct one — an access
     /// error that reads like a missing declaration.
-    public init(forward: Float = 0, strafe: Float = 0, vertical: Float = 0, sprint: Bool = false) {
+    public init(forward: Float = 0, strafe: Float = 0, vertical: Float = 0, isSprinting: Bool = false) {
         self.forward = forward
         self.strafe = strafe
         self.vertical = vertical
-        self.sprint = sprint
+        self.isSprinting = isSprinting
     }
 
     public static let still = MovementInput()
@@ -42,16 +43,48 @@ public nonisolated struct MovementInput: Equatable, Sendable {
 /// Orientation is yaw and pitch, with no roll. Quaternions would buy nothing here: pitch is clamped
 /// short of vertical, so the degenerate case they exist to avoid is unreachable, and Euler angles
 /// are far easier to read in a debugger and to clamp meaningfully.
-public nonisolated struct Camera: Sendable {
+///
+/// **The limits hold however the angles are set**: ``yaw`` is wrapped and ``pitch`` clamped on every
+/// assignment, not only by the camera's own turning — a game nudging the view for recoil or a
+/// turntable cannot leave it somewhere the camera promises it never is.
+public nonisolated struct Camera: Sendable, Equatable {
+
+    /// How the camera moves and turns. **A game's numbers, with the defaults the engine was tuned
+    /// with** — the same arrangement as ``CharacterController/Tuning``.
+    public struct Tuning: Sendable, Equatable {
+        /// Meters per second, for ``Camera/advance(_:deltaTime:)``.
+        public var walkSpeed: Float = 6
+        public var sprintSpeed: Float = 18
+
+        /// Radians of rotation per unit of mouse movement.
+        public var lookSensitivity: Float = 0.0022
+
+        /// Radians per second at full stick deflection.
+        public var stickLookSpeed: Float = 3.2
+
+        public init(walkSpeed: Float = 6, sprintSpeed: Float = 18,
+                    lookSensitivity: Float = 0.0022, stickLookSpeed: Float = 3.2) {
+            self.walkSpeed = walkSpeed
+            self.sprintSpeed = sprintSpeed
+            self.lookSensitivity = lookSensitivity
+            self.stickLookSpeed = stickLookSpeed
+        }
+    }
 
     /// Meters. Y is up.
     public var position: SIMD3<Float>
 
-    /// Radians. 0 looks down -Z; positive turns left.
-    public var yaw: Float
+    /// Radians. 0 looks down -Z; positive turns left. **Always within `(-π, π]`** — wrapped when set.
+    public var yaw: Float {
+        didSet { yaw = Float.wrappedAngle(yaw) }
+    }
 
-    /// Radians. Positive looks up. Always within ``pitchLimit``.
-    public var pitch: Float
+    /// Radians. Positive looks up. **Always within ``pitchLimit``** — clamped when set.
+    public var pitch: Float {
+        didSet { pitch = Camera.clampedPitch(pitch) }
+    }
+
+    public var tuning: Tuning
 
     /// Just short of straight up or down.
     ///
@@ -60,20 +93,15 @@ public nonisolated struct Camera: Sendable {
     /// slightly short for this reason.
     public static let pitchLimit: Float = 89 * .pi / 180
 
-    /// Meters per second.
-    public static let walkSpeed: Float = 6
-    public static let sprintSpeed: Float = 18
+    private static func clampedPitch(_ pitch: Float) -> Float {
+        min(max(pitch, -pitchLimit), pitchLimit)
+    }
 
-    /// Radians of rotation per unit of mouse movement.
-    public static let lookSensitivity: Float = 0.0022
-
-    /// Radians per second at full stick deflection.
-    public static let stickLookSpeed: Float = 3.2
-
-    public init(position: SIMD3<Float> = .zero, yaw: Float = 0, pitch: Float = 0) {
+    public init(position: SIMD3<Float> = .zero, yaw: Float = 0, pitch: Float = 0, tuning: Tuning = Tuning()) {
         self.position = position
-        self.yaw = Camera.wrapAngle(yaw)
-        self.pitch = min(max(pitch, -Camera.pitchLimit), Camera.pitchLimit)
+        self.yaw = Float.wrappedAngle(yaw)
+        self.pitch = Camera.clampedPitch(pitch)
+        self.tuning = tuning
     }
 
     // MARK: - Basis
@@ -112,8 +140,8 @@ public nonisolated struct Camera: Sendable {
     /// on a slow frame, which is the classic way to make aiming feel unpredictable. Movement below
     /// *is* a rate and is scaled.
     public mutating func look(mouseDelta: SIMD2<Float>) {
-        yaw = Camera.wrapAngle(yaw - mouseDelta.x * Camera.lookSensitivity)
-        pitch = min(max(pitch - mouseDelta.y * Camera.lookSensitivity, -Camera.pitchLimit), Camera.pitchLimit)
+        yaw -= mouseDelta.x * tuning.lookSensitivity
+        pitch -= mouseDelta.y * tuning.lookSensitivity
     }
 
     /// Applies stick look.
@@ -126,9 +154,8 @@ public nonisolated struct Camera: Sendable {
     /// rate; feeding a mouse through the stick path makes fast flicks turn less than slow ones.
     public mutating func turn(rate: SIMD2<Float>, deltaTime: Float) {
         guard rate != .zero else { return }
-        yaw = Camera.wrapAngle(yaw - rate.x * Camera.stickLookSpeed * deltaTime)
-        let newPitch = pitch + rate.y * Camera.stickLookSpeed * deltaTime
-        pitch = min(max(newPitch, -Camera.pitchLimit), Camera.pitchLimit)
+        yaw -= rate.x * tuning.stickLookSpeed * deltaTime
+        pitch += rate.y * tuning.stickLookSpeed * deltaTime
     }
 
     /// Advances position by one simulation step.
@@ -142,7 +169,7 @@ public nonisolated struct Camera: Sendable {
         // broke the second: every deflection past the dead zone flew at full speed (0.9.0).
         if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
-        let speed = input.sprint ? Camera.sprintSpeed : Camera.walkSpeed
+        let speed = input.isSprinting ? tuning.sprintSpeed : tuning.walkSpeed
         position += direction * speed * deltaTime
     }
 
@@ -153,28 +180,8 @@ public nonisolated struct Camera: Sendable {
     public static func interpolated(from start: Camera, to end: Camera, alpha: Float) -> Camera {
         var result = start
         result.position = simd_mix(start.position, end.position, SIMD3(repeating: alpha))
-        result.yaw = wrapAngle(start.yaw + shortestAngle(from: start.yaw, to: end.yaw) * alpha)
+        result.yaw = start.yaw + Float.shortestAngle(from: start.yaw, to: end.yaw) * alpha
         result.pitch = start.pitch + (end.pitch - start.pitch) * alpha
         return result
-    }
-
-    /// Wraps to `(-π, π]`.
-    ///
-    /// Yaw is kept wrapped rather than left to grow: a session spinning steadily for an hour would
-    /// otherwise reach tens of thousands of radians, where a 32-bit float can no longer resolve a
-    /// tenth of a degree and aim gets visibly coarse.
-    public static func wrapAngle(_ angle: Float) -> Float {
-        var wrapped = angle.truncatingRemainder(dividingBy: 2 * .pi)
-        if wrapped > .pi { wrapped -= 2 * .pi }
-        if wrapped <= -.pi { wrapped += 2 * .pi }
-        return wrapped
-    }
-
-    /// Signed shortest rotation between two wrapped angles.
-    ///
-    /// Without this, interpolating across the ±π seam spins the long way round: turning from 179°
-    /// to -179° is 2° of movement, but a naive blend travels 358° of it in one frame.
-    public static func shortestAngle(from start: Float, to end: Float) -> Float {
-        wrapAngle(end - start)
     }
 }

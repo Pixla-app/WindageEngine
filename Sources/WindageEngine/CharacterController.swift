@@ -31,7 +31,7 @@ import simd
 /// what takes most of that back.
 ///
 /// **A solid turned about the vertical is still a box, on its side of the ground plane** — see
-/// ``Surroundings/footprints``. Two rectangles are tested by their separating axes (the world's two
+/// ``Surroundings/Solid/footprint``. Two rectangles are tested by their separating axes (the world's two
 /// and the solid's own two), and the one face that is not square to the world, the turned one, is the
 /// one contact that needs a normal: a move into it slides along it for the rest of the step (0.12.1).
 ///
@@ -55,88 +55,109 @@ public nonisolated struct CharacterController: Sendable {
     public struct Surroundings: Sendable {
         /// Terrain height at a world x/z. A flat world returns a constant.
         public var groundHeight: @Sendable (Float, Float) -> Float
-        /// Every box that can be stood on or walked into, in world space.
-        public var solids: [BoundingBox]
+        /// Every solid that can be stood on or walked into.
+        ///
+        /// **Their order must hold from one step to the next**: the body knows which it stands on by
+        /// index (``CharacterController/groundSolid``), and a solid that moved under it is the one at
+        /// that index.
+        public var solids: [Solid]
 
-        /// How far each of ``solids`` moved since the last step, in the same order — a lift, a
-        /// moving walkway, a cart. **Missing entries are still**, so a world with nothing moving
-        /// leaves this empty. The order of ``solids`` must hold from one step to the next: the body
-        /// knows which it stands on by index (``CharacterController/groundSolid``).
-        ///
-        /// **A body standing on a solid that moved goes with it**, before its own walking — so walking
-        /// on a moving platform is walking *relative to it*, and standing still on one makes no
-        /// footsteps. Up and down is rigid: the eye does not ease after a lift the way it eases up a
-        /// stair, because a floor carrying you is not a floor you stepped onto. Across goes through
-        /// the same collision as walking, so a platform does not carry anyone through a wall.
-        ///
-        /// **And the body keeps it on leaving** (0.12.0): a jump adds the ground's speed to its own, and
-        /// a step off an edge falls away at it — ``CharacterController/groundVelocity``. So this is
-        /// *movement*: a solid put back at its start in one step must report no motion that step, or
-        /// whoever leaves it next goes at the speed of the jump back.
-        ///
-        /// **And a body it moves into is pushed out of its way** (0.13.0) — along the way it went, just
-        /// clear of it, through collision with everything else. Pushed into a wall, the body stays out
-        /// of the wall and ``CharacterController/pinnedBy`` names the solid; what a door or a crusher
-        /// does about that is the game's. A solid low enough to step onto is stood on instead.
-        ///
-        /// Turning is ``turns``.
-        public var motion: [SIMD3<Float>] = []
+        /// A box that can be stood on or walked into — where it is, where it really stands on the
+        /// ground plane, and how it moved this step.
+        public struct Solid: Sendable, Equatable {
+            /// Where it is, in world space. **Says how high it reaches**; ``footprint`` says where it
+            /// stands, when that is not this box.
+            public var bounds: BoundingBox
 
-        /// How far each of ``solids`` turned since the last step, and about where — a turntable, a
-        /// ship's deck, a rotating walkway. Same order as ``solids``; missing entries do not turn.
-        ///
-        /// **A body standing on one is carried round the center and turned with it**: its position
-        /// through collision like any carry, its facing reported as ``CharacterController/turned`` for
-        /// the game to add to the view. Standing on a turntable and staying put while it spins under
-        /// you is the fault this answers.
-        ///
-        /// A solid that both moves and turns is moved by ``motion`` first and then turned about its
-        /// center — the center where it is *now*, after moving.
-        public var turns: [Turn] = []
+            /// Where it really stands on the ground plane, when that is not its box — a crate set down
+            /// at an angle. Nil is the box.
+            ///
+            /// **A world box overstates anything turned.** A 1.5 m crate at 45° has a box 2.12 m across:
+            /// walking at one of its faces stops a body short of it, and past its corners there is air
+            /// to stand on. With its footprint, the body collides with the crate it can see — against a
+            /// turned face it slides along it, as it slides along a wall, rather than sticking.
+            ///
+            /// ``Footprint/init(of:)`` makes one from a ``Volume``.
+            public var footprint: Footprint?
+
+            /// How far it moved since the last step — a lift, a moving walkway, a cart. Zero is still.
+            ///
+            /// **A body standing on a solid that moved goes with it**, before its own walking — so
+            /// walking on a moving platform is walking *relative to it*, and standing still on one makes
+            /// no footsteps. Up and down is rigid: the eye does not ease after a lift the way it eases
+            /// up a stair, because a floor carrying you is not a floor you stepped onto. Across goes
+            /// through the same collision as walking, so a platform does not carry anyone through a
+            /// wall.
+            ///
+            /// **And the body keeps it on leaving** (0.12.0): a jump adds the ground's speed to its own,
+            /// and a step off an edge falls away at it — ``CharacterController/groundVelocity``. So this
+            /// is *movement*: a solid put back at its start in one step must report no motion that
+            /// step, or whoever leaves it next goes at the speed of the jump back.
+            ///
+            /// **And a body it moves into is pushed out of its way** (0.13.0) — along the way it went,
+            /// just clear of it, through collision with everything else. Pushed into a wall, the body
+            /// stays out of the wall and ``CharacterController/pinnedBy`` names the solid; what a door
+            /// or a crusher does about that is the game's. A solid low enough to step onto is stood on
+            /// instead.
+            public var motion: SIMD3<Float>
+
+            /// How far it turned since the last step, and about where — a turntable, a ship's deck, a
+            /// rotating walkway. Nil does not turn.
+            ///
+            /// **A body standing on one is carried round the center and turned with it**: its position
+            /// through collision like any carry, its facing reported as ``CharacterController/turned``
+            /// for the game to add to the view. Standing on a turntable and staying put while it spins
+            /// under you is the fault this answers.
+            ///
+            /// A solid that both moves and turns is moved by ``motion`` first and then turned about its
+            /// center — the center where it is *now*, after moving.
+            public var turn: Turn?
+
+            public init(bounds: BoundingBox, footprint: Footprint? = nil, motion: SIMD3<Float> = .zero,
+                        turn: Turn? = nil) {
+                self.bounds = bounds
+                self.footprint = footprint
+                self.motion = motion
+                self.turn = turn
+            }
+        }
 
         /// A turn about a vertical axis: where the axis stands on the ground plane, and by how much.
         /// **Positive the way a placement's yaw is**, and the way a camera's is — turning left, seen
         /// from above anticlockwise — so a view turned by it turns with the thing underfoot.
         public struct Turn: Sendable, Equatable {
             public var center: SIMD2<Float>
-            public var radians: Float
-            public init(about center: SIMD2<Float>, by radians: Float) {
+            /// Radians.
+            public var angle: Float
+            public init(about center: SIMD2<Float>, by angle: Float) {
                 self.center = center
-                self.radians = radians
+                self.angle = angle
             }
         }
-
-        /// Where each of ``solids`` really stands on the ground plane, when that is not its box — a
-        /// crate set down at an angle. Same order as ``solids``; a missing or nil entry is the box.
-        ///
-        /// **A world box overstates anything turned.** A 1.5 m crate at 45° has a box 2.12 m across:
-        /// walking at one of its faces stops a body short of it, and past its corners there is air to
-        /// stand on. With its footprint, the body collides with the crate it can see — against a
-        /// turned face it slides along it, as it slides along a wall, rather than sticking. The box
-        /// still says how high a solid reaches; the footprint says where it stands.
-        ///
-        /// ``Footprint/init(of:)`` makes one from a ``Volume``.
-        public var footprints: [Footprint?] = []
 
         /// A solid's plan on the ground plane: a rectangle turned about its center — or a disc.
         ///
         /// Only a turn **about the vertical**, which is every turn a level placement has. A tilted box
         /// has no rectangular plan, and keeps its world box.
+        ///
+        /// **Fixed once made**: which shape it is, and the size that goes with the shape, are set
+        /// together by the initializer that makes it. A new plan is a new footprint.
         public struct Footprint: Sendable, Equatable {
-            public var center: SIMD2<Float>
-            /// Half its size along its own x and z, before it is turned.
-            public var halfSize: SIMD2<Float>
-            /// Positive the way a placement's yaw is (``Level/turned(_:by:)``).
-            public var yaw: Float
+            public let center: SIMD2<Float>
+            /// Half its size along its own x and z, before it is turned. For a disc, the square round it.
+            public let halfSize: SIMD2<Float>
+            /// Radians, positive the way a placement's yaw is (``Level/turned(_:by:)``). Zero for a disc.
+            public let yaw: Float
             /// **Round, of this radius**, for a solid that is — a turntable, a column, a barrel. Nil for
             /// a rectangle. A disc's rectangle is the square round it, and standing on that square's
             /// corners is standing on air: 0.83 m past the rim of a 4 m turntable.
-            public var radius: Float?
+            public let radius: Float?
 
             public init(center: SIMD2<Float>, halfSize: SIMD2<Float>, yaw: Float) {
                 self.center = center
                 self.halfSize = halfSize
                 self.yaw = yaw
+                self.radius = nil
             }
 
             /// A disc. Turning it changes nothing, so it has no yaw.
@@ -169,16 +190,16 @@ public nonisolated struct CharacterController: Sendable {
                       abs(x.x * z.x + x.z * z.z) <= level * across * along else { return nil }
                 let local = volume.local
                 let middle = m * SIMD4((local.minimum + local.maximum) / 2, 1)
-                self.center = SIMD2(middle.x, middle.z)
-                self.halfSize = SIMD2((local.maximum.x - local.minimum.x) / 2 * across,
-                                      (local.maximum.z - local.minimum.z) / 2 * along)
                 // Local +x lands on (cos, −sin) turned by yaw — Level.transform(yaw:scale:at:).
-                self.yaw = atan2(-x.z, x.x)
+                self.init(center: SIMD2(middle.x, middle.z),
+                          halfSize: SIMD2((local.maximum.x - local.minimum.x) / 2 * across,
+                                          (local.maximum.z - local.minimum.z) / 2 * along),
+                          yaw: atan2(-x.z, x.x))
             }
         }
 
         public init(groundHeight: @escaping @Sendable (Float, Float) -> Float = { _, _ in 0 },
-                    solids: [BoundingBox] = []) {
+                    solids: [Solid] = []) {
             self.groundHeight = groundHeight
             self.solids = solids
         }
@@ -194,8 +215,8 @@ public nonisolated struct CharacterController: Sendable {
     public struct Tuning: Sendable, Equatable {
 
         /// Meters per second.
-        public var walkSpeed: Float = Camera.walkSpeed
-        public var sprintSpeed: Float = Camera.sprintSpeed
+        public var walkSpeed: Float = 6
+        public var sprintSpeed: Float = 18
 
         /// Eye height standing, in meters above the feet.
         public var eyeHeight: Float = 1.7
@@ -218,7 +239,7 @@ public nonisolated struct CharacterController: Sendable {
         /// **Crouching mid-sprint carries your momentum rather than deleting it** — standing still the
         /// instant you crouch is the one thing a runner's body does not do. It is not movement tech:
         /// no chaining, no jump out of it, and about twelve meters long.
-        public var slideSeconds: Float = 1.15
+        public var slideDuration: Float = 1.15
 
         /// The exponent applied to the fraction of a slide remaining. **Below 1 holds the speed and
         /// lets go late**, which is what a slide is; above 1 dumps it at once and leaves a crouch
@@ -226,7 +247,7 @@ public nonisolated struct CharacterController: Sendable {
         public var slideEasing: Float = 0.35
 
         /// How far the view tips forward at the start of a slide, in radians — about 7°.
-        public var slideDipRadians: Float = 0.12
+        public var slideDip: Float = 0.12
 
         /// How much of the player's steering still reaches a slide, 0…1.
         ///
@@ -276,11 +297,11 @@ public nonisolated struct CharacterController: Sendable {
         ///
         /// **Without it, a jump pressed on the last frame of a ledge does nothing**, because the
         /// player has technically already left it — which reads as the game eating the input.
-        public var coyoteSeconds: Float = 0.1
+        public var coyoteTime: Float = 0.1
 
         /// How long a jump pressed *before* landing is remembered, in seconds. The same problem from
         /// the other side: pressing jump a moment before touching down should jump on touchdown.
-        public var jumpBufferSeconds: Float = 0.12
+        public var jumpBufferTime: Float = 0.12
 
         /// Meters between footfalls at a walk, at a sprint, and crouched.
         ///
@@ -346,8 +367,8 @@ public nonisolated struct CharacterController: Sendable {
         public init() {}
 
         /// Meters per footfall at a speed.
-        func strideLength(atSpeed speed: Float, crouching: Bool) -> Float {
-            if crouching { return crouchStride }
+        func strideLength(atSpeed speed: Float, isCrouching: Bool) -> Float {
+            if isCrouching { return crouchStride }
             let t = simd_clamp((speed - walkSpeed) / max(sprintSpeed - walkSpeed, 1e-3), 0, 1)
             return walkStride + (sprintStride - walkStride) * t
         }
@@ -373,7 +394,7 @@ public nonisolated struct CharacterController: Sendable {
     /// heights. **Carried rather than inferred from the eye**, because the eye also moves for
     /// reasons that are not posture — the ground changing under it — and deriving one from the other
     /// makes a walk downhill look like standing up.
-    public private(set) var height: Float
+    public private(set) var eyeHeight: Float
 
     /// The part of a recent change in ground height the eye has not caught up with yet.
     private var settling: Float = 0
@@ -381,7 +402,7 @@ public nonisolated struct CharacterController: Sendable {
     /// The direction a slide was entered in, held for its duration.
     public private(set) var slideDirection = SIMD2<Float>(0, -1)
     /// Seconds left of a slide. Zero when not sliding.
-    public private(set) var slideLeft: Float = 0
+    public private(set) var slideTimeRemaining: Float = 0
     /// Which way the last step actually moved. **This is what a slide inherits.**
     private var lastDirection = SIMD2<Float>(0, -1)
     /// Last step's inputs, so a slide or a jump starts on an edge rather than while a key is merely
@@ -398,6 +419,11 @@ public nonisolated struct CharacterController: Sendable {
     public enum Foot: Sendable, Equatable { case left, right }
 
     /// Something the body did that a game will want to hear, see or count.
+    ///
+    /// **The set is decided, and switched over exhaustively.** These three are what a body does that a
+    /// game answers with a sound or a puff of dust; state it holds — sliding, crouched, pinned — is read
+    /// from the controller instead, every step. A fourth kind of event would change every game's
+    /// `switch`, and so waits for a major version rather than arriving in a minor one.
     public enum Event: Sendable, Equatable {
         /// A foot came down. `speed` is the ground speed that step was taken at, meters per second.
         case stride(foot: Foot, speed: Float)
@@ -408,7 +434,7 @@ public nonisolated struct CharacterController: Sendable {
     }
 
     /// This step's events, in the order they happened. **Cleared at the start of every step**, so a
-    /// game reads them after ``step(yaw:input:jump:crouching:deltaTime:in:)`` and before the next.
+    /// game reads them after ``step(yaw:input:isJumpHeld:isCrouching:deltaTime:in:)`` and before the next.
     public private(set) var events: [Event] = []
 
     /// Which of the ``Surroundings/solids`` has the body pinned — pushed into something it cannot be
@@ -433,16 +459,26 @@ public nonisolated struct CharacterController: Sendable {
     public init(feet: SIMD3<Float>, tuning: Tuning = Tuning()) {
         self.tuning = tuning
         self.feet = feet
-        self.height = tuning.eyeHeight
+        self.eyeHeight = tuning.eyeHeight
+    }
+
+    /// Puts the feet at `feet`, standing and still, **keeping the tuning** — a respawn, a level change,
+    /// a teleporter.
+    ///
+    /// Everything the body was doing is dropped, as a fresh controller would have it: a fall, a slide,
+    /// a crouch, the speed a platform gave it, the stride. Making a new controller does the same and
+    /// silently puts the tuning back to the defaults unless it is passed again.
+    public mutating func teleport(to feet: SIMD3<Float>) {
+        self = CharacterController(feet: feet, tuning: tuning)
     }
 
     /// Where the eye is: the feet, the posture, and whatever the eye has not yet settled.
-    public var eye: SIMD3<Float> { feet + SIMD3(0, height + settling - landingDrop, 0) }
+    public var eye: SIMD3<Float> { feet + SIMD3(0, eyeHeight + settling - landingDrop, 0) }
 
     /// The body's box at the feet's current position.
-    public var bounds: BoundingBox { body(at: feet, eyeHeight: height) }
+    public var bounds: BoundingBox { body(at: feet, eyeHeight: eyeHeight) }
 
-    public var isSliding: Bool { slideLeft > 0 }
+    public var isSliding: Bool { slideTimeRemaining > 0 }
 
     /// Whether the player has let go of crouch and **there is no room to stand** — under a beam, a
     /// table, a low doorway. The body stays crouched until there is, then stands on its own.
@@ -451,14 +487,14 @@ public nonisolated struct CharacterController: Sendable {
     /// > it — the head 35 cm inside the stone — and every move after that was refused, because the body
     /// > already overlapped the beam wherever it tried to go. The player was stuck until they crouched
     /// > again, with nothing to say why. A game can show this ("no room to stand") instead.
-    public private(set) var isHeldDown = false
+    public private(set) var isCrouchForced = false
 
-    /// How far whatever is underfoot carried the body this step — see ``Surroundings/motion``. Zero
+    /// How far whatever is underfoot carried the body this step — see ``Surroundings/Solid/motion``. Zero
     /// on still ground. Less than the platform's own motion when a wall stopped the carry.
     public private(set) var carried = SIMD3<Float>.zero
 
     /// How far whatever is underfoot turned the body this step, in radians — see
-    /// ``Surroundings/turns``. **Add it to the view's yaw**: the controller walks by the yaw it is
+    /// ``Surroundings/Solid/turn``. **Add it to the view's yaw**: the controller walks by the yaw it is
     /// given and does not own the camera, so a turntable that carried the feet round without the game
     /// turning the view would leave the player facing one fixed direction while the floor spins.
     public private(set) var turned: Float = 0
@@ -473,15 +509,15 @@ public nonisolated struct CharacterController: Sendable {
     public private(set) var airVelocity = SIMD2<Float>.zero
 
     /// How far through a slide, 0 at entry to 1 at the end. Zero when not sliding.
-    public var slideProgress: Float { slideLeft > 0 ? 1 - slideLeft / tuning.slideSeconds : 0 }
+    public var slideProgress: Float { slideTimeRemaining > 0 ? 1 - slideTimeRemaining / tuning.slideDuration : 0 }
 
     /// A pitch kick for the *displayed* camera, in radians — nose down going in, recovering as the
     /// slide bleeds out. **Applied to the view, never to the aim**: folding it into the camera's own
     /// pitch would leave the player looking somewhere new every time they slid.
     public var slideCameraDip: Float {
-        guard slideLeft > 0 else { return 0 }
+        guard slideTimeRemaining > 0 else { return 0 }
         let t = slideProgress
-        return -tuning.slideDipRadians * (1 - t) * (1 - t) * (1 + 3 * t)
+        return -tuning.slideDip * (1 - t) * (1 - t) * (1 + 3 * t)
     }
 
     /// How compressed the legs are from the last landing, 0 (standing) to about 1 (the hardest).
@@ -506,7 +542,7 @@ public nonisolated struct CharacterController: Sendable {
     ///
     /// **Applied to the view, never to the aim**, by the rule the dips follow: a bob in the aim is a
     /// crosshair that wanders while walking. Multiply it by the player's setting — see
-    /// ``PlayerSettings/headBob`` — because some players cannot play with it at all.
+    /// ``PlayerSettings/headBobAmount`` — because some players cannot play with it at all.
     public var headBob: SIMD2<Float> { rawBob + bobCatchUp }
 
     /// How much bob there is, 0 to the sprint's scale — eased toward what the gait asks for.
@@ -535,12 +571,12 @@ public nonisolated struct CharacterController: Sendable {
     ///   - yaw: which way the player faces. **Pitch does not appear**, and that is a guarantee:
     ///     walking moves along the ground plane, so looking at your feet does not slow you and
     ///     looking at the sky does not lift you.
-    ///   - jump: whether jump is held. The press is found here, from the edge.
-    ///   - crouching: the posture the player has chosen — a latch, in `InputState`.
+    ///   - isJumpHeld: whether jump is held. The press is found here, from the edge.
+    ///   - isCrouching: the posture the player has chosen — a latch, in `InputState`.
     public mutating func step(yaw: Float,
                               input: MovementInput,
-                              jump: Bool = false,
-                              crouching: Bool = false,
+                              isJumpHeld: Bool = false,
+                              isCrouching crouching: Bool = false,
                               deltaTime: Float,
                               in world: Surroundings) {
         let dt = max(deltaTime, 0)
@@ -552,16 +588,15 @@ public nonisolated struct CharacterController: Sendable {
         turned = 0
         var carriedUp: Float = 0
         if isGrounded, let solid = groundSolid {
-            var carry = world.motion.indices.contains(solid) ? world.motion[solid] : .zero
-            if world.turns.indices.contains(solid), world.turns[solid].radians != 0 {
+            var carry = world.solids.indices.contains(solid) ? world.solids[solid].motion : .zero
+            if world.solids.indices.contains(solid), let turn = world.solids[solid].turn, turn.angle != 0 {
                 // Round the centre: where the feet would be once moved, turned about the axis, less
                 // where they are — one displacement, so a turn goes through collision like a slide.
-                let turn = world.turns[solid]
                 let moved = SIMD2(feet.x + carry.x, feet.z + carry.z)
-                let round = turn.center + Level.turned(moved - turn.center, by: turn.radians)
+                let round = turn.center + Level.turned(moved - turn.center, by: turn.angle)
                 carry.x = round.x - feet.x
                 carry.z = round.y - feet.z
-                turned = turn.radians
+                turned = turn.angle
             }
             if carry != .zero {
                 let start = feet
@@ -620,23 +655,23 @@ public nonisolated struct CharacterController: Sendable {
         // --- Slide: started on the *edge* of crouching, at sprint speed, while actually moving.
         let moving = input.forward != 0 || input.strafe != 0
         if crouching && !wasCrouching && wasSprinting && moving && isGrounded {
-            slideLeft = tuning.slideSeconds
+            slideTimeRemaining = tuning.slideDuration
             // **The direction you were already going, not the one you are asking for.** Taking this
             // step's input launches the slide sideways if `C` lands mid-turn — that is teleporting,
             // not momentum.
             slideDirection = lastDirection
         }
-        if !crouching || !moving { slideLeft = 0 }
-        let slideWas = slideLeft
-        slideLeft = max(0, slideLeft - dt)
+        if !crouching || !moving { slideTimeRemaining = 0 }
+        let slideWas = slideTimeRemaining
+        slideTimeRemaining = max(0, slideTimeRemaining - dt)
         wasCrouching = crouching
-        wasSprinting = input.sprint && moving
+        wasSprinting = input.isSprinting && moving
 
         // --- Room to stand. **A choice to stand is not a promise of room to**: under a beam the body
         // stays down, in every respect — height, speed, stride, no sprint — until it is clear, and
-        // stands the moment it is. See ``isHeldDown``.
-        isHeldDown = !crouching && standingRoom(in: world) < tuning.eyeHeight - 1e-4
-        let crouched = crouching || isHeldDown
+        // stands the moment it is. See ``isCrouchForced``.
+        isCrouchForced = !crouching && standingRoom(in: world) < tuning.eyeHeight - 1e-4
+        let crouched = crouching || isCrouchForced
 
         // --- Direction on the ground plane, from yaw alone.
         let forward = SIMD2<Float>(-sin(yaw), -cos(yaw))
@@ -651,7 +686,7 @@ public nonisolated struct CharacterController: Sendable {
         if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
         // A slide goes where it was aimed when it started, nudged by the stick and no more.
-        if slideLeft > 0 {
+        if slideTimeRemaining > 0 {
             let steered = slideDirection + direction * tuning.slideSteering
             direction = simd_length_squared(steered) > 0 ? steered / simd_length(steered) : slideDirection
         }
@@ -659,7 +694,7 @@ public nonisolated struct CharacterController: Sendable {
         // Crouched you walk, slowly. Sprinting from a crouch would make the posture free.
         var speed = crouched
             ? tuning.walkSpeed * tuning.crouchedSpeedFraction
-            : (input.sprint ? tuning.sprintSpeed : tuning.walkSpeed)
+            : (input.isSprinting ? tuning.sprintSpeed : tuning.walkSpeed)
         // Unless you are sliding, in which case the sprint's speed bleeds off into the crouch's —
         // held early and let go late, which reads as momentum rather than as being dragged to a halt.
         //
@@ -670,8 +705,8 @@ public nonisolated struct CharacterController: Sendable {
         // the curve — `∫ r^e dr = r^(e+1)/(e+1)` — so the step takes the average it actually holds, and a
         // slide that ends inside a step is spent for the part of the step it lasted.
         if slideWas > 0 {
-            let span = tuning.slideSeconds, easing = tuning.slideEasing
-            let from = min(1, slideWas / span), to = slideLeft / span
+            let span = tuning.slideDuration, easing = tuning.slideEasing
+            let from = min(1, slideWas / span), to = slideTimeRemaining / span
             let share = dt > 0
                 ? span * (pow(from, easing + 1) - pow(to, easing + 1)) / ((easing + 1) * dt)
                 : pow(to, easing)
@@ -680,8 +715,8 @@ public nonisolated struct CharacterController: Sendable {
 
         // --- Posture height, at a rate.
         let target = crouched ? tuning.crouchedEyeHeight : tuning.eyeHeight
-        let rate = slideLeft > 0 ? tuning.postureRate * tuning.slideDropRate : tuning.postureRate
-        height += max(-rate * dt, min(rate * dt, target - height))
+        let rate = slideTimeRemaining > 0 ? tuning.postureRate * tuning.slideDropRate : tuning.postureRate
+        eyeHeight += max(-rate * dt, min(rate * dt, target - eyeHeight))
 
         // --- Across: one axis at a time, so walking into a wall at an angle slides along it
         // rather than sticking. Refusing the whole move is what makes a wall feel like glue.
@@ -691,7 +726,7 @@ public nonisolated struct CharacterController: Sendable {
         move(along: SIMD3(0, 0, travel.y), in: world)
 
         // --- Up and down.
-        stepVertically(jumpHeld: jump, deltaTime: dt, in: world)
+        stepVertically(jumpHeld: isJumpHeld, deltaTime: dt, in: world)
 
         // --- Footfalls, from the distance **actually covered**, not the distance asked for. Pushing
         // into a wall asks for six metres a second and covers none; counting what was asked for is
@@ -701,7 +736,7 @@ public nonisolated struct CharacterController: Sendable {
         // --- The bob's amount: what this gait asks for, reached gradually. Nothing in the air and
         // nothing in a slide — neither has footfalls, and bobbing through a slide buried it.
         var wantBob: Float = 0
-        if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
+        if isGrounded && slideTimeRemaining == 0 && covered > 1e-5 && dt > 0 {
             let groundSpeed = covered / dt
             let gait: Float
             if crouched {
@@ -723,10 +758,10 @@ public nonisolated struct CharacterController: Sendable {
         if bobAmount < 1e-4 && wantBob == 0 { bobAmount = 0 }
         bobCatchUp *= exp(-tuning.settleRate * dt)
 
-        if isGrounded && slideLeft == 0 && covered > 1e-5 && dt > 0 {
+        if isGrounded && slideTimeRemaining == 0 && covered > 1e-5 && dt > 0 {
             if !wasMoving { setStridePhase(max(stridePhase, tuning.firstStepPhase)) }
             let groundSpeed = covered / dt
-            stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, crouching: crouched)
+            stridePhase += covered / tuning.strideLength(atSpeed: groundSpeed, isCrouching: crouched)
             // **Not a slide**, which is excluded above: a slide is a body skidding, and footsteps at
             // sprint speed under it would be nine a second of feet that are not moving.
             while stridePhase >= 1 {
@@ -766,7 +801,7 @@ public nonisolated struct CharacterController: Sendable {
 
         // What would be in the way, above the soles of the feet — not whatever is doing the pushing.
         let obstructions = obstructing(at: candidate, in: world).filter { $0 != pusher }
-        guard let rise = obstructions.map({ world.solids[$0].maximum.y }).max() else {
+        guard let rise = obstructions.map({ world.solids[$0].bounds.maximum.y }).max() else {
             feet = candidate
             return
         }
@@ -895,7 +930,7 @@ public nonisolated struct CharacterController: Sendable {
             let going = displacement(of: index, at: feet, in: world)
             guard going != .zero, obstructing(at: feet, in: world).contains(index) else { continue }
             let solid = world.solids[index]
-            if isGrounded, solid.maximum.y - feet.y <= tuning.stepHeight { continue }
+            if isGrounded, solid.bounds.maximum.y - feet.y <= tuning.stepHeight { continue }
             let across = SIMD2(going.x, going.z)
             let from = SIMD2(feet.x, feet.z)
             if simd_length_squared(across) > 1e-12,
@@ -919,11 +954,10 @@ public nonisolated struct CharacterController: Sendable {
     /// How far the part of a solid at `position` went this step: its motion, then its turn about its
     /// center — so a turning arm pushes along its sweep, faster further out.
     private func displacement(of index: Int, at position: SIMD3<Float>, in world: Surroundings) -> SIMD3<Float> {
-        var going = world.motion.indices.contains(index) ? world.motion[index] : .zero
-        if world.turns.indices.contains(index), world.turns[index].radians != 0 {
-            let turn = world.turns[index]
+        var going = world.solids[index].motion
+        if let turn = world.solids[index].turn, turn.angle != 0 {
             let moved = SIMD2(position.x + going.x, position.z + going.z)
-            let round = turn.center + Level.turned(moved - turn.center, by: turn.radians)
+            let round = turn.center + Level.turned(moved - turn.center, by: turn.angle)
             going.x = round.x - position.x
             going.z = round.y - position.z
         }
@@ -945,7 +979,7 @@ public nonisolated struct CharacterController: Sendable {
     }
 
     private func plan(of index: Int, in world: Surroundings) -> Plan {
-        if world.footprints.indices.contains(index), let footprint = world.footprints[index] {
+        if let footprint = world.solids[index].footprint {
             if let radius = footprint.radius {
                 return Plan(center: footprint.center, across: SIMD2(1, 0), along: SIMD2(0, 1),
                             half: SIMD2(radius, radius), isSquare: false, radius: radius)
@@ -954,7 +988,7 @@ public nonisolated struct CharacterController: Sendable {
             return Plan(center: footprint.center, across: SIMD2(c, -s), along: SIMD2(s, c),
                         half: footprint.halfSize, isSquare: false)
         }
-        let box = world.solids[index]
+        let box = world.solids[index].bounds
         return Plan(center: SIMD2(box.minimum.x + box.maximum.x, box.minimum.z + box.maximum.z) / 2,
                     across: SIMD2(1, 0), along: SIMD2(0, 1),
                     half: SIMD2(box.maximum.x - box.minimum.x, box.maximum.z - box.minimum.z) / 2,
@@ -1074,8 +1108,8 @@ public nonisolated struct CharacterController: Sendable {
             // **With the collision test's own tolerance**, or a body resting against a beam's face —
             // which the walk allows to within a hair — counts it as overhead. The first version did,
             // and walking up to the ruins' lintel standing pushed the player into a crouch.
-            guard solid.minimum.y > feet.y + t, depth(at: at, into: plan(of: index, in: world)) > t else { continue }
-            lowest = min(lowest, solid.minimum.y)
+            guard solid.bounds.minimum.y > feet.y + t, depth(at: at, into: plan(of: index, in: world)) > t else { continue }
+            lowest = min(lowest, solid.bounds.minimum.y)
         }
         guard lowest < .greatestFiniteMagnitude else { return .greatestFiniteMagnitude }
         return lowest - feet.y - tuning.headroom - CharacterController.contactTolerance
@@ -1088,10 +1122,10 @@ public nonisolated struct CharacterController: Sendable {
     /// across its top is refused.
     private func obstructing(at position: SIMD3<Float>, in world: Surroundings) -> [Int] {
         let t = CharacterController.contactTolerance
-        let top = position.y + tuning.bodyHeight(for: height), at = SIMD2(position.x, position.z)
+        let top = position.y + tuning.bodyHeight(for: eyeHeight), at = SIMD2(position.x, position.z)
         return world.solids.indices.filter { index in
             let solid = world.solids[index]
-            return top > solid.minimum.y + t && solid.maximum.y > position.y + t
+            return top > solid.bounds.minimum.y + t && solid.bounds.maximum.y > position.y + t
                 && depth(at: at, into: plan(of: index, in: world)) > t
         }
     }
@@ -1100,14 +1134,14 @@ public nonisolated struct CharacterController: Sendable {
 
     private mutating func stepVertically(jumpHeld: Bool, deltaTime dt: Float, in world: Surroundings) {
         // A jump is a *press*, remembered briefly so one pressed just before landing still counts.
-        if jumpHeld && !wasJumpHeld { jumpBufferLeft = tuning.jumpBufferSeconds }
+        if jumpHeld && !wasJumpHeld { jumpBufferLeft = tuning.jumpBufferTime }
         wasJumpHeld = jumpHeld
         jumpBufferLeft = max(0, jumpBufferLeft - dt)
-        coyoteLeft = isGrounded ? tuning.coyoteSeconds : max(0, coyoteLeft - dt)
+        coyoteLeft = isGrounded ? tuning.coyoteTime : max(0, coyoteLeft - dt)
 
         // **Not out of a slide.** A slide is committed; a jump out of it at sprint speed is exactly
         // the movement tech the slide's own tuning forbids.
-        if jumpBufferLeft > 0 && coyoteLeft > 0 && slideLeft == 0 {
+        if jumpBufferLeft > 0 && coyoteLeft > 0 && slideTimeRemaining == 0 {
             // **Off whatever was carrying the body, at its speed as well as the jump's** — a jump from a
             // rising lift goes higher, one from a moving walkway keeps going with it.
             // A late jump — coyote time, the feet already off the edge — keeps what the step off it kept.
@@ -1155,9 +1189,9 @@ public nonisolated struct CharacterController: Sendable {
 
         if verticalVelocity > 0 {
             // A head against the underside of something stops the rise there.
-            let top = next + tuning.bodyHeight(for: height)
+            let top = next + tuning.bodyHeight(for: eyeHeight)
             if let ceiling = lowestCeiling(above: feet, reaching: top, in: world) {
-                next = ceiling - tuning.bodyHeight(for: height)
+                next = ceiling - tuning.bodyHeight(for: eyeHeight)
                 verticalVelocity = 0
             }
         } else {
@@ -1206,10 +1240,10 @@ public nonisolated struct CharacterController: Sendable {
         var which: Int?
         let at = SIMD2(position.x, position.z)
         for (index, solid) in world.solids.enumerated()
-        where solid.maximum.y <= limit + CharacterController.contactTolerance
-            && solid.maximum.y > highest
+        where solid.bounds.maximum.y <= limit + CharacterController.contactTolerance
+            && solid.bounds.maximum.y > highest
             && depth(at: at, into: plan(of: index, in: world)) > 0 {
-            highest = solid.maximum.y
+            highest = solid.bounds.maximum.y
             which = index
         }
         return (highest, which)
@@ -1218,13 +1252,13 @@ public nonisolated struct CharacterController: Sendable {
     /// The lowest underside of anything the head would rise into, or nil.
     private func lowestCeiling(above position: SIMD3<Float>, reaching top: Float,
                                in world: Surroundings) -> Float? {
-        let head = position.y + tuning.bodyHeight(for: height)
+        let head = position.y + tuning.bodyHeight(for: eyeHeight)
         let at = SIMD2(position.x, position.z)
         var lowest: Float?
         for (index, solid) in world.solids.enumerated()
-        where solid.minimum.y >= head - CharacterController.contactTolerance && solid.minimum.y < top
+        where solid.bounds.minimum.y >= head - CharacterController.contactTolerance && solid.bounds.minimum.y < top
             && depth(at: at, into: plan(of: index, in: world)) > 0 {
-            lowest = min(lowest ?? .greatestFiniteMagnitude, solid.minimum.y)
+            lowest = min(lowest ?? .greatestFiniteMagnitude, solid.bounds.minimum.y)
         }
         return lowest
     }

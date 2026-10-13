@@ -25,7 +25,17 @@ struct KeyCodeTests {
         #expect(KeyCode(named: "shift")?.rawValue == 56)
         #expect(KeyCode(named: "ctrl")?.rawValue == 59)
         #expect(KeyCode(named: "no such key") == nil)
-        #expect(KeyCode(200).name == "Key 200")
+        #expect(KeyCode(rawValue: 200).name == "Key 200")
+        #expect(KeyCode.w.rawValue == 13 && KeyCode.leftShift.rawValue == 56 && KeyCode.forwardDelete.name == "Forward Delete")
+    }
+
+    /// The named statics and the legend table say the same thing about every key.
+    @Test("Every named key reads back by its own name")
+    func namedStatics() {
+        for key in [KeyCode.a, .z, .digit0, .digit9, .space, .return, .escape, .quote, .slash, .up,
+                    .leftShift, .rightCommand, .forwardDelete] {
+            #expect(KeyCode(named: key.name) == key, "\(key.name)")
+        }
     }
 
     /// **The whole reason Shift did nothing in the sample**: modifiers arrive as flags, and which
@@ -34,8 +44,8 @@ struct KeyCodeTests {
     func modifierBits() {
         let left = key("left shift"), right = key("right shift")
         #expect(left.isModifier && right.isModifier && !key("w").isModifier)
-        // Right shift alone: its bit, 0x04, and the generic shift flag (1 << 17).
-        let rightOnly: UInt = 0x04 | (1 << 17)
+        // Right shift alone: its device bit, and the generic shift flag.
+        let rightOnly = right.modifierFlag!.union(.shift)
         #expect(right.isDown(inModifierFlags: rightOnly))
         #expect(!left.isDown(inModifierFlags: rightOnly),
                 "the generic flag made the left Shift look held while only the right one was")
@@ -51,7 +61,8 @@ struct InputBindingsTests {
         #expect(b[.forward] == key("W") && b[.back] == key("S"))
         #expect(b[.left] == key("A") && b[.right] == key("D"))
         #expect(b[.jump] == key("Space") && b[.crouch] == key("C") && b[.sprint] == key("Left Shift"))
-        #expect(Set(InputBindings.Action.allCases.map { b[$0] }).count == InputBindings.Action.allCases.count)
+        #expect(b.actions == [.forward, .back, .left, .right, .jump, .crouch, .sprint])
+        #expect(Set(b.actions.map { b[$0] }).count == b.actions.count)
     }
 
     @Test("A free key is simply taken")
@@ -69,7 +80,7 @@ struct InputBindingsTests {
         #expect(b.bind(.jump, to: key("W")) == .swapped(with: .forward))
         #expect(b[.jump] == key("W"))
         #expect(b[.forward] == key("Space"))
-        #expect(Set(InputBindings.Action.allCases.map { b[$0] }).count == InputBindings.Action.allCases.count)
+        #expect(Set(b.actions.map { b[$0] }).count == b.actions.count)
     }
 
     /// **Escape is the way out** — bound to anything, the player cannot get their pointer back or reach
@@ -118,10 +129,15 @@ struct InputBindingsTests {
         #expect(b[.back] == key("S"))
     }
 
-    @Test("An action this build does not know is ignored")
+    @Test("An action this build does not know is kept aside, not bound")
     func unknownAction() throws {
         let b = try decode(InputBindings.self, #"{ "forward": "I", "lean": "Q" }"#)
         #expect(b[.forward] == key("I"))
+        #expect(b[InputAction("lean")] == nil && b.action(on: key("Q")) == nil)
+        #expect(b.actions == InputBindings.standard.actions)
+        // And written out again, so a build that does not know it does not erase it.
+        let text = String(decoding: try JSONEncoder().encode(b), as: UTF8.self)
+        #expect(text.contains("lean"), "\(text)")
     }
 
     /// One bad entry must cost that one binding, not the whole dictionary.
@@ -149,7 +165,66 @@ struct InputBindingsTests {
     func collidingFallback() throws {
         // Forward takes Space from the file; jump's default is Space; the file's jump is unreadable.
         let b = try decode(InputBindings.self, #"{ "forward": "Space", "jump": "Hyper" }"#)
-        #expect(Set(InputBindings.Action.allCases.map { b[$0] }).count == InputBindings.Action.allCases.count)
+        #expect(Set(b.actions.map { b[$0] }).count == b.actions.count)
+    }
+
+    // MARK: - A game's own actions
+
+    private static let lean = InputAction("lean")
+    private static let reload = InputAction("reload")
+
+    @Test("A game's action is bound, rebound and swapped like the engine's")
+    func gameAction() {
+        var b = InputBindings.standard.adding(Self.reload, defaultKey: key("R"))
+        #expect(b.actions.last == Self.reload && b[Self.reload] == key("R"))
+        #expect(b.action(on: key("R")) == Self.reload)
+        #expect(b.bind(Self.reload, to: key("W")) == .swapped(with: .forward))
+        #expect(b[.forward] == key("R") && b[Self.reload] == key("W"))
+        #expect(b.bind(.jump, to: key("W")) == .swapped(with: Self.reload))
+    }
+
+    @Test("An action the bindings do not have cannot be bound")
+    func unknownActionRefused() {
+        var b = InputBindings.standard
+        #expect(b.bind(Self.reload, to: key("R")) == .refused)
+        #expect(b[Self.reload] == nil)
+        #expect(b == .standard)
+    }
+
+    @Test("Adding an action that is already there changes nothing")
+    func addingTwice() {
+        var b = InputBindings.standard.adding(Self.reload, defaultKey: key("R"))
+        b.bind(Self.reload, to: key("T"))
+        #expect(b.adding(Self.reload, defaultKey: key("R")) == b)
+    }
+
+    /// **The order that matters**: the game's actions are added after the settings are read, and the
+    /// key the player chose for one is waiting in the file.
+    @Test("A saved key for a game's action is found when the game adds it")
+    func savedGameActionRestored() throws {
+        var original = InputBindings.standard.adding(Self.lean, defaultKey: key("Q"))
+        original.bind(Self.lean, to: key("Z"))
+        let read = try JSONDecoder().decode(InputBindings.self, from: try JSONEncoder().encode(original))
+        #expect(read[Self.lean] == nil, "the engine bound an action it had never heard of")
+        let added = read.adding(Self.lean, defaultKey: key("Q"))
+        #expect(added[Self.lean] == key("Z"))
+        #expect(added == original)
+    }
+
+    @Test("A game's action whose default the player took sends everything back to its defaults")
+    func addingOntoATakenDefault() {
+        var b = InputBindings.standard
+        b.bind(.jump, to: key("Q"))
+        let added = b.adding(Self.lean, defaultKey: key("Q"))
+        #expect(added[Self.lean] == key("Q") && added[.jump] == key("Space"))
+        #expect(Set(added.actions.map { added[$0] }).count == added.actions.count)
+    }
+
+    @Test("A game's own set of actions can leave out the engine's")
+    func ownSet() {
+        let b = InputBindings(defaults: [.jump: key("Space"), Self.reload: key("R")])
+        #expect(b.actions == [.jump, Self.reload])
+        #expect(b[.forward] == nil)
     }
 }
 
@@ -180,7 +255,7 @@ struct PlayerSettingsTests {
         let s = PlayerSettings()
         #expect(s.moveDeadzone == StickResponse.moveDeadzone && s.lookDeadzone == StickResponse.lookDeadzone)
         let older = try decode(PlayerSettings.self, #"{ "headBob": 0.5 }"#)
-        #expect(older.lookDeadzone == StickResponse.lookDeadzone && older.headBob == 0.5)
+        #expect(older.lookDeadzone == StickResponse.lookDeadzone && older.headBobAmount == 0.5)
         let wild = try decode(PlayerSettings.self, #"{ "moveDeadzone": 0.9, "lookDeadzone": -1 }"#)
         #expect(wild.moveDeadzone == 0.5 && wild.lookDeadzone == 0)
     }
@@ -188,14 +263,17 @@ struct PlayerSettingsTests {
     /// Head bob arrived in 0.8.1; a file from before it has none, and must not lose everything else.
     @Test("Head bob is on by default, off at zero, and clamped")
     func headBob() throws {
-        #expect(PlayerSettings().headBob == 1)
+        #expect(PlayerSettings().headBobAmount == 1)
         let older = try decode(PlayerSettings.self, #"{ "mouseSensitivity": 2 }"#)
-        #expect(older.headBob == 1 && older.mouseSensitivity == 2)
-        #expect(try decode(PlayerSettings.self, #"{ "headBob": 0 }"#).headBob == 0)
-        #expect(try decode(PlayerSettings.self, #"{ "headBob": 3 }"#).headBob == 1)
+        #expect(older.headBobAmount == 1 && older.mouseSensitivity == 2)
+        #expect(try decode(PlayerSettings.self, #"{ "headBob": 0 }"#).headBobAmount == 0)
+        #expect(try decode(PlayerSettings.self, #"{ "headBob": 3 }"#).headBobAmount == 1)
         var s = PlayerSettings()
-        s.headBob = -1
-        #expect(s.headBob == 0)
+        s.headBobAmount = -1
+        #expect(s.headBobAmount == 0)
+        // Still stored under its old name, so a file written by one build reads in another.
+        s.headBobAmount = 0.5
+        #expect(String(decoding: try JSONEncoder().encode(s), as: UTF8.self).contains("\"headBob\":0.5"))
     }
 
     @Test("An empty file is the defaults, not a failure")
@@ -280,11 +358,11 @@ struct PlayerSettingsTests {
 
         var mouseCamera = Camera()
         mouseCamera.look(mouseDelta: SIMD2(100, 0) * s.mouseLookScale)
-        #expect(abs(-mouseCamera.yaw - 100 * Camera.lookSensitivity * 2) < 1e-5)
+        #expect(abs(-mouseCamera.yaw - 100 * mouseCamera.tuning.lookSensitivity * 2) < 1e-5)
 
         var stickCamera = Camera()
         for _ in 0..<60 { stickCamera.turn(rate: SIMD2(1, 0) * s.stickLookScale, deltaTime: 1.0 / 120) }
-        #expect(abs(-stickCamera.yaw - Camera.stickLookSpeed * 0.5 * 0.5) < 1e-4,
+        #expect(abs(-stickCamera.yaw - stickCamera.tuning.stickLookSpeed * 0.5 * 0.5) < 1e-4,
                 "half a second at full deflection, at half the stick's speed")
     }
 
@@ -315,10 +393,10 @@ struct InputStateBindingTests {
     func reboundKeyMoves() {
         let input = InputState()
         input.bindings.bind(.forward, to: key("I"))
-        input.keyDown(key("W").rawValue)
+        input.keyDown(key("W"))
         #expect(input.movement.forward == 0, "the old key still walked")
-        input.keyUp(key("W").rawValue)
-        input.keyDown(key("I").rawValue)
+        input.keyUp(key("W"))
+        input.keyDown(key("I"))
         #expect(input.movement.forward == 1)
     }
 
@@ -327,12 +405,12 @@ struct InputStateBindingTests {
     @Test("Shift arriving as a flags change sprints")
     func shiftSprints() {
         let input = InputState()
-        input.keyDown(key("W").rawValue)
-        #expect(!input.movement.sprint)
-        input.flagsChanged(keyCode: 56, modifierFlags: 0x02 | (1 << 17))
-        #expect(input.movement.sprint)
-        input.flagsChanged(keyCode: 56, modifierFlags: 0)
-        #expect(!input.movement.sprint)
+        input.keyDown(key("W"))
+        #expect(!input.movement.isSprinting)
+        input.flagsChanged(key: .leftShift, modifierFlags: KeyCode.leftShift.modifierFlag!.union(.shift))
+        #expect(input.movement.isSprinting)
+        input.flagsChanged(key: .leftShift, modifierFlags: [])
+        #expect(!input.movement.isSprinting)
     }
 
     /// Control for crouch is what a lot of players expect, and it is a modifier.
@@ -340,11 +418,12 @@ struct InputStateBindingTests {
     func crouchOnModifier() {
         let input = InputState()
         input.bindings.bind(.crouch, to: key("left control"))
-        input.flagsChanged(keyCode: 59, modifierFlags: 0x01)
+        let down = KeyCode.leftControl.modifierFlag!
+        input.flagsChanged(key: .leftControl, modifierFlags: down)
         #expect(input.isCrouching)
-        input.flagsChanged(keyCode: 59, modifierFlags: 0)       // release: no second toggle
+        input.flagsChanged(key: .leftControl, modifierFlags: [])     // release: no second toggle
         #expect(input.isCrouching)
-        input.flagsChanged(keyCode: 59, modifierFlags: 0x01)
+        input.flagsChanged(key: .leftControl, modifierFlags: down)
         #expect(!input.isCrouching)
     }
 
@@ -352,9 +431,73 @@ struct InputStateBindingTests {
     func jumpFollowsBinding() {
         let input = InputState()
         input.bindings.bind(.jump, to: key("F"))
-        input.keyDown(key("Space").rawValue)
+        input.keyDown(key("Space"))
         #expect(!input.isJumpHeld)
-        input.keyDown(key("F").rawValue)
+        input.keyDown(key("F"))
         #expect(input.isJumpHeld)
+    }
+
+    /// **The generic layer a game's own actions are read through.**
+    @Test("A game's action is held and pressed through its binding, and repeats are not presses")
+    func gameActionReads() {
+        let reload = InputAction("reload")
+        let input = InputState()
+        input.bindings = InputBindings.standard.adding(reload, defaultKey: key("R"))
+        #expect(!input.isHeld(reload) && input.consumePresses(of: reload) == 0)
+        input.keyDown(key("R"))
+        input.keyDown(key("R"))                     // as the OS repeats it
+        #expect(input.isHeld(reload) && input.isKeyHeld(reload) && !input.isPadHeld(reload))
+        #expect(input.consumePresses(of: reload) == 1, "a repeat counted as a press")
+        #expect(input.consumePresses(of: reload) == 0, "a press was handed out twice")
+        input.keyUp(key("R"))
+        input.keyDown(key("R"))
+        input.keyUp(key("R"))
+        input.keyDown(key("R"))
+        #expect(input.consumePresses(of: reload) == 2)
+    }
+
+    @Test("Settings are handed over in one call, sensitivity and invert included")
+    func applyingSettings() {
+        var settings = PlayerSettings()
+        settings.bindings.bind(.forward, to: key("I"))
+        settings.moveDeadzone = 0.3
+        settings.mouseSensitivity = 2
+        settings.invertMouse = true
+        let input = InputState()
+        input.apply(settings)
+        #expect(input.bindings == settings.bindings && input.padBindings == settings.padBindings)
+        #expect(input.moveDeadzone == 0.3 && input.lookDeadzone == settings.lookDeadzone)
+        #expect(input.mouseLookScale == SIMD2(2, -2) && input.stickLookScale == SIMD2(1, 1))
+    }
+
+    @Test("Dead zones, response curves and the scroll notch refuse values that would break the reads")
+    func validatedTuning() {
+        let input = InputState()
+        input.moveDeadzone = -1
+        input.lookDeadzone = .nan
+        #expect(input.moveDeadzone == 0 && input.lookDeadzone == StickResponse.lookDeadzone)
+        input.moveDeadzone = 3
+        #expect(input.moveDeadzone == PlayerSettings.deadzoneRange.upperBound)
+        input.moveExponent = 0
+        input.lookExponent = -.infinity
+        #expect(input.moveExponent == StickResponse.moveExponent && input.lookExponent == StickResponse.lookExponent)
+        input.lookExponent = 3
+        #expect(input.lookExponent == 3)
+        input.scrollNotch = 0
+        #expect(input.scrollNotch == 1)
+        input.scrollNotch = 2
+        input.addScroll(3)
+        #expect(input.consumeScroll() == 1)
+    }
+
+    @Test("Standing up ends a crouch, and does nothing standing")
+    func standUp() {
+        let input = InputState()
+        input.standUp()
+        #expect(!input.isCrouching)
+        input.keyDown(.c)
+        #expect(input.isCrouching)
+        input.standUp()
+        #expect(!input.isCrouching)
     }
 }

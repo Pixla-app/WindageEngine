@@ -9,7 +9,7 @@ import Testing
 @MainActor
 struct CrouchLatchTests {
 
-    private let c: UInt16 = 8
+    private let c = KeyCode.c
 
     /// **Latched, not held.** You crouch and then walk, aim, steady and dial turrets — holding the
     /// key would mean clamping it against W/A/S/D, right mouse, Shift and the arrows at once.
@@ -49,7 +49,7 @@ struct CrouchLatchTests {
         input.setSprinting(true)
         input.pollFrame()
         #expect(!input.isCrouching, "it stayed crouched when sprint was pressed")
-        #expect(input.movement.sprint, "and then would not sprint either")
+        #expect(input.movement.isSprinting, "and then would not sprint either")
     }
 
     /// **The bug that made the slide unreachable, and that only the running game showed.**
@@ -70,7 +70,7 @@ struct CrouchLatchTests {
         #expect(input.isCrouching)
         for _ in 0..<60 { input.pollFrame() }
         #expect(input.isCrouching, "it stood back up on its own while sprint was merely held")
-        #expect(!input.movement.sprint, "and it is crouch-walking, not sprinting")
+        #expect(!input.movement.isSprinting, "and it is crouch-walking, not sprinting")
     }
 
     /// Releasing and pressing sprint again is a fresh press, so it stands you up.
@@ -98,6 +98,6 @@ struct CrouchLatchTests {
         // Set the flag directly rather than through `setSprinting`, which stands you up: this pins
         // the *second* guard, so a replay or a pad path cannot sneak a crouched sprint through.
         #expect(input.isCrouching)
-        #expect(!input.movement.sprint)
+        #expect(!input.movement.isSprinting)
     }
 }

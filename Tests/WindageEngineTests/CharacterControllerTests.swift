@@ -16,15 +16,20 @@ private let hillside: @Sendable (Float, Float) -> Float = { x, z in
 private let step: Float = 1.0 / 120
 private let flat = CharacterController.Surroundings()
 
+/// Boxes as solids that stand still and are their own plan.
+private func boxes(_ boxes: [BoundingBox]) -> [CharacterController.Surroundings.Solid] {
+    boxes.map { .init(bounds: $0) }
+}
+
 private func run(_ controller: inout CharacterController,
                  seconds: Float,
                  yaw: Float = 0,
                  _ input: MovementInput = MovementInput(),
-                 jump: Bool = false,
-                 crouching: Bool = false,
+                 isJumpHeld jump: Bool = false,
+                 isCrouching crouching: Bool = false,
                  in world: CharacterController.Surroundings = flat) {
     for _ in 0..<Int((seconds / step).rounded()) {
-        controller.step(yaw: yaw, input: input, jump: jump, crouching: crouching,
+        controller.step(yaw: yaw, input: input, isJumpHeld: jump, isCrouching: crouching,
                         deltaTime: step, in: world)
     }
 }
@@ -136,12 +141,12 @@ struct CharacterWalkingTests {
 @Suite("Character controller — crouch and slide")
 struct CharacterPostureTests {
 
-    private var running: MovementInput { MovementInput(forward: 1, sprint: true) }
+    private var running: MovementInput { MovementInput(forward: 1, isSprinting: true) }
 
     @Test("Crouching lowers the eye and standing raises it again")
     func postureChanges() {
         var c = CharacterController(feet: .zero)
-        run(&c, seconds: 2, crouching: true)
+        run(&c, seconds: 2, isCrouching: true)
         #expect(abs(c.eye.y - c.tuning.crouchedEyeHeight) < 0.02)
         run(&c, seconds: 2)
         #expect(abs(c.eye.y - c.tuning.eyeHeight) < 0.02)
@@ -151,7 +156,7 @@ struct CharacterPostureTests {
     func postureIsNotATeleport() {
         var c = CharacterController(feet: .zero)
         let before = c.eye.y
-        c.step(yaw: 0, input: MovementInput(), crouching: true, deltaTime: step, in: flat)
+        c.step(yaw: 0, input: MovementInput(), isCrouching: true, deltaTime: step, in: flat)
         let moved = before - c.eye.y
         #expect(moved > 0)
         #expect(moved < c.tuning.postureRate * step * 1.5)
@@ -164,8 +169,8 @@ struct CharacterPostureTests {
         var crouched = CharacterController(feet: .zero)
         var sprintCrouched = CharacterController(feet: .zero)
         run(&standing, seconds: 2, MovementInput(forward: 1))
-        run(&crouched, seconds: 2, MovementInput(forward: 1), crouching: true)
-        run(&sprintCrouched, seconds: 2, running, crouching: true)
+        run(&crouched, seconds: 2, MovementInput(forward: 1), isCrouching: true)
+        run(&sprintCrouched, seconds: 2, running, isCrouching: true)
         let a = simd_length(ground(standing.feet)), b = simd_length(ground(crouched.feet))
         #expect(b < a * 0.6)
         #expect(abs(simd_length(ground(sprintCrouched.feet)) - b) < 0.01, "sprint worked from a crouch")
@@ -180,7 +185,7 @@ struct CharacterPostureTests {
         var seconds: Float = 0
         // `repeat`: the slide only exists after the first crouching step.
         repeat {
-            c.step(yaw: 0, input: input ?? running, crouching: true, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: input ?? running, isCrouching: true, deltaTime: step, in: flat)
             seconds += step
         } while c.isSliding && seconds < 5
         return (simd_distance(ground(c.feet), start), seconds, c, start)
@@ -192,7 +197,7 @@ struct CharacterPostureTests {
         let crouchWalk = CharacterController.Tuning().walkSpeed
             * CharacterController.Tuning().crouchedSpeedFraction * result.seconds
         #expect(result.distance > crouchWalk * 2, "no momentum: \(result.distance) m")
-        #expect(abs(result.seconds - CharacterController.Tuning().slideSeconds) < 0.05)
+        #expect(abs(result.seconds - CharacterController.Tuning().slideDuration) < 0.05)
         // Momentum, not a way to travel.
         #expect(result.distance < 18, "a \(result.distance) m slide is a way of getting places")
     }
@@ -201,7 +206,7 @@ struct CharacterPostureTests {
     func slideDoesNotChain() {
         var c = slide().controller
         for _ in 0..<600 {
-            c.step(yaw: 0, input: running, crouching: true, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: running, isCrouching: true, deltaTime: step, in: flat)
             #expect(!c.isSliding)
         }
     }
@@ -209,19 +214,19 @@ struct CharacterPostureTests {
     @Test("You cannot slide from a standstill or a walk")
     func slideNeedsSprintSpeed() {
         var still = CharacterController(feet: .zero)
-        still.step(yaw: 0, input: MovementInput(), crouching: true, deltaTime: step, in: flat)
+        still.step(yaw: 0, input: MovementInput(), isCrouching: true, deltaTime: step, in: flat)
         #expect(!still.isSliding)
 
         var walking = CharacterController(feet: .zero)
         run(&walking, seconds: 1, MovementInput(forward: 1))
-        walking.step(yaw: 0, input: MovementInput(forward: 1), crouching: true, deltaTime: step, in: flat)
+        walking.step(yaw: 0, input: MovementInput(forward: 1), isCrouching: true, deltaTime: step, in: flat)
         #expect(!walking.isSliding)
     }
 
     /// **Committed.** Entered running down −Z with a hard left demanded throughout.
     @Test("A slide goes where it was entered, not where the stick says")
     func slideIsCommitted() {
-        let result = slide(steering: MovementInput(strafe: -1, sprint: true))
+        let result = slide(steering: MovementInput(strafe: -1, isSprinting: true))
         let travel = ground(result.controller.feet) - result.start
         #expect(travel.y < -8, "it barely carried forward: \(travel)")
         #expect(abs(travel.x) < abs(travel.y) * 0.4, "that is steering, not sliding: \(travel)")
@@ -235,7 +240,7 @@ struct CharacterPostureTests {
         #expect(c.slideCameraDip == 0)
         var samples: [Float] = []
         repeat {
-            c.step(yaw: 0, input: running, crouching: true, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: running, isCrouching: true, deltaTime: step, in: flat)
             samples.append(c.slideCameraDip)
         } while c.isSliding
         let peak = samples.min() ?? 0
@@ -256,7 +261,7 @@ struct CharacterFootingTests {
     /// exactly on its top.
     @Test("A ledge below the step height is walked onto")
     func stepsUpALowLedge() {
-        let world = CharacterController.Surroundings(solids: [ledge(height: 0.3)])
+        let world = CharacterController.Surroundings(solids: boxes([ledge(height: 0.3)]))
         var c = CharacterController(feet: .zero)
         run(&c, seconds: 1, forwards, in: world)
         #expect(c.feet.z < -2.5, "it did not get onto the ledge: \(c.feet)")
@@ -269,7 +274,7 @@ struct CharacterFootingTests {
     @Test("A crate taller than the step height stops you")
     func crateStops() {
         let crate = ledge(height: 1.5)
-        let world = CharacterController.Surroundings(solids: [crate])
+        let world = CharacterController.Surroundings(solids: boxes([crate]))
         var c = CharacterController(feet: .zero)
         run(&c, seconds: 2, forwards, in: world)
         #expect(c.feet.y == 0)
@@ -284,12 +289,12 @@ struct CharacterFootingTests {
     @Test("Running into a wall ends touching it, at a walk or a sprint")
     func wallIsMet() {
         let crate = ledge(height: 1.5)
-        let world = CharacterController.Surroundings(solids: [crate])
-        for input in [MovementInput(forward: 1), MovementInput(forward: 1, sprint: true)] {
+        let world = CharacterController.Surroundings(solids: boxes([crate]))
+        for input in [MovementInput(forward: 1), MovementInput(forward: 1, isSprinting: true)] {
             var c = CharacterController(feet: .zero)
             run(&c, seconds: 1, input, in: world)
             let gap = c.feet.z - (crate.maximum.z + c.tuning.radius)
-            #expect(gap >= 0 && gap < 0.01, "\(input.sprint ? "sprinting" : "walking"): \(gap) m short")
+            #expect(gap >= 0 && gap < 0.01, "\(input.isSprinting ? "sprinting" : "walking"): \(gap) m short")
         }
     }
 
@@ -298,7 +303,7 @@ struct CharacterFootingTests {
     @Test("A wall hit at an angle is slid along, not stuck to")
     func slidesAlongWalls() {
         let wall = BoundingBox(minimum: SIMD3(-50, 0, -2), maximum: SIMD3(50, 3, -1))
-        let world = CharacterController.Surroundings(solids: [wall])
+        let world = CharacterController.Surroundings(solids: boxes([wall]))
         var c = CharacterController(feet: .zero)
         // Forward and right at once, into a wall that runs left–right.
         run(&c, seconds: 2, MovementInput(forward: 1, strafe: 1), in: world)
@@ -310,7 +315,7 @@ struct CharacterFootingTests {
     @Test("Walking off something taller than a step falls, and lands")
     func fallsOffAnEdge() {
         let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 1.2, 3))
-        let world = CharacterController.Surroundings(solids: [platform])
+        let world = CharacterController.Surroundings(solids: boxes([platform]))
         var c = CharacterController(feet: SIMD3(0, 1.2, 0))
         var wasAirborne = false
         for _ in 0..<(120 * 2) {
@@ -327,7 +332,7 @@ struct CharacterFootingTests {
     @Test("Stepping down a low ledge stays grounded")
     func stepsDown() {
         let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 0.3, 3))
-        let world = CharacterController.Surroundings(solids: [platform])
+        let world = CharacterController.Surroundings(solids: boxes([platform]))
         var c = CharacterController(feet: SIMD3(0, 0.3, 0))
         for _ in 0..<(120 * 2) {
             c.step(yaw: 0, input: forwards, deltaTime: step, in: world)
@@ -339,7 +344,7 @@ struct CharacterFootingTests {
     /// **The feet move at once; the eye follows.** Stairs that snapped the eye would stutter.
     @Test("Stepping up moves the feet at once and the eye over a moment")
     func eyeEasesUpAStep() {
-        let world = CharacterController.Surroundings(solids: [ledge(height: 0.4, ahead: 0.5)])
+        let world = CharacterController.Surroundings(solids: boxes([ledge(height: 0.4, ahead: 0.5)]))
         var c = CharacterController(feet: .zero)
         var eyeRise: [Float] = []
         var previous = c.eye.y
@@ -356,9 +361,9 @@ struct CharacterFootingTests {
     func jumpHeight() {
         var c = CharacterController(feet: .zero)
         var apex: Float = 0
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)
         for _ in 0..<(120 * 2) {
-            c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)
             apex = max(apex, c.feet.y)
         }
         #expect(apex > 0.9 && apex < 1.2, "a jump reached \(apex) m")
@@ -372,7 +377,7 @@ struct CharacterFootingTests {
         var takeoffs = 0
         var wasGrounded = true
         for _ in 0..<(120 * 3) {
-            c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)
             if wasGrounded && !c.isGrounded { takeoffs += 1 }
             wasGrounded = c.isGrounded
         }
@@ -383,13 +388,13 @@ struct CharacterFootingTests {
     @Test("A jump just after leaving an edge still jumps")
     func coyoteTime() {
         let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 1.2, 0))
-        let world = CharacterController.Surroundings(solids: [platform])
+        let world = CharacterController.Surroundings(solids: boxes([platform]))
         var c = CharacterController(feet: SIMD3(0, 1.2, -1))
         // Walk off the +z edge (yaw π faces +z) until airborne, then press jump two steps later.
         while c.isGrounded { c.step(yaw: .pi, input: forwards, deltaTime: step, in: world) }
         c.step(yaw: .pi, input: forwards, deltaTime: step, in: world)
         let before = c.verticalVelocity
-        c.step(yaw: .pi, input: forwards, jump: true, deltaTime: step, in: world)
+        c.step(yaw: .pi, input: forwards, isJumpHeld: true, deltaTime: step, in: world)
         #expect(c.verticalVelocity > before + 3, "the late jump was eaten: \(c.verticalVelocity)")
     }
 
@@ -399,10 +404,10 @@ struct CharacterFootingTests {
         var c = CharacterController(feet: SIMD3(0, 0.6, 0))
         c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)   // falling
         while c.feet.y > 0.08 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat) }
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)  // pressed in the air
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)  // pressed in the air
         var rose = false
         for _ in 0..<12 {
-            c.step(yaw: 0, input: MovementInput(), jump: false, deltaTime: step, in: flat)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: false, deltaTime: step, in: flat)
             if c.verticalVelocity > 3 { rose = true }
         }
         #expect(rose, "a jump pressed just before landing was lost")
@@ -411,11 +416,11 @@ struct CharacterFootingTests {
     @Test("No jump out of a slide")
     func noJumpFromSlide() {
         var c = CharacterController(feet: .zero)
-        run(&c, seconds: 1, MovementInput(forward: 1, sprint: true))
-        c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), crouching: true,
+        run(&c, seconds: 1, MovementInput(forward: 1, isSprinting: true))
+        c.step(yaw: 0, input: MovementInput(forward: 1, isSprinting: true), isCrouching: true,
                deltaTime: step, in: flat)
         #expect(c.isSliding)
-        c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), jump: true, crouching: true,
+        c.step(yaw: 0, input: MovementInput(forward: 1, isSprinting: true), isJumpHeld: true, isCrouching: true,
                deltaTime: step, in: flat)
         #expect(c.isGrounded)
     }
@@ -424,10 +429,10 @@ struct CharacterFootingTests {
     @Test("A jump under a low ceiling stops at the ceiling")
     func ceilingStopsAJump() {
         let ceiling = BoundingBox(minimum: SIMD3(-3, 2.2, -3), maximum: SIMD3(3, 2.5, 3))
-        let world = CharacterController.Surroundings(solids: [ceiling])
+        let world = CharacterController.Surroundings(solids: boxes([ceiling]))
         var c = CharacterController(feet: .zero)
         var highestHead: Float = 0
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: world)
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: world)
         for _ in 0..<120 {
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
             highestHead = max(highestHead, c.bounds.maximum.y)
@@ -440,7 +445,7 @@ struct CharacterFootingTests {
     @Test("A long fall lands on a thin platform rather than passing through it")
     func fastFallLands() {
         let slab = BoundingBox(minimum: SIMD3(-3, 4.95, -3), maximum: SIMD3(3, 5, 3))
-        let world = CharacterController.Surroundings(solids: [slab])
+        let world = CharacterController.Surroundings(solids: boxes([slab]))
         var c = CharacterController(feet: SIMD3(0, 60, 0))
         run(&c, seconds: 4, in: world)
         #expect(abs(c.feet.y - 5) < 1e-4, "fell to \(c.feet.y)")
@@ -451,7 +456,7 @@ struct CharacterFootingTests {
     @Test("Walking across the top of a solid is not blocked by it")
     func walksAcrossATop() {
         let top = BoundingBox(minimum: SIMD3(-5, 0, -20), maximum: SIMD3(5, 1.5, 5))
-        let world = CharacterController.Surroundings(solids: [top])
+        let world = CharacterController.Surroundings(solids: boxes([top]))
         var c = CharacterController(feet: SIMD3(0, 1.5, 0))
         run(&c, seconds: 2, forwards, in: world)
         #expect(c.feet.z < -10)
@@ -465,11 +470,11 @@ struct CharacterFootingTests {
 struct CharacterEventTests {
 
     private func strides(_ c: inout CharacterController, seconds: Float, _ input: MovementInput,
-                         crouching: Bool = false,
+                         isCrouching crouching: Bool = false,
                          in world: CharacterController.Surroundings = flat) -> [CharacterController.Event] {
         var all: [CharacterController.Event] = []
         for _ in 0..<Int((seconds / step).rounded()) {
-            c.step(yaw: 0, input: input, crouching: crouching, deltaTime: step, in: world)
+            c.step(yaw: 0, input: input, isCrouching: crouching, deltaTime: step, in: world)
             all += c.events
         }
         return all
@@ -486,8 +491,8 @@ struct CharacterEventTests {
         var sprint = CharacterController(feet: .zero)
         var crouch = CharacterController(feet: .zero)
         let w = strideCount(strides(&walk, seconds: 4, MovementInput(forward: 1))) / 4
-        let s = strideCount(strides(&sprint, seconds: 4, MovementInput(forward: 1, sprint: true))) / 4
-        let c = strideCount(strides(&crouch, seconds: 4, MovementInput(forward: 1), crouching: true)) / 4
+        let s = strideCount(strides(&sprint, seconds: 4, MovementInput(forward: 1, isSprinting: true))) / 4
+        let c = strideCount(strides(&crouch, seconds: 4, MovementInput(forward: 1), isCrouching: true)) / 4
         #expect(w >= 2 && w <= 3, "walking \(w) a second")
         #expect(s > w, "sprinting \(s) against walking \(w)")
         #expect(c < w, "crouched \(c) against walking \(w)")
@@ -496,7 +501,7 @@ struct CharacterEventTests {
     /// **Distance covered, not asked for.** Pushing into a wall asks for six metres a second.
     @Test("Walking into a wall does not march on the spot")
     func noStepsAgainstAWall() {
-        let world = CharacterController.Surroundings(solids: [ledge(height: 2, ahead: 0.35)])
+        let world = CharacterController.Surroundings(solids: boxes([ledge(height: 2, ahead: 0.35)]))
         var c = CharacterController(feet: .zero)
         _ = strides(&c, seconds: 0.5, MovementInput(forward: 1), in: world)     // reach the wall
         let pressed = strides(&c, seconds: 3, MovementInput(forward: 1), in: world)
@@ -539,7 +544,7 @@ struct CharacterEventTests {
         for _ in 0..<(120 * 2) {
             let before = c.feet.y
             c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step,
-                   in: CharacterController.Surroundings(solids: treads + [landing]))
+                   in: CharacterController.Surroundings(solids: boxes(treads + [landing])))
             let rose = c.feet.y > before + 0.1
             if rose && c.events.contains(where: { if case .stride = $0 { true } else { false } }) {
                 climbSteps += 1
@@ -560,7 +565,7 @@ struct CharacterEventTests {
             treads.append(BoundingBox(minimum: SIMD3<Float>(-3, 0, far), maximum: SIMD3<Float>(3, top, near)))
         }
         let landing = BoundingBox(minimum: SIMD3(-3, 0, -12), maximum: SIMD3(3, 1.2, -5))
-        let world = CharacterController.Surroundings(solids: treads + [landing])
+        let world = CharacterController.Surroundings(solids: boxes(treads + [landing]))
         func treadSteps(from start: SIMD3<Float>, yaw: Float) -> Int {
             var c = CharacterController(feet: start)
             var count = 0
@@ -607,11 +612,11 @@ struct CharacterEventTests {
     @Test("A slide makes no footsteps")
     func slideIsSilent() {
         var c = CharacterController(feet: .zero)
-        _ = strides(&c, seconds: 1, MovementInput(forward: 1, sprint: true))
-        c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), crouching: true, deltaTime: step, in: flat)
+        _ = strides(&c, seconds: 1, MovementInput(forward: 1, isSprinting: true))
+        c.step(yaw: 0, input: MovementInput(forward: 1, isSprinting: true), isCrouching: true, deltaTime: step, in: flat)
         var during: [CharacterController.Event] = []
         while c.isSliding {
-            c.step(yaw: 0, input: MovementInput(forward: 1, sprint: true), crouching: true,
+            c.step(yaw: 0, input: MovementInput(forward: 1, isSprinting: true), isCrouching: true,
                    deltaTime: step, in: flat)
             if c.isSliding { during += c.events }
         }
@@ -635,7 +640,7 @@ struct CharacterEventTests {
     @Test("Stepping down a stair is not a landing")
     func stairIsNotALanding() {
         let platform = BoundingBox(minimum: SIMD3(-3, 0, -3), maximum: SIMD3(3, 0.3, 3))
-        let world = CharacterController.Surroundings(solids: [platform])
+        let world = CharacterController.Surroundings(solids: boxes([platform]))
         var c = CharacterController(feet: SIMD3(0, 0.3, 0))
         let events = strides(&c, seconds: 2, MovementInput(forward: 1), in: world)
         #expect(!events.contains { if case .landed = $0 { true } else { false } })
@@ -645,7 +650,7 @@ struct CharacterEventTests {
     func jumpAndLand() {
         var c = CharacterController(feet: .zero)
         var events: [CharacterController.Event] = []
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)
         events += c.events
         for _ in 0..<120 {
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
@@ -659,7 +664,7 @@ struct CharacterEventTests {
     @Test("It knows which solid it is standing on, and when it is on the terrain")
     func knowsTheGround() {
         let slab = BoundingBox(minimum: SIMD3(-3, 0, -8), maximum: SIMD3(3, 0.3, -2))
-        let world = CharacterController.Surroundings(solids: [ledge(height: 5, ahead: 30), slab])
+        let world = CharacterController.Surroundings(solids: boxes([ledge(height: 5, ahead: 30), slab]))
         var c = CharacterController(feet: .zero)
         c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
         #expect(c.groundSolid == nil)
@@ -741,7 +746,7 @@ struct CharacterLandingDipTests {
         tuning.jumpSpeed = 2.5                       // lands at 2.5 m/s, under the soft threshold
         var c = CharacterController(feet: .zero, tuning: tuning)
         var landed = false
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: flat)
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: flat)
         for _ in 0..<120 {
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: flat)
             if c.events.contains(where: { if case .landed = $0 { true } else { false } }) { landed = true }
@@ -801,7 +806,7 @@ struct CharacterLandingDipTests {
         var c = CharacterController(feet: SIMD3(0, 0.3, 0))
         for _ in 0..<(120 * 2) {
             c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: step,
-                   in: CharacterController.Surroundings(solids: [platform]))
+                   in: CharacterController.Surroundings(solids: boxes([platform])))
             #expect(c.landingCompression == 0)
         }
     }
@@ -814,11 +819,11 @@ struct CharacterHeadBobTests {
 
     /// Steps the body and hands back each step's bob, and whether a foot came down on it.
     private func samples(_ c: inout CharacterController, seconds: Float, _ input: MovementInput,
-                         jump: Bool = false, crouching: Bool = false,
+                         isJumpHeld jump: Bool = false, isCrouching crouching: Bool = false,
                          in world: CharacterController.Surroundings = flat) -> [(bob: SIMD2<Float>, footfall: Bool)] {
         var out: [(SIMD2<Float>, Bool)] = []
         for _ in 0..<Int((seconds / step).rounded()) {
-            c.step(yaw: 0, input: input, jump: jump, crouching: crouching, deltaTime: step, in: world)
+            c.step(yaw: 0, input: input, isJumpHeld: jump, isCrouching: crouching, deltaTime: step, in: world)
             out.append((c.headBob, c.events.contains { if case .stride = $0 { true } else { false } }))
         }
         return out
@@ -826,10 +831,10 @@ struct CharacterHeadBobTests {
 
     private func span(_ values: [Float]) -> Float { (values.max() ?? 0) - (values.min() ?? 0) }
 
-    private func settled(_ input: MovementInput, crouching: Bool = false) -> [(bob: SIMD2<Float>, footfall: Bool)] {
+    private func settled(_ input: MovementInput, isCrouching crouching: Bool = false) -> [(bob: SIMD2<Float>, footfall: Bool)] {
         var c = CharacterController(feet: .zero)
-        _ = samples(&c, seconds: 1.5, input, crouching: crouching)
-        return samples(&c, seconds: 2, input, crouching: crouching)
+        _ = samples(&c, seconds: 1.5, input, isCrouching: crouching)
+        return samples(&c, seconds: 2, input, isCrouching: crouching)
     }
 
     @Test("Standing still does not bob")
@@ -880,8 +885,8 @@ struct CharacterHeadBobTests {
     func gaitScales() {
         let t = CharacterController.Tuning()
         let walk = span(settled(MovementInput(forward: 1)).map(\.bob.y))
-        let sprint = span(settled(MovementInput(forward: 1, sprint: true)).map(\.bob.y))
-        let crouch = span(settled(MovementInput(forward: 1), crouching: true).map(\.bob.y))
+        let sprint = span(settled(MovementInput(forward: 1, isSprinting: true)).map(\.bob.y))
+        let crouch = span(settled(MovementInput(forward: 1), isCrouching: true).map(\.bob.y))
         #expect(abs(sprint / walk - t.bobSprintScale) < 0.1, "sprint \(sprint) against walk \(walk)")
         #expect(abs(crouch / walk - t.bobCrouchScale) < 0.1, "crouch \(crouch) against walk \(walk)")
     }
@@ -905,7 +910,7 @@ struct CharacterHeadBobTests {
     func wallDoesNotBob() {
         var c = CharacterController(feet: .zero)
         let wall = BoundingBox(minimum: SIMD3(-3, 0, -2), maximum: SIMD3(3, 3, -1))
-        let world = CharacterController.Surroundings(solids: [wall])
+        let world = CharacterController.Surroundings(solids: boxes([wall]))
         _ = samples(&c, seconds: 1.5, MovementInput(forward: 1), in: world)
         let bobs = samples(&c, seconds: 1, MovementInput(forward: 1), in: world)
         #expect(bobs.allSatisfy { simd_length($0.bob) < 0.0005 })
@@ -917,12 +922,12 @@ struct CharacterHeadBobTests {
         let t = CharacterController.Tuning()
         var c = CharacterController(feet: .zero)
         _ = samples(&c, seconds: 1.5, MovementInput(forward: 1))
-        let flight = samples(&c, seconds: 0.5, MovementInput(forward: 1), jump: true)
+        let flight = samples(&c, seconds: 0.5, MovementInput(forward: 1), isJumpHeld: true)
         #expect(simd_length(flight.last!.bob) < 0.1 * t.bobRise, "bobbing in mid-air: \(flight.last!.bob)")
 
         var s = CharacterController(feet: .zero)
-        _ = samples(&s, seconds: 1.5, MovementInput(forward: 1, sprint: true))
-        let slide = samples(&s, seconds: 0.6, MovementInput(forward: 1, sprint: true), crouching: true)
+        _ = samples(&s, seconds: 1.5, MovementInput(forward: 1, isSprinting: true))
+        let slide = samples(&s, seconds: 0.6, MovementInput(forward: 1, isSprinting: true), isCrouching: true)
         #expect(s.isSliding)
         #expect(simd_length(slide.last!.bob) < 0.1 * t.bobRise, "bobbing through a slide: \(slide.last!.bob)")
     }
@@ -937,7 +942,7 @@ struct CharacterHeadBobTests {
             treads.append(BoundingBox(minimum: SIMD3<Float>(-3, 0, far), maximum: SIMD3<Float>(3, top, near)))
         }
         let landing = BoundingBox(minimum: SIMD3(-3, 0, -12), maximum: SIMD3(3, 1.2, -5))
-        let world = CharacterController.Surroundings(solids: treads + [landing])
+        let world = CharacterController.Surroundings(solids: boxes(treads + [landing]))
         var c = CharacterController(feet: SIMD3(0, 0, 6))
         _ = samples(&c, seconds: 1.2, MovementInput(forward: 1), in: flat)   // up to speed on the flat
         var last = c.headBob, biggestJump: Float = 0
@@ -957,16 +962,16 @@ struct CharacterHeadroomTests {
 
     /// A beam across the path, its underside at 1.5 m: a crouched body (1.2 m) goes under it, a
     /// standing one (1.85 m) does not.
-    private let world = CharacterController.Surroundings(solids: [
+    private let world = CharacterController.Surroundings(solids: boxes([
         BoundingBox(minimum: SIMD3(-3, 1.5, -4.5), maximum: SIMD3(3, 2.5, -3.5)),
-    ])
+    ]))
 
     /// Crouches, and walks until the feet are under the middle of the beam.
     private func underTheBeam() -> CharacterController {
         var c = CharacterController(feet: .zero)
-        run(&c, seconds: 1, crouching: true, in: world)
+        run(&c, seconds: 1, isCrouching: true, in: world)
         while c.feet.z > -4 {
-            c.step(yaw: 0, input: MovementInput(forward: 1), crouching: true, deltaTime: step, in: world)
+            c.step(yaw: 0, input: MovementInput(forward: 1), isCrouching: true, deltaTime: step, in: world)
         }
         return c
     }
@@ -976,8 +981,8 @@ struct CharacterHeadroomTests {
     @Test("Letting go of crouch under a beam keeps the body down")
     func staysDownUnderABeam() {
         var c = underTheBeam()
-        run(&c, seconds: 1, crouching: false, in: world)
-        #expect(c.isHeldDown)
+        run(&c, seconds: 1, isCrouching: false, in: world)
+        #expect(c.isCrouchForced)
         #expect(abs(c.eye.y - c.tuning.crouchedEyeHeight) < 1e-4, "stood to \(c.eye.y) under a 1.5 m beam")
         #expect(c.bounds.maximum.y < 1.5, "the head is inside the beam: \(c.bounds.maximum.y)")
     }
@@ -985,13 +990,13 @@ struct CharacterHeadroomTests {
     @Test("Walking out from under it stands up, at once and on its own")
     func standsWhenClear() {
         var c = underTheBeam()
-        run(&c, seconds: 0.5, crouching: false, in: world)
+        run(&c, seconds: 0.5, isCrouching: false, in: world)
         var stoodAt: Float?
         for _ in 0..<240 {
-            c.step(yaw: 0, input: MovementInput(forward: 1), crouching: false, deltaTime: step, in: world)
+            c.step(yaw: 0, input: MovementInput(forward: 1), isCrouching: false, deltaTime: step, in: world)
             if stoodAt == nil && c.eye.y > c.tuning.crouchedEyeHeight + 0.01 { stoodAt = c.feet.z }
         }
-        #expect(!c.isHeldDown)
+        #expect(!c.isCrouchForced)
         #expect(abs(c.eye.y - c.tuning.eyeHeight) < 1e-4, "never stood: \(c.eye.y)")
         // The beam ends at z = −4.5 and the body is 0.3 either side of its feet.
         #expect(stoodAt.map { $0 < -4.8 && $0 > -5.0 } == true, "began to stand at z \(stoodAt ?? .nan)")
@@ -1001,9 +1006,9 @@ struct CharacterHeadroomTests {
     @Test("Held down under a beam, the walk is a crouched walk and cannot sprint")
     func heldDownIsCrouched() {
         var c = underTheBeam()
-        run(&c, seconds: 0.5, crouching: false, in: world)
+        run(&c, seconds: 0.5, isCrouching: false, in: world)
         let before = c.feet
-        c.step(yaw: .pi / 2, input: MovementInput(forward: 1, sprint: true), crouching: false, deltaTime: step, in: world)
+        c.step(yaw: .pi / 2, input: MovementInput(forward: 1, isSprinting: true), isCrouching: false, deltaTime: step, in: world)
         let speed = simd_distance(ground(before), ground(c.feet)) / step
         let crouchedSpeed = c.tuning.walkSpeed * c.tuning.crouchedSpeedFraction
         #expect(abs(speed - crouchedSpeed) < 0.01, "moved at \(speed) m/s under the beam, sprint held")
@@ -1017,16 +1022,16 @@ struct CharacterHeadroomTests {
         var c = CharacterController(feet: SIMD3(0, 0, 6))
         run(&c, seconds: 2, MovementInput(forward: 1), in: world)
         #expect(abs(c.feet.z + 3.2) < 0.01, "should stop at the beam's face: \(c.feet.z)")
-        #expect(!c.isHeldDown)
+        #expect(!c.isCrouchForced)
         #expect(abs(c.eye.y - c.tuning.eyeHeight) < 1e-4, "walked into a crouch: eye \(c.eye.y)")
     }
 
     @Test("In the open, letting go of crouch stands as it always did")
     func openAirUnchanged() {
         var c = CharacterController(feet: .zero)
-        run(&c, seconds: 1, crouching: true, in: world)
-        run(&c, seconds: 1, crouching: false, in: world)
-        #expect(!c.isHeldDown && abs(c.eye.y - c.tuning.eyeHeight) < 1e-4)
+        run(&c, seconds: 1, isCrouching: true, in: world)
+        run(&c, seconds: 1, isCrouching: false, in: world)
+        #expect(!c.isCrouchForced && abs(c.eye.y - c.tuning.eyeHeight) < 1e-4)
     }
 }
 
@@ -1052,8 +1057,8 @@ struct CharacterPlatformTests {
             let delta = velocity * step
             top += delta.y
             center += SIMD2(delta.x, delta.z)
-            var world = CharacterController.Surroundings(solids: [slab(top: top, center: center)] + others)
-            world.motion = [delta]
+            var world = CharacterController.Surroundings(solids: boxes([slab(top: top, center: center)] + others))
+            world.solids[0].motion = delta
             c.step(yaw: 0, input: input, deltaTime: step, in: world)
         }
         return (top, center)
@@ -1061,7 +1066,7 @@ struct CharacterPlatformTests {
 
     private func standing(on top: Float) -> CharacterController {
         var c = CharacterController(feet: SIMD3(0, top, 0))
-        let still = CharacterController.Surroundings(solids: [slab(top: top)])
+        let still = CharacterController.Surroundings(solids: boxes([slab(top: top)]))
         for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
         return c
     }
@@ -1084,8 +1089,8 @@ struct CharacterPlatformTests {
         for _ in 0..<120 {
             let delta = SIMD3<Float>(0, -9, 0) * step
             top += delta.y
-            var world = CharacterController.Surroundings(solids: [slab(top: top)])
-            world.motion = [delta]
+            var world = CharacterController.Surroundings(solids: boxes([slab(top: top)]))
+            world.solids[0].motion = delta
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
             landings += c.events.filter { if case .landed = $0 { true } else { false } }.count
             #expect(c.isGrounded)
@@ -1102,8 +1107,8 @@ struct CharacterPlatformTests {
             let delta = SIMD3<Float>(2, 0.5, 0) * step
             top += delta.y
             center += SIMD2(delta.x, delta.z)
-            var world = CharacterController.Surroundings(solids: [slab(top: top, center: center)])
-            world.motion = [delta]
+            var world = CharacterController.Surroundings(solids: boxes([slab(top: top, center: center)]))
+            world.solids[0].motion = delta
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
             strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
         }
@@ -1134,8 +1139,8 @@ struct CharacterPlatformTests {
     @Test("Off the platform, nothing carries")
     func offIsOff() {
         var c = CharacterController(feet: SIMD3(5, 0, 0))
-        var world = CharacterController.Surroundings(solids: [slab(top: 1)])
-        world.motion = [SIMD3(0, 0.5, 0)]
+        var world = CharacterController.Surroundings(solids: boxes([slab(top: 1)]))
+        world.solids[0].motion = SIMD3(0, 0.5, 0)
         for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
         #expect(c.feet == SIMD3(5, 0, 0) && c.carried == .zero)
     }
@@ -1159,15 +1164,15 @@ struct CharacterTurntableTests {
                       _ input: MovementInput = MovementInput()) -> (CharacterController, SIMD2<Float>, Float, Int) {
         var center = SIMD2<Float>(1, -3)
         var c = CharacterController(feet: SIMD3(center.x + offset.x, 0.2, center.y + offset.y))
-        let still = CharacterController.Surroundings(solids: [table(at: center)])
+        let still = CharacterController.Surroundings(solids: boxes([table(at: center)]))
         for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
         var total: Float = 0, strides = 0
         for _ in 0..<Int((seconds / step).rounded()) {
             let moved = slide * step
             center += moved
-            var world = CharacterController.Surroundings(solids: [table(at: center)])
-            world.motion = [SIMD3(moved.x, 0, moved.y)]
-            world.turns = [.init(about: center, by: rate * step)]
+            var world = CharacterController.Surroundings(solids: boxes([table(at: center)]))
+            world.solids[0].motion = SIMD3(moved.x, 0, moved.y)
+            world.solids[0].turn = .init(about: center, by: rate * step)
             c.step(yaw: 0, input: input, deltaTime: step, in: world)
             total += c.turned
             strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
@@ -1208,8 +1213,8 @@ struct CharacterTurntableTests {
     @Test("Off the table, nothing turns")
     func offTheTable() {
         var c = CharacterController(feet: SIMD3(10, 0, 10))
-        var world = CharacterController.Surroundings(solids: [table(at: .zero)])
-        world.turns = [.init(about: .zero, by: 0.1)]
+        var world = CharacterController.Surroundings(solids: boxes([table(at: .zero)]))
+        world.solids[0].turn = .init(about: .zero, by: 0.1)
         for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
         #expect(c.feet == SIMD3(10, 0, 10) && c.turned == 0)
     }
@@ -1230,8 +1235,8 @@ struct CharacterLeavingPlatformTests {
         var top: Float = 1, center = SIMD2<Float>(0, 0)
         var c = CharacterController(feet: SIMD3(0, top, 0))
         func world(_ delta: SIMD3<Float>) -> CharacterController.Surroundings {
-            var w = CharacterController.Surroundings(solids: [slab(top: top, center: center, half: 20)])
-            w.motion = [delta]
+            var w = CharacterController.Surroundings(solids: boxes([slab(top: top, center: center, half: 20)]))
+            w.solids[0].motion = delta
             return w
         }
         // Ride a moment, so the ground's speed is known, then jump and keep riding it underneath.
@@ -1243,7 +1248,7 @@ struct CharacterLeavingPlatformTests {
         var apex: Float = 0
         for i in 0..<120 {
             let d = velocity * step; top += d.y; center += SIMD2(d.x, d.z)
-            c.step(yaw: 0, input: MovementInput(), jump: i < 2, deltaTime: step, in: world(d))
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: i < 2, deltaTime: step, in: world(d))
             if !c.isGrounded { apex = max(apex, c.feet.y - takeoff) }
         }
         return (apex, c.feet.x)
@@ -1277,8 +1282,8 @@ struct CharacterLeavingPlatformTests {
         for _ in 0..<120 {
             let d = SIMD3<Float>(0, 0, -1.5) * step
             center += SIMD2(d.x, d.z)
-            var w = CharacterController.Surroundings(solids: [slab(top: 1, center: center)])
-            w.motion = [d]
+            var w = CharacterController.Surroundings(solids: boxes([slab(top: 1, center: center)]))
+            w.solids[0].motion = d
             c.step(yaw: -.pi / 2, input: MovementInput(forward: 0.3), deltaTime: step, in: w)   // walk off +x
             if !c.isGrounded { airborneX.append(c.feet.z) }
         }
@@ -1294,11 +1299,11 @@ struct CharacterLeavingPlatformTests {
         let rate: Float = .pi / 2, center = SIMD2<Float>(1, -3)
         let table = BoundingBox(minimum: SIMD3(center.x - 2, 0, center.y - 2), maximum: SIMD3(center.x + 2, 0.2, center.y + 2))
         var c = CharacterController(feet: SIMD3(center.x + 1.2, 0.2, center.y))
-        var world = CharacterController.Surroundings(solids: [table])
-        world.turns = [.init(about: center, by: rate * step)]
+        var world = CharacterController.Surroundings(solids: boxes([table]))
+        world.solids[0].turn = .init(about: center, by: rate * step)
         for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
         let radius = SIMD2(c.feet.x, c.feet.z) - center
-        c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: world)
+        c.step(yaw: 0, input: MovementInput(), isJumpHeld: true, deltaTime: step, in: world)
         #expect(!c.isGrounded, "did not leave the table")
         let speed = simd_length(c.airVelocity)
         #expect(abs(speed - rate * 1.2) < 0.01, "left at \(speed) m/s, the rim moves at \(rate * 1.2)")
@@ -1309,10 +1314,10 @@ struct CharacterLeavingPlatformTests {
     @Test("Landing on still ground stops the kept speed")
     func landingStops() {
         var c = CharacterController(feet: SIMD3(0, 1, 0))
-        var w = CharacterController.Surroundings(solids: [slab(top: 1)])
-        w.motion = [SIMD3(2 * step, 0, 0)]
-        for i in 0..<10 { c.step(yaw: 0, input: MovementInput(), jump: i == 9, deltaTime: step, in: w) }
-        let still = CharacterController.Surroundings(solids: [slab(top: 1, half: 30)])
+        var w = CharacterController.Surroundings(solids: boxes([slab(top: 1)]))
+        w.solids[0].motion = SIMD3(2 * step, 0, 0)
+        for i in 0..<10 { c.step(yaw: 0, input: MovementInput(), isJumpHeld: i == 9, deltaTime: step, in: w) }
+        let still = CharacterController.Surroundings(solids: boxes([slab(top: 1, half: 30)]))
         for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
         let x = c.feet.x
         for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
@@ -1337,8 +1342,8 @@ struct CharacterTurnedSolidTests {
     }
 
     private func world(_ box: BoundingBox, _ plan: Footprint?) -> CharacterController.Surroundings {
-        var w = CharacterController.Surroundings(solids: [box])
-        w.footprints = [plan]
+        var w = CharacterController.Surroundings(solids: boxes([box]))
+        w.solids[0].footprint = plan
         return w
     }
 
@@ -1440,7 +1445,7 @@ struct CharacterTurnedSolidTests {
         func heldDown(at x: Float, _ z: Float, _ w: CharacterController.Surroundings) -> Bool {
             var c = CharacterController(feet: SIMD3(x, 0, z))
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
-            return c.isHeldDown
+            return c.isCrouchForced
         }
         #expect(!heldDown(at: 1.1, 1.1, world(beam, plan)), "held down by the air past the beam's corner")
         #expect(heldDown(at: 1.1, 1.1, world(beam, nil)), "the box alone should have — the test is not testing anything")
@@ -1508,8 +1513,8 @@ struct CharacterPushedTests {
         var footsteps = 0
         for _ in 0..<360 {
             face += step
-            var w = CharacterController.Surroundings(solids: [slab(face: face)])
-            w.motion = [SIMD3(step, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([slab(face: face)]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             let before = c.feet.x
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             if face > -r { gaps.append(c.feet.x - face); speeds.append((c.feet.x - before) / step) }
@@ -1533,12 +1538,12 @@ struct CharacterPushedTests {
         var c = CharacterController(feet: .zero)
         for _ in 0..<240 {
             face += step
-            var w = CharacterController.Surroundings(solids: [slab(face: face)])
-            w.motion = [SIMD3(step, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([slab(face: face)]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
         }
         let at = c.feet.x
-        let still = CharacterController.Surroundings(solids: [slab(face: face)])
+        let still = CharacterController.Surroundings(solids: boxes([slab(face: face)]))
         for _ in 0..<60 { c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: still) }
         // Half a second at a walk: the whole 3 m, nothing held back by the slab it was pushed by.
         let walk = CharacterController.Tuning().walkSpeed * 0.5
@@ -1553,8 +1558,8 @@ struct CharacterPushedTests {
         var firstPinned: Int?
         for i in 0..<360 {
             face += step
-            var w = CharacterController.Surroundings(solids: [slab(face: face), wall])
-            w.motion = [SIMD3(step, 0, 0), .zero]
+            var w = CharacterController.Surroundings(solids: boxes([slab(face: face), wall]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             if c.pinnedBy != nil && firstPinned == nil { firstPinned = i }
             #expect(c.feet.x + r <= 1 + 1e-4, "pushed \(c.feet.x + r - 1) m into the wall")
@@ -1577,8 +1582,8 @@ struct CharacterPushedTests {
         var pinnedOnce = false, pinnedAfter = 0
         for _ in 0..<480 {
             face += speed * step
-            var w = CharacterController.Surroundings(solids: [slab(face: face), wall])
-            w.motion = [SIMD3(speed * step, 0, 0), .zero]
+            var w = CharacterController.Surroundings(solids: boxes([slab(face: face), wall]))
+            w.solids[0].motion = SIMD3(speed * step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             if c.pinnedBy == 0 {
                 if pinnedOnce { pinnedAfter += 1 }
@@ -1600,8 +1605,8 @@ struct CharacterPushedTests {
         var c = CharacterController(feet: SIMD3(0, 0, 2 + r + 0.05))
         for _ in 0..<480 {
             face += step
-            var w = CharacterController.Surroundings(solids: [slab(face: face)])
-            w.motion = [SIMD3(step, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([slab(face: face)]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
         }
         #expect(abs(c.feet.x) < 1e-5 && abs(c.feet.z - (2 + r + 0.05)) < 1e-5, "moved to \(c.feet)")
@@ -1627,9 +1632,9 @@ struct CharacterPushedTests {
         for _ in 0..<120 {
             angle += rate * step
             let (box, plan) = arm(angle)
-            var w = CharacterController.Surroundings(solids: [box])
-            w.footprints = [plan]
-            w.turns = [.init(about: pivot, by: rate * step)]
+            var w = CharacterController.Surroundings(solids: boxes([box]))
+            w.solids[0].footprint = plan
+            w.solids[0].turn = .init(about: pivot, by: rate * step)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             // How far the body's square is into the arm, on the arm's own axes (the body's corners).
             let local = Level.turned(SIMD2(c.feet.x, c.feet.z) - plan.center, by: -angle)
@@ -1648,8 +1653,8 @@ struct CharacterPushedTests {
         var c = CharacterController(feet: .zero)
         for _ in 0..<240 {
             face += step
-            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 0.2, 2))])
-            w.motion = [SIMD3(step, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 0.2, 2))]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
         }
         #expect(abs(c.feet.y - 0.2) < 1e-4 && c.groundSolid == 0, "feet at \(c.feet.y), on \(String(describing: c.groundSolid))")
@@ -1666,8 +1671,8 @@ struct CharacterRoundSolidTests {
     private let root2 = Float(2).squareRoot()
 
     private func world(_ box: BoundingBox, _ plan: Footprint?) -> CharacterController.Surroundings {
-        var w = CharacterController.Surroundings(solids: [box])
-        w.footprints = [plan]
+        var w = CharacterController.Surroundings(solids: boxes([box]))
+        w.solids[0].footprint = plan
         return w
     }
 
@@ -1768,7 +1773,7 @@ struct CharacterRoundSolidTests {
             x += step
             let box = BoundingBox(minimum: SIMD3(x - 0.5, 0, -0.5), maximum: SIMD3(x + 0.5, 3, 0.5))
             var w = world(box, Footprint(center: SIMD2(x, 0), radius: 0.5))
-            w.motion = [SIMD3(step, 0, 0)]
+            w.solids[0].motion = SIMD3(step, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             let q = abs(SIMD2(c.feet.x - x, c.feet.z)), out = simd_max(q - r, .zero)
             let beyond = simd_length_squared(out) > 0 ? simd_length(out) : max(q.x - r, q.y - r)
@@ -1813,8 +1818,8 @@ struct CharacterPushKeptTests {
             // The pusher sits on the ledge and goes on a little past its edge, then stops.
             let move: Float = face < 1.3 ? 1.5 * step : 0
             face += move
-            var w = CharacterController.Surroundings(solids: [ledge, BoundingBox(minimum: SIMD3(face - 3, 1, -2), maximum: SIMD3(face, 2.5, 2))])
-            w.motion = [.zero, SIMD3(move, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([ledge, BoundingBox(minimum: SIMD3(face - 3, 1, -2), maximum: SIMD3(face, 2.5, 2))]))
+            w.solids[1].motion = SIMD3(move, 0, 0)
             let wasGrounded = c.isGrounded
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             if wasGrounded && !c.isGrounded { leftAt = c.feet.x }
@@ -1832,9 +1837,9 @@ struct CharacterPushKeptTests {
         var kept: SIMD2<Float>?
         for i in 0..<300 {
             face += 1.5 * step
-            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))])
-            w.motion = [SIMD3(1.5 * step, 0, 0)]
-            c.step(yaw: 0, input: MovementInput(), jump: i == 240, deltaTime: step, in: w)
+            var w = CharacterController.Surroundings(solids: boxes([BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))]))
+            w.solids[0].motion = SIMD3(1.5 * step, 0, 0)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: i == 240, deltaTime: step, in: w)
             if i == 240 { kept = c.airVelocity }
         }
         #expect(kept.map { abs($0.x - 1.5) < 1e-3 && abs($0.y) < 1e-5 } ?? false, "jumped keeping \(String(describing: kept))")
@@ -1847,8 +1852,8 @@ struct CharacterPushKeptTests {
         for _ in 0..<480 {
             let move: Float = face < 1 ? 1.5 * step : 0
             face += move
-            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))])
-            w.motion = [SIMD3(move, 0, 0)]
+            var w = CharacterController.Surroundings(solids: boxes([BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 1.5, 2))]))
+            w.solids[0].motion = SIMD3(move, 0, 0)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
         }
         #expect(abs(c.feet.x - (1 + r + 0.002)) < 0.002, "coasted to \(c.feet.x)")
@@ -1864,12 +1869,12 @@ struct CharacterPushKeptTests {
         var apex: Float = 0, jumped = false
         for _ in 0..<240 {
             x += step
-            var w = CharacterController.Surroundings(solids: [BoundingBox(minimum: SIMD3(x - 5, 0, -2), maximum: SIMD3(x + 0.5, 0.5, 2)), ledge])
-            w.motion = [SIMD3(step, 0, 0), .zero]
+            var w = CharacterController.Surroundings(solids: boxes([BoundingBox(minimum: SIMD3(x - 5, 0, -2), maximum: SIMD3(x + 0.5, 0.5, 2)), ledge]))
+            w.solids[0].motion = SIMD3(step, 0, 0)
             // Pressed on the step whose carry runs it into the ledge — the body is 0.3 m short of the
             // ledge's face at 1 m/s, so that is the step its box first reaches it.
             let reaching = !jumped && c.feet.x + r + step >= 1.0
-            c.step(yaw: 0, input: MovementInput(), jump: reaching, deltaTime: step, in: w)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: reaching, deltaTime: step, in: w)
             if reaching { jumped = true; #expect(c.feet.y > 0.79, "the jump step did not climb: \(c.feet.y)") }
             apex = max(apex, c.feet.y)
         }
@@ -1898,10 +1903,10 @@ struct CharacterAirPushTests {
             face += move
             var solids = [BoundingBox(minimum: SIMD3(face - 3, 0, -2), maximum: SIMD3(face, 2.5, 2))]
             if let wall { solids.append(wall) }
-            var w = CharacterController.Surroundings(solids: solids)
-            w.motion = [SIMD3(move, 0, 0)] + (wall == nil ? [] : [.zero])
+            var w = CharacterController.Surroundings(solids: boxes(solids))
+            w.solids[0].motion = SIMD3(move, 0, 0)
             let was = c.isGrounded
-            c.step(yaw: 0, input: MovementInput(), jump: i == 2, deltaTime: step, in: w)
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: i == 2, deltaTime: step, in: w)
             if !c.isGrounded { kept = max(kept, c.airVelocity.x) }
             if !was && c.isGrounded && landStep < 0 { landStep = i }
         }
@@ -1952,7 +1957,7 @@ struct CharacterStepRateTests {
         var c = CharacterController(feet: .zero)
         var apex: Float = 0, air = 0
         for i in 0..<Int(rate * 2) {
-            c.step(yaw: 0, input: MovementInput(), jump: i == 1, deltaTime: dt, in: CharacterController.Surroundings())
+            c.step(yaw: 0, input: MovementInput(), isJumpHeld: i == 1, deltaTime: dt, in: CharacterController.Surroundings())
             apex = max(apex, c.feet.y)
             if !c.isGrounded { air += 1 }
         }
@@ -2002,7 +2007,7 @@ struct CharacterStepRateTests {
         var lag: Float?
         for _ in 0..<Int(rate) {
             c.step(yaw: 0, input: MovementInput(forward: 1), deltaTime: dt,
-                   in: CharacterController.Surroundings(solids: [ledge]))
+                   in: CharacterController.Surroundings(solids: boxes([ledge])))
             guard c.feet.y > 0.4 else { continue }              // up on the ledge
             let behind = c.feet.y + tuning.eyeHeight - c.eye.y
             if let lag {
@@ -2034,12 +2039,12 @@ struct CharacterStepRateTests {
         while time < 3 {
             let sprinting = time < 1
             let before = c.feet
-            c.step(yaw: 0, input: MovementInput(forward: 1, sprint: sprinting), crouching: !sprinting,
+            c.step(yaw: 0, input: MovementInput(forward: 1, isSprinting: sprinting), isCrouching: !sprinting,
                    deltaTime: dt, in: CharacterController.Surroundings())
             if c.slideProgress > 0 { slid += simd_distance(before, c.feet) }
             time += dt
         }
-        let exact = tuning.slideSeconds
+        let exact = tuning.slideDuration
             * (tuning.walkSpeed * tuning.crouchedSpeedFraction
                + (tuning.sprintSpeed - tuning.walkSpeed * tuning.crouchedSpeedFraction) / (tuning.slideEasing + 1))
         // The step a slide ends inside is not counted here — the slide is over by the time the step is
@@ -2057,8 +2062,8 @@ struct CharacterStepRateTests {
         // Drop it onto a floor 1 m down, then let the eye catch up over exactly one second.
         let floor = BoundingBox(minimum: SIMD3(-5, 0, -5), maximum: SIMD3(5, 0, 5))
         var many = c
-        for _ in 0..<Int(steps) { many.step(yaw: 0, input: MovementInput(), deltaTime: 1 / steps, in: .init(solids: [floor])) }
-        c.step(yaw: 0, input: MovementInput(), deltaTime: 1, in: .init(solids: [floor]))
+        for _ in 0..<Int(steps) { many.step(yaw: 0, input: MovementInput(), deltaTime: 1 / steps, in: .init(solids: boxes([floor]))) }
+        c.step(yaw: 0, input: MovementInput(), deltaTime: 1, in: .init(solids: boxes([floor])))
         #expect(abs(many.eye.y - c.eye.y) < 2e-3, "\(steps) steps of a second left the eye at \(many.eye.y), one step at \(c.eye.y)")
     }
 
@@ -2068,5 +2073,37 @@ struct CharacterStepRateTests {
         let exact = 2 * tuning.jumpSpeed / tuning.gravity
         let airborne = jump(at: rate).airborne
         #expect(abs(airborne - exact) <= 1 / rate + 1e-5, "at \(rate) a second it was airborne \(airborne) s, the flight is \(exact)")
+    }
+}
+
+@Suite("Character controller — teleporting")
+struct CharacterTeleportTests {
+
+    /// **Respawning by making a new controller put the tuning back to the defaults** unless it was
+    /// passed again; teleporting keeps it, and drops everything else the body was doing.
+    @Test("A teleport keeps the tuning and drops the rest, as a fresh body would have it")
+    func teleportKeepsTuning() {
+        var tuning = CharacterController.Tuning()
+        tuning.walkSpeed = 3
+        var c = CharacterController(feet: .zero, tuning: tuning)
+        run(&c, seconds: 1, MovementInput(forward: 1, isSprinting: true))
+        run(&c, seconds: 0.2, MovementInput(forward: 1, isSprinting: true), isCrouching: true)
+        #expect(c.isSliding)
+        c.teleport(to: SIMD3(5, 2, 5))
+        let fresh = CharacterController(feet: SIMD3(5, 2, 5), tuning: tuning)
+        #expect(c.tuning.walkSpeed == 3)
+        #expect(c.feet == fresh.feet && c.eye == fresh.eye && !c.isSliding && c.isGrounded == fresh.isGrounded)
+        #expect(c.verticalVelocity == 0 && c.slideTimeRemaining == 0 && c.eyeHeight == tuning.eyeHeight)
+        // And it walks the same from there.
+        var a = c, b = fresh
+        run(&a, seconds: 0.5, MovementInput(forward: 1))
+        run(&b, seconds: 0.5, MovementInput(forward: 1))
+        #expect(a.feet == b.feet && a.eye == b.eye)
+    }
+
+    @Test("The engine's walking speeds are the controller's own defaults")
+    func literalDefaults() {
+        let t = CharacterController.Tuning()
+        #expect(t.walkSpeed == 6 && t.sprintSpeed == 18)
     }
 }

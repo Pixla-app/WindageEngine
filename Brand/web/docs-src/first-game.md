@@ -140,7 +140,7 @@ swift run MyGame
 
 ## Input
 
-Keys reach the game through the view. The sample subclasses `MTKView`, overrides `keyDown`, `keyUp`, `flagsChanged` (Shift, Control, Option and Command arrive only there) and the mouse events, and hands them to an `InputState`. Poll it in `beginFrame`. See [input](input.html).
+Keys reach the game through the view. The sample subclasses `MTKView`, overrides `keyDown`, `keyUp`, `flagsChanged` (Shift, Control, Option and Command arrive only there) and the mouse events, and hands them to an `InputState`, started once with `start()`. Poll it in `beginFrame`. See [input](input.html).
 
 ## Where to go next
 

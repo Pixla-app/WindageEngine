@@ -69,7 +69,7 @@ try SampleGame.settingsStore.save(settings)
 | `mouseSensitivity`, `stickSensitivity` | `1` | `PlayerSettings.sensitivityRange`, 0.1…5 |
 | `invertMouse`, `invertStick` | `false` | |
 | `moveDeadzone`, `lookDeadzone` | `StickResponse.moveDeadzone`, `.lookDeadzone` | `PlayerSettings.deadzoneRange`, 0…0.5 |
-| `headBob` | `1` | 0…1; 0 is off |
+| `headBobAmount` | `1` | 0…1; 0 is off — stored as `headBob` |
 | `volume` | `0.8` | 0…1 |
 | `ambienceVolume` | `1` | 0…1, under `volume` |
 | `brightness` | `0` | `PlayerSettings.brightnessRange`, −2…2 stops |

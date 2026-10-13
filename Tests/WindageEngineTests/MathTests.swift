@@ -45,3 +45,16 @@ struct MathTests {
         #expect(m == simd_float4x4(perspectiveFovY: 1.1, aspectRatio: 1.6, nearZ: 0.1, depthRange: 0...1))
     }
 }
+
+@Suite("Angles")
+struct AngleTests {
+    @Test("An angle wraps to (-π, π], and the shortest turn crosses the seam")
+    func wrapping() {
+        #expect(Float.wrappedAngle(.pi) == .pi)
+        #expect(abs(Float.wrappedAngle(-.pi) - .pi) < 1e-6)
+        #expect(abs(Float.wrappedAngle(3 * .pi / 2) + .pi / 2) < 1e-6)
+        #expect(abs(Float.wrappedAngle(0.25 + 20 * .pi) - 0.25) < 1e-4)
+        let degree = Float.radians(fromDegrees: 1)
+        #expect(abs(Float.shortestAngle(from: .pi - degree, to: -.pi + degree) - 2 * degree) < 1e-5)
+    }
+}

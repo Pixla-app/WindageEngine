@@ -64,7 +64,7 @@ struct CameraTests {
         let step: Float = 1.0 / 120.0
         for _ in 0..<120 { camera.advance(input, deltaTime: step) }
 
-        #expect(abs(simd_length(camera.position) - Camera.walkSpeed) < 1e-3)
+        #expect(abs(simd_length(camera.position) - Camera.Tuning().walkSpeed) < 1e-3)
     }
 
     /// The classic bug: holding forward *and* right moves you √2 times faster than either alone.
@@ -76,7 +76,7 @@ struct CameraTests {
         let step: Float = 1.0 / 120.0
         for _ in 0..<120 { camera.advance(input, deltaTime: step) }
 
-        #expect(abs(simd_length(camera.position) - Camera.walkSpeed) < 1e-3)
+        #expect(abs(simd_length(camera.position) - Camera.Tuning().walkSpeed) < 1e-3)
     }
 
     @Test("Strafing never drifts vertically, even looking at the sky")
@@ -106,7 +106,7 @@ struct CameraTests {
     func sprintIsFaster() {
         func distance(sprinting: Bool) -> Float {
             var camera = Camera()
-            var input = MovementInput(); input.forward = 1; input.sprint = sprinting
+            var input = MovementInput(); input.forward = 1; input.isSprinting = sprinting
             for _ in 0..<120 { camera.advance(input, deltaTime: 1.0 / 120.0) }
             return simd_length(camera.position)
         }
@@ -156,5 +156,44 @@ struct CameraTests {
         a.look(mouseDelta: SIMD2(100, 0))
         for _ in 0..<10 { b.look(mouseDelta: SIMD2(10, 0)) }
         #expect(abs(a.yaw - b.yaw) < 1e-5)
+    }
+
+    // MARK: - The limits hold when set
+
+    /// **Settable past the clamp** was the fault: a game nudging the view for recoil left a pitch the
+    /// camera promises it never has, and the view matrix degenerates at ±90°.
+    @Test("Pitch set past the limit is clamped, and yaw set past a half turn is wrapped")
+    func limitsHoldWhenSet() {
+        var camera = Camera()
+        camera.pitch = 3
+        #expect(camera.pitch == Camera.pitchLimit)
+        camera.pitch -= 10
+        #expect(camera.pitch == -Camera.pitchLimit)
+        camera.yaw = 3 * .pi / 2
+        #expect(abs(camera.yaw + .pi / 2) < 1e-5)
+        camera.yaw += 40 * .pi
+        #expect(camera.yaw > -.pi && camera.yaw <= .pi)
+        camera.yaw = .pi
+        #expect(camera.yaw == .pi, "π is inside the range and stays π")
+    }
+
+    @Test("Each camera carries its own tuning, starting at the engine's")
+    func tuningPerCamera() {
+        #expect(Camera().tuning == Camera.Tuning(walkSpeed: 6, sprintSpeed: 18, lookSensitivity: 0.0022, stickLookSpeed: 3.2))
+        var slow = Camera(tuning: .init(walkSpeed: 2, lookSensitivity: 0.001))
+        var standard = Camera()
+        slow.advance(MovementInput(forward: 1), deltaTime: 1)
+        standard.advance(MovementInput(forward: 1), deltaTime: 1)
+        #expect(abs(simd_length(slow.position) - 2) < 1e-5 && abs(simd_length(standard.position) - 6) < 1e-5)
+        slow.look(mouseDelta: SIMD2(100, 0))
+        standard.look(mouseDelta: SIMD2(100, 0))
+        #expect(abs(slow.yaw * 2.2 - standard.yaw) < 1e-5)
+        #expect(Camera.interpolated(from: slow, to: slow, alpha: 0.5).tuning == slow.tuning)
+    }
+
+    @Test("Cameras compare by everything they hold")
+    func equatable() {
+        #expect(Camera(position: SIMD3(1, 2, 3), yaw: 0.5) == Camera(position: SIMD3(1, 2, 3), yaw: 0.5))
+        #expect(Camera() != Camera(tuning: .init(walkSpeed: 7)))
     }
 }

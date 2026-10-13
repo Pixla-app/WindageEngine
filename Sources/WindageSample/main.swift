@@ -35,15 +35,15 @@ final class SampleView: MTKView {
     // stood at the spawn for their whole length that way (2026-09-11), with every report printing.
     override func keyDown(with event: NSEvent) {
         guard game?.isScripted != true else { return }
-        game?.keyPressed(event.keyCode, command: event.modifierFlags.contains(.command))
+        game?.keyPressed(KeyCode(rawValue: event.keyCode), command: event.modifierFlags.contains(.command))
     }
     override func keyUp(with event: NSEvent) {
         guard game?.isScripted != true else { return }
-        game?.keyReleased(event.keyCode)
+        game?.keyReleased(KeyCode(rawValue: event.keyCode))
     }
     override func flagsChanged(with event: NSEvent) {
         guard game?.isScripted != true else { return }
-        game?.modifiersChanged(event.keyCode, flags: event.modifierFlags.rawValue)
+        game?.modifiersChanged(KeyCode(rawValue: event.keyCode), flags: event.modifierFlags)
     }
 
     override func mouseDown(with event: NSEvent) {
