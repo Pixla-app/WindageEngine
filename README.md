@@ -2809,6 +2809,11 @@ organisation under 100 people and under USD 1,000,000 prior-year revenue, a paid
 either, and no royalty, report or audit clause to administer. Attribution rides along on the
 licence's own `Required Notice:` mechanism.
 
+**What a game must show (owner, 2026-10-13): a credits line, nothing more** — "Uses Windage Engine © 2026
+Pixla LLC" in its credits or legal screen, with where the license can be read. The splash and the mark stay
+available and optional. That is where Unreal and Godot sit today; a mandatory splash on the free tier was
+Unity's old model, which it has since dropped. **The price above the PolyForm thresholds is not set yet.**
+
 `LICENSE` reserves every right until the PolyForm text goes in, which happens when the engine is
 actually handed to somebody. That is a five-minute swap on the day, not an open question.
 

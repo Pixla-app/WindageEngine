@@ -66,7 +66,7 @@ The last line re-records the splash's frame, which keeps a picture of the mark o
 
 ## Crediting the engine {#credit}
 
-**What the license asks is a notice.** Windage Engine is licensed under PolyForm Small Business 1.0.0: a game that ships the engine passes on the license's terms and its `Required Notice:` line, in its acknowledgments, as it would any third-party notice. Showing the engine's name or mark is a further, visible credit. Ways to do it, from most to least visible:
+**Required: a credits line.** A game that ships the engine names it in its credits or legal screen — for example *"Uses Windage Engine © 2026 Pixla LLC"* — with where the license can be read (PolyForm Small Business 1.0.0, whose `Required Notice:` line this is). That is the whole requirement, as it is for Unreal and Godot. **A splash is not required.** Showing the engine's name or mark more visibly is your choice; ways to do it, from most to least visible:
 
 1. **The splash.** `SplashScreen(lead: "MADE WITH")` at launch: the mark and the name, two and a half seconds, skippable. See [the splash](splash.html).
 2. **The mark in your interface.** `EngineMark.draw` on a title screen, a credits roll or an about box, with `Engine.name` set beside it through `HUDRenderer.text`.

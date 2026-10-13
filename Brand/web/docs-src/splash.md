@@ -86,7 +86,7 @@ Where the engine's name appears without a splash — a credits screen, an about 
 window.title = "\(Engine.name) \(Engine.version) — sample"
 ```
 
-**The license asks for a notice, not a splash.** A game that ships the engine passes on the license's `Required Notice:` line in its acknowledgments; the splash is a visible credit on top of that, and nothing shows one unless your game does. See [the mark](mark.html#credit) for the notice and the ways to credit the engine.
+**The splash is optional.** What a game must show is a credits line — "Uses Windage Engine © 2026 Pixla LLC" in its credits or legal screen; the splash is a more visible credit on top of that, and nothing shows one unless your game does. See [the mark](mark.html#credit).
 
 ## In the sample
 
