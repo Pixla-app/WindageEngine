@@ -2332,6 +2332,15 @@ depend on. This repository narrows it to what everybody actually does before 1.0
 So a consumer pins `.upToNextMinor(from: "0.1.0")` and gets fixes without surprises. After 1.0 this
 becomes ordinary Semantic Versioning, with the major carrying the breakage.
 
+### Releases come in batches, and the owner decides them (2026-10-13)
+
+**The table above says what a number means, not that every change gets one.** Work lands in
+`CHANGELOG.md` under *Unreleased*, and `Engine.semanticVersion` stays put. When a meaningful batch is done,
+it is proposed as one release, numbered by the highest level among its changes — a batch with one breaking
+change and ten fixes is one minor bump, not eleven — and **the owner decides whether and when it ships**.
+Never more than one release in a day. (0.22.0 to 0.28.0 went out in under two days, one per edit, which is
+what this rule exists to stop.)
+
 > **The conventions count as API, even though they are not signatures.** Reversed-Z, the depth clear
 > value, and the vertex-descriptor contract with `MeshLoader` are all things a consumer builds
 > against; change one and their game compiles and then draws nothing, which is worse than a compile
