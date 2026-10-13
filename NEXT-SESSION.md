@@ -67,6 +67,19 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-13 — the public API audit, fixed (Unreleased)
+
+**`API-AUDIT.md` is the record**: 133 findings across the public API, reviewed before 1.0 and fixed with the
+owner's approval in four area passes plus a consistency pass — **128 done, 5 declined with reasons, none left
+for the owner.** Every change is in `CHANGELOG.md` under *Unreleased* (mostly *Changed — breaking*). Every
+consumer was followed in the same pass: Coldkeel now owns its sniper controls (`ColdkeelCore/Controls.swift`),
+Worldra follows the new shadow and math API, and the rigs build. Checks: 666 + 50 tests, 20 walks and 5 frames
+as recorded; Worldra's forest frame byte-identical to before.
+
+**Not released — releases are the owner's call, in batches** (see README, "Releases come in batches"). The
+audit is one breaking batch; propose it as one release when the owner asks. The credit policy is decided: a
+credits line required, the splash optional (README, licensing). The price above PolyForm's thresholds is not.
+
 ## Done 2026-10-13 — the docs, written (Unreleased)
 
 **windageengine.com's docs are complete**: 29 guides (every sidebar topic, plus loading meshes, the camera,
