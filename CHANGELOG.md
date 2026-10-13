@@ -12,6 +12,18 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.27.0] — 2026-10-13
+
+**The British names are gone**, one release earlier than 0.26.0 promised. The engine has no users outside the
+studio yet, and every game in it was moved to the new names in 0.26.0's pass — so the aliases protected no one.
+
+### Removed
+
+- **Every deprecated alias from 0.26.0** — `colour`, `centre`, `unitsPerMetre` and the initializers and methods
+  that took them. Use `color`, `center`, `unitsPerMeter`.
+- **Reading a light's `colour` key in a level file.** Every level in the studio was converted in 0.26.0; a level
+  that still says `colour` now gets white light, the key's default.
+
 ## [0.26.0] — 2026-10-12
 
 **Public names are US English.** The people writing games against this engine read and type these names, and

@@ -97,8 +97,6 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case position, color, intensity, range, direction, innerAngle, outerAngle
-        /// The key levels were written with before 0.26.0, still read so every old level opens. Never written.
-        case colour
     }
 
     public init(from decoder: Decoder) throws {
@@ -131,7 +129,7 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
         }
 
         self.init(position: try triple(.position, .zero),
-                  color: try triple(container.contains(.color) ? .color : .colour, SIMD3(repeating: 1)) * intensity,
+                  color: try triple(.color, SIMD3(repeating: 1)) * intensity,
                   range: try container.decodeIfPresent(Float.self, forKey: .range) ?? 8,
                   cone: cone)
     }

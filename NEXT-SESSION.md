@@ -67,10 +67,16 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-13 — the British names removed (0.27.0)
+
+The 0.26.0 aliases and the level reader's `colour` key are deleted, at the owner's word: no one outside the
+studio uses the engine yet, and every game here was already on the new names. A rule for later, once there are
+outside users: **deprecate for a release before removing**, as 0.26.0 did.
+
 ## Done 2026-10-12 — public names in US English (0.26.0)
 
 `color`, `center`, `unitsPerMeter` throughout the public API; the British names forward, deprecated, for this
-one release (`Deprecated.swift`) — **delete that file in the next release.** Level files write a light's
+one release (`Deprecated.swift`) — deleted in 0.27.0. Level files write a light's
 `color` and still read `colour`; the sample's levels are converted. Renamed in code only: **doc comments are
 still British, to be swept when the docs are published** (owner, 2026-10-12). 596 tests (2 new: old levels
 open, old names forward); 20 walks and 5 frames as recorded. **The consumers caught two faults in the aliases

@@ -308,32 +308,13 @@ struct SpotLightTests {
         #expect(light.angularAttenuation(at: SIMD3(0, 5, 0)) == 1)
     }
 
-    /// **Levels written before 0.26.0 say `colour`**, and every one of them still has to open.
-    @Test("A level's light written as colour still reads, and is written back as color")
-    func theOldColorKeyStillReads() throws {
-        let json = #"{"position": [0, 2, 0], "colour": [1, 0.5, 0.25], "intensity": 8, "range": 6}"#
-        let light = try JSONDecoder().decode(PunctualLight.self, from: Data(json.utf8))
-        #expect(simd_distance(light.color, SIMD3(8, 4, 2)) < 1e-5)
+    /// A light's color is written under `color`.
+    @Test("A light is written with its color under color")
+    func colorIsWrittenAsColor() throws {
+        let light = PunctualLight(position: .zero, color: SIMD3(8, 4, 2), range: 6)
         let written = String(decoding: try JSONEncoder().encode(light), as: UTF8.self)
-        #expect(written.contains("\"color\"") && !written.contains("colour"), "\(written)")
-    }
-
-    /// The British names forward for one release, so a game that upgrades gets warnings, not errors.
-    @available(*, deprecated)
-    @Test("The deprecated British names still reach the same values")
-    func theOldNamesForward() {
-        var light = PunctualLight(position: .zero, colour: SIMD3(1, 2, 3), range: 4)
-        #expect(light.color == SIMD3(1, 2, 3))
-        light.colour = SIMD3(4, 5, 6)
-        #expect(light.color == SIMD3(4, 5, 6))
-        let box = BoundingBox(minimum: .zero, maximum: SIMD3(2, 4, 6))
-        #expect(box.centre == box.center)
-        #expect(AssetOrientation(unitsPerMetre: 100).unitsPerMeter == 100)
-    }
-
-    /// Reached from code off the main actor, where a game loads and simplifies its meshes.
-    @available(*, deprecated)
-    nonisolated static func oldNamesOffTheMainActor() -> SIMD3<Float> {
-        BoundingBox(minimum: .zero, maximum: SIMD3(2, 2, 2)).centre
+        #expect(written.contains("\"color\""), "\(written)")
+        let read = try JSONDecoder().decode(PunctualLight.self, from: Data(written.utf8))
+        #expect(simd_distance(read.color, light.color) < 1e-5)
     }
 }
