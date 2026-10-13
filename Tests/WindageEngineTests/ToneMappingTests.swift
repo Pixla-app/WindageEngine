@@ -3,6 +3,7 @@
 //  WindageEngineTests
 //
 
+import Foundation
 import Testing
 import simd
 @testable import WindageEngine
@@ -115,7 +116,7 @@ struct ToneMappingTests {
         let packed = ToneMapping(curve: .reinhard, exposureStops: 1, whitePoint: 3).packed
         #expect(packed.exposure == 2)
         #expect(packed.whitePoint == 3)
-        #expect(packed.curve == ToneMapping.Curve.reinhard.rawValue)
+        #expect(packed.curve == ToneMapping.Curve.reinhard.shaderValue)
     }
 
     @Test("The default is ACES at no exposure change")
@@ -123,5 +124,35 @@ struct ToneMappingTests {
         #expect(ToneMapping.default.curve == .aces)
         #expect(ToneMapping.default.exposureStops == 0)
         #expect(ToneMapping.off.curve == .clamp)
+    }
+
+    /// `ToneMapShaders.metal` switches on these numbers; a game never sees them.
+    @Test("Each curve's shader number is the one the shader switches on")
+    func shaderValuesMatchTheShader() {
+        #expect(ToneMapping.Curve.clamp.shaderValue == 0)
+        #expect(ToneMapping.Curve.reinhard.shaderValue == 1)
+        #expect(ToneMapping.Curve.aces.shaderValue == 2)
+    }
+
+    @Test("A tone mapping survives a round trip through JSON, the curve written by name")
+    func codableRoundTrip() throws {
+        let original = ToneMapping(curve: .reinhard, exposureStops: -1.25, whitePoint: 6)
+        let data = try JSONEncoder().encode(original)
+        #expect(String(decoding: data, as: UTF8.self).contains("\"reinhard\""))
+        #expect(try JSONDecoder().decode(ToneMapping.self, from: data) == original)
+    }
+
+    @Test("Every key is optional: what a file leaves out is the default")
+    func codableKeysAreOptional() throws {
+        let decoded = try JSONDecoder().decode(ToneMapping.self, from: Data(#"{"exposureStops": -0.5}"#.utf8))
+        #expect(decoded == ToneMapping(exposureStops: -0.5))
+        #expect(try JSONDecoder().decode(ToneMapping.self, from: Data("{}".utf8)) == .default)
+    }
+
+    @Test("An unknown curve name is refused, not read as a default")
+    func unknownCurveIsRefused() {
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(ToneMapping.self, from: Data(#"{"curve": "filmic"}"#.utf8))
+        }
     }
 }

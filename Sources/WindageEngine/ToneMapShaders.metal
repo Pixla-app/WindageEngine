@@ -13,7 +13,7 @@ using namespace metal;
 struct ToneMapUniforms {
     float exposure;
     float whitePoint;
-    uint  curve;        // 0 clamp · 1 reinhard · 2 ACES — `ToneMapping.Curve`
+    uint  curve;        // 0 clamp · 1 reinhard · 2 ACES — `ToneMapping.Curve.shaderValue`
     uint  padding;
 };
 

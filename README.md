@@ -772,7 +772,7 @@ contribute at a point, one is dropped, and how visible that is depends entirely 
 built. A bigger budget only moves the number.
 
 So the promise is conditional, and `isOverSubscribed(at:)` checks the condition: **where no more than
-the budget are above `negligible`, nothing the player can see is ever dropped.** A level that violates
+the budget are above `negligibleInfluence`, nothing the player can see is ever dropped.** A level that violates
 it has a lighting fault built into its geometry — findable before it ships rather than after somebody
 reports a flicker in one corridor.
 
@@ -897,7 +897,7 @@ skipped for all six faces; one outside a face's `Frustum` is skipped for that fa
 ruins — two casting point lights across thirty-two drawables — that is **35 objects recorded against
 384 unculled**, so all twelve passes together cost barely more than one unculled pass.
 
-`ShadowMap.Batch` grew an optional `bounds` for this. Nil means draw everything, which is the
+`ShadowBatch` grew an optional `bounds` for this. Nil means draw everything, which is the
 conservative direction: a false positive costs a draw and a false negative deletes a shadow.
 
 > **`Frustum` had no consumer inside this repository until now.** It arrived in 0.4 from two games
@@ -1764,7 +1764,7 @@ opacities dust is drawn at, a wrong order is not something an eye finds.
 
 The first landing threw a 0.5-grey cloud onto ground in shadow and it came out as a white glow, several
 times brighter than the floor. **A particle's colour means radiance for a spark and albedo for dust**,
-and drawn as radiance a grey dust puff is a grey lamp. `ParticleRenderer.matterLight(under:)` lights
+and drawn as radiance a grey dust puff is a grey lamp. `ProceduralSky.matterLight` lights
 matter by the sky's mean radiance plus the sun's irradiance spread over 4π — what an isotropic speck
 sends the eye. Computed once per level, and **unshadowed**: dust in the shade of a wall is lit as if in
 the open, which is the price of not asking per particle.
@@ -2656,7 +2656,7 @@ And it was wrong about the evidence. A third copy would have been *more of the s
 question that had a cheaper answer available. What actually settled it was **teaching the sample's
 own pass to draw skinned meshes**: a second vertex layout inside one consumer forced exactly the
 abstraction that two consumers had only been hinting at. Two things vary and no more — the **vertex
-layout** and the **per-object bindings** — and both fit in a `Batch`.
+layout** and the **per-object bindings** — and both fit in a `ShadowBatch`.
 
 > **The general lesson, since this is the second time the "wait for a consumer" rule has been too
 > blunt.** It protects against *designing* something with no evidence. It says nothing about code
@@ -2672,7 +2672,7 @@ layout** and the **per-object bindings** — and both fit in a `Batch`.
 | the per-cascade pass descriptors and the encoder loop | the joint palette, where there is one |
 | the light matrices, per frame in flight | the cascade **numbers** — a courtyard and a sniper range disagree |
 
-**A `Batch` is a pipeline plus closures**, not arrays: a game's drawables are its own, and an array
+**A `ShadowBatch` is a pipeline plus closures**, not arrays: a game's drawables are its own, and an array
 here would mean building a copy of the scene every frame to hand over. Batches rather than one loop
 because a skinned mesh has a different vertex layout, so state changes once per kind rather than once
 per object.
@@ -2683,11 +2683,11 @@ per object.
   right for a shadow pipeline and none is obvious: no fragment function and no colour attachment,
   one raster sample, and a depth format matching the texture. The game supplies the two things the
   engine cannot know and gets the rest correct by construction — the same argument as reversed-Z.
-- **`ShadowMap.BufferIndex`.** Where the argument table puts the uniforms, the light matrix and the
+- **`ShadowBufferIndex`.** Where the argument table puts the uniforms, the light matrix and the
   joint palette. A mismatch here does not fail; it reads a matrix out of the wrong buffer and records
   the scene from nowhere.
 
-**`constantDepthBias` and `slopeScaledDepthBias` moved onto `ShadowCascades`**, beside `biasScales`,
+**The rasterizer's depth bias (`rasterBias`, a `ShadowBias`) moved onto `ShadowCascades`**, beside `biasScales`,
 because the three numbers are one tuning. Both are **negative**: under reversed-Z, pushing a recorded
 occluder away from the light is a *smaller* value, so the sign is the opposite of every textbook, and
 getting it wrong doubles the acne rather than removing it — which reads as the bias doing nothing.

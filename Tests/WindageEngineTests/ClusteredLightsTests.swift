@@ -150,7 +150,8 @@ struct ClusteredLightsAssignmentTests {
         #expect(clustered.ranges.count == grid.clusterCount)
         #expect(clustered.indices.isEmpty)
         #expect(clustered.ranges.allSatisfy { $0.y == 0 })
-        #expect(clustered.busiestCluster == 0)
+        #expect(clustered.maxLightsPerCluster == 0)
+        #expect(clustered.droppedIndexCount == 0)
     }
 
     /// **The property the whole thing exists for.** A light lands in the clusters it reaches and in
@@ -217,7 +218,7 @@ struct ClusteredLightsAssignmentTests {
             total += Int(range.y)
         }
         #expect(total == clustered.indices.count, "the ranges do not tile the index list")
-        #expect(clustered.busiestCluster == clustered.ranges.map { Int($0.y) }.max())
+        #expect(clustered.maxLightsPerCluster == clustered.ranges.map { Int($0.y) }.max())
     }
 
     /// **A fragment shader cannot loop over every lamp in a level, and this is the number that says
@@ -240,9 +241,9 @@ struct ClusteredLightsAssignmentTests {
 
         // Measured: 9 at worst and 2.2 on average, out of 64. **That ratio is the whole point** — the
         // worst fragment loops nine times instead of sixty-four, and the typical one twice.
-        #expect(clustered.busiestCluster <= 12, "the busiest cluster took \(clustered.busiestCluster)")
+        #expect(clustered.maxLightsPerCluster <= 12, "the busiest cluster took \(clustered.maxLightsPerCluster)")
         #expect(average < 4, "the average cluster took \(average) lights")
-        #expect(clustered.busiestCluster < lights.count / 4)
+        #expect(clustered.maxLightsPerCluster < lights.count / 4)
         #expect(!clustered.indices.isEmpty)
     }
 
@@ -259,6 +260,12 @@ struct ClusteredLightsAssignmentTests {
         for range in clustered.ranges {
             #expect(Int(range.x) + Int(range.y) <= clustered.indices.count)
         }
+        // **And it says so**: what was dropped plus what was kept is everything that was binned.
+        let unbounded = ClusteredLights(lights: lights, grid: grid, viewMatrix: matrix_identity_float4x4,
+                                         fovY: fovY, aspectRatio: aspect)
+        #expect(unbounded.droppedIndexCount == 0)
+        #expect(clustered.droppedIndexCount > 0)
+        #expect(clustered.indices.count + clustered.droppedIndexCount == unbounded.indices.count)
     }
 }
 
@@ -273,8 +280,8 @@ struct ClusterGridLayoutTests {
         var tilesX: UInt32 = 0
         var tilesY: UInt32 = 0
         var slices: UInt32 = 0
-        var depthScale: Float = 0
-        var depthBias: Float = 0
+        var sliceScale: Float = 0
+        var sliceBias: Float = 0
         var padding0: Float = 0
         var padding1: Float = 0
         var padding2: Float = 0
@@ -298,7 +305,7 @@ struct ClusterGridLayoutTests {
         for index in 0..<grid.slices {
             let range = grid.depthRange(ofSlice: index)
             let depth = sqrt(range.lowerBound * range.upperBound)
-            let shaderSide = Int(min(max(log(depth) * grid.depthScale + grid.depthBias, 0),
+            let shaderSide = Int(min(max(log(depth) * grid.sliceScale + grid.sliceBias, 0),
                                      Float(grid.slices - 1)))
             #expect(shaderSide == index, "the shader's slice for \(depth) is not the grid's")
         }

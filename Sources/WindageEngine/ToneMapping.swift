@@ -27,20 +27,24 @@ import simd
 /// exposed" means for a game, and smoothing the adaptation over time are genuinely contested — every
 /// engine does it differently and a game's needs decide it. **No bloom, no color grading, no
 /// vignette.** Those are a look; this is the part without which there is no picture.
-public nonisolated struct ToneMapping: Sendable, Equatable {
+///
+/// **`Codable`**, as `{"curve": "aces", "exposureStops": 0, "whitePoint": 4}`, every key optional, so a
+/// game can keep its look in a file. The curve is written by name; the number a shader selects it by is
+/// the engine's own business.
+public nonisolated struct ToneMapping: Sendable, Equatable, Codable {
 
     /// The curve applied after exposure.
-    public enum Curve: UInt32, Sendable, CaseIterable {
+    public enum Curve: String, Sendable, CaseIterable, Codable {
         /// Clamp. **Not a curve** — it is what happens with no tone mapping at all, kept so the
         /// difference can be seen rather than argued about.
-        case clamp = 0
+        case clamp
 
         /// Reinhard, extended with a white point: `x (1 + x/w²) / (1 + x)`.
         ///
         /// The gentlest of these and the most washed out. Preserves hue exactly — it scales all three
         /// channels by the same factor — which is either its virtue or its problem depending on
         /// whether a very bright saturated color should stay saturated.
-        case reinhard = 1
+        case reinhard
 
         /// The ACES filmic curve, Narkowicz's fit.
         ///
@@ -48,7 +52,16 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
         /// accurate enough that the difference is invisible in a game and cheap enough to run per
         /// pixel. Rolls the shoulder off gradually and lets very bright colors desaturate towards
         /// white, which is what film does and what the eye reads as "bright" rather than "clipped".
-        case aces = 2
+        case aces
+
+        /// What `ToneMapShaders.metal` switches on. Internal: a game names a curve, never its number.
+        var shaderValue: UInt32 {
+            switch self {
+            case .clamp: 0
+            case .reinhard: 1
+            case .aces: 2
+            }
+        }
     }
 
     public var curve: Curve
@@ -73,6 +86,19 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
         self.curve = curve
         self.exposureStops = exposureStops
         self.whitePoint = whitePoint
+    }
+
+    private enum CodingKeys: String, CodingKey { case curve, exposureStops, whitePoint }
+
+    /// Every key optional: a file that says only `{"exposureStops": -0.5}` is the default look, darker.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = ToneMapping()
+        self.init(curve: try container.decodeIfPresent(Curve.self, forKey: .curve) ?? fallback.curve,
+                  exposureStops: try container.decodeIfPresent(Float.self, forKey: .exposureStops)
+                      ?? fallback.exposureStops,
+                  whitePoint: try container.decodeIfPresent(Float.self, forKey: .whitePoint)
+                      ?? fallback.whitePoint)
     }
 
     /// The linear multiplier the exposure amounts to.
@@ -117,6 +143,6 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
     }
 
     var packed: Packed {
-        Packed(exposure: exposure, whitePoint: whitePoint, curve: curve.rawValue)
+        Packed(exposure: exposure, whitePoint: whitePoint, curve: curve.shaderValue)
     }
 }

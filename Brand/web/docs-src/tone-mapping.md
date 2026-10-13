@@ -33,6 +33,8 @@ engine.toneMapping = ToneMapping(curve: .aces, exposureStops: SampleGame.baseExp
 
 **Exposure is in stops**: +1 doubles the light, and −1 halves it. Stops match how people think about brightness, and the useful range is small and symmetric, roughly −4 to +4. As a plain multiplier, that same range runs from 0.06 to 16. `exposure` gives you the linear multiplier when you need it.
 
+`ToneMapping` is `Codable`, as `{"curve": "aces", "exposureStops": 0, "whitePoint": 4}` with every key optional, so a game can keep its look in a file. The curve is written by name.
+
 ### Curves {#curves}
 
 | `ToneMapping.Curve` | |

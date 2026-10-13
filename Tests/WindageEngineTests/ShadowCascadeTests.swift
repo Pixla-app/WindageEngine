@@ -259,3 +259,39 @@ struct ShadowCascadeTests {
         }
     }
 }
+
+/// **Splits are checked where they are made.** Past four, the shader's four slots dropped the rest — or
+/// reading the fifth cascade's bias stopped the program mid-frame; out of order, a cascade covered a band
+/// no fragment chooses.
+struct ShadowCascadeValidationTests {
+
+    @Test("Four increasing splits are accepted, and the set compares by value")
+    func fourIncreasingSplitsAreFine() {
+        let a = ShadowCascades(splits: [8, 22, 55, 120])
+        #expect(a.count == ShadowCascades.maximumCount)
+        #expect(a == ShadowCascades(splits: [8, 22, 55, 120]))
+        #expect(a != ShadowCascades(splits: [8, 22, 55, 121]))
+        #expect(a.rasterBias == .cascades)
+    }
+
+    @Test("More than four splits stop at the init")
+    func moreThanFourStops() async {
+        await #expect(processExitsWith: .failure) {
+            _ = ShadowCascades(splits: [5, 10, 20, 40, 80])
+        }
+    }
+
+    @Test("Splits out of order stop at the init")
+    func unsortedStops() async {
+        await #expect(processExitsWith: .failure) {
+            _ = ShadowCascades(splits: [30, 10, 90])
+        }
+    }
+
+    @Test("A split that is not positive stops at the init")
+    func nonPositiveStops() async {
+        await #expect(processExitsWith: .failure) {
+            _ = ShadowCascades(splits: [0, 10])
+        }
+    }
+}

@@ -118,37 +118,37 @@ Most are one of these, repeated across files; the full lines follow below.
 [CONSIDER] SaveStore.swift:40,52,64 — `url` getter creates a directory; load/clear swallow errors — pure getter, throwing load — sample → DONE: `url` is a pure path and `save` makes the folder; `load()` returns `nil` for no file and throws for one that will not read or decode; `clear()` throws only when a file that is there cannot be removed.
 
 ### Light, shadows, sky, particles
-[MUST] PunctualLight.swift:42-46 — cone settable past its checks — re-apply on set — sample, Sedgefall tests
-[MUST] ShadowMap.swift:44-97 — `Batch` exposes fields meaningless for self-encoding batches; `mesh` traps — internal fields or an enum — Worldra, Coldkeel, sample
-[SHOULD] ShadowMap.swift:102-106 — `Pass.index` means cascade, tile or cube face depending on caller — say which — Worldra
-[SHOULD] ShadowCascades.swift:140,146 — depth biases fixed — init parameters with defaults — engine
-[SHOULD] ShadowCascades.swift:23 — not `Sendable`/`Equatable` — add — sample, Worldra, Coldkeel
-[SHOULD] ShadowCascades.swift:68-83 — accepts unsorted or more than four splits; past four is silently dropped or traps — validate — sample, Worldra, Coldkeel
-[SHOULD] ShadowCubes.swift:125-191 — test-only helpers public — internal — engine
-[SHOULD] ShadowAtlas/ShadowCubes — `tile` vs `slice`, `size` vs `resolution` — one name each — sample
-[SHOULD] ShadowAtlas.swift:117 vs ShadowCubes.swift:143 — isolation and conformances differ between siblings — make consistent — sample
-[SHOULD] ShadowAtlas/ShadowCubes/ShadowCascades — three bias defaults and label styles for one technique — one `ShadowBias` type — sample
-[SHOULD] ParticleRenderer.swift:165-170 — needs a first-person `Camera` plus a separate matrix — take the view values — sample, Coldkeel
-[SHOULD] ParticleSystem.swift:18-53,239 — settable past init's checks (lifetime 0 divides by zero) — validate on set — sample
-[SHOULD] ClusteredLights.swift:143 — `busiestCluster` is a count — `maxLightsPerCluster` — sample
-[SHOULD] ClusteredLights.swift:159,204 — silently drops lights past the index limit — report it — sample
-[SHOULD] ClusteredLights.swift:66-67 — `depthBias` also means shadow bias — `sliceBias` — sample
-[SHOULD] ClusteredLights.swift:100,157 — `fovY:` with no unit vs `fovyRadians:` — one label — sample
-[SHOULD] ProceduralSky.swift:33 — `sunDirection` settable unnormalized — normalize on set — engine, sample
-[SHOULD] ParticleRenderer.swift:114 and others — `allocations` typed two ways — one type — sample, Worldra, Coldkeel
-[CONSIDER] PunctualLight.swift:19 — `color` is color × intensity, while the file stores them apart — store apart or rename — sample, Sedgefall
-[CONSIDER] PunctualLight/ProceduralSky — angle units named inconsistently — one convention — sample
-[CONSIDER] PunctualLight.swift:210 — `luminance(_:)` is a general color helper filed under lights — move — sample, Sedgefall
-[CONSIDER] PunctualLight.swift:257,272 — `LightSet` not `Equatable`; `negligible` naming — fix — sample, Sedgefall
-[CONSIDER] ShadowMap.swift:44-117 — `Batch`/`Pass`/`BufferIndex` nested in the sun's type but shared by all three — top-level — Worldra, Coldkeel, sample
-[CONSIDER] ShadowAtlas.swift:100-104 — `tile(_:)` clamps a bad index to another light's tile — precondition or optional — engine
-[CONSIDER] ParticleSystem.swift:93-101 — `Particle` setters unreachable — `let` — sample, Coldkeel
-[CONSIDER] ParticleSystem.swift:213 — `hash(_:_:)` public, engine-only — internal — engine
-[CONSIDER] ParticleSystem/ParticleRenderer — two capacities that must match — derive one — sample
-[CONSIDER] ParticleRenderer.swift:58-91 — init prints and returns nil — throw — sample, Coldkeel
-[CONSIDER] ParticleRenderer.swift:134 — sky property placed on the renderer — move to the sky — sample
-[CONSIDER] EnvironmentMap.swift:56 — only init blocks the main thread for ~2M evaluations — off-main build step — sample
-[CONSIDER] ToneMapping.swift:30-33 — not `Codable`; shader raw values public — add, hide — sample, Worldra
+[MUST] PunctualLight.swift:42-46 — cone settable past its checks — re-apply on set — sample, Sedgefall tests → DONE: `direction`, `innerAngle` and `outerAngle` are computed over private storage and re-apply init's normalizing and clamping on every set; narrowing the outer past the inner narrows the inner. Not a file-format change: the encoder reads the same values.
+[MUST] ShadowMap.swift:44-97 — `Batch` exposes fields meaningless for self-encoding batches; `mesh` traps — internal fields or an enum — Worldra, Coldkeel, sample → DONE: two clean initializers with internal storage (an internal `Kind` enum: objects or self-encoding) — no field that means nothing for its kind, so no `mesh` trap; `pipeline` and `objectCount` (`nil` for self-encoding) are public. One shared per-object draw loop for all three passes. Worldra and the sample updated; Coldkeel builds no engine batches (its shadow pass is its own).
+[SHOULD] ShadowMap.swift:102-106 — `Pass.index` means cascade, tile or cube face depending on caller — say which — Worldra → DONE: `ShadowPass.target`, an enum — `.cascade(i)`, `.atlasSlot(i)`, `.cubeFace(slot:face:)`; Worldra matches `.cascade`.
+[SHOULD] ShadowCascades.swift:140,146 — depth biases fixed — init parameters with defaults — engine → DONE: `rasterBias: ShadowBias = .cascades` at init, the old numbers.
+[SHOULD] ShadowCascades.swift:23 — not `Sendable`/`Equatable` — add — sample, Worldra, Coldkeel → DONE: `Sendable`, `Equatable`.
+[SHOULD] ShadowCascades.swift:68-83 — accepts unsorted or more than four splits; past four is silently dropped or traps — validate — sample, Worldra, Coldkeel → DONE: preconditions — 1…`maximumCount` (4) splits, positive, finite, strictly increasing; positive resolution and light depth range. Precondition, like the existing non-empty check: these are a game's constants, wrong only by mistake.
+[SHOULD] ShadowCubes.swift:125-191 — test-only helpers public — internal — engine → DONE: `faceBasis`, `lookup(direction:)`, `normalizedDepth` internal; `viewProjection(face:position:nearPlane:)` kept public — a game culling per face uses it, as it does the atlas's.
+[SHOULD] ShadowAtlas/ShadowCubes — `tile` vs `slice`, `size` vs `resolution` — one name each — sample → DONE: a caster's index is `slot` in both (`slotCount` for capacity, `tile(forSlot:)`); texels per side are `resolution` everywhere, as in `ShadowCascades` (`Tile.resolution`, `uvTransform(atlasResolution:)`).
+[SHOULD] ShadowAtlas.swift:117 vs ShadowCubes.swift:143 — isolation and conformances differ between siblings — make consistent — sample → DONE: both static matrix builders `nonisolated`; both `Caster`s `nonisolated`, `Sendable`, `Equatable`.
+[SHOULD] ShadowAtlas/ShadowCubes/ShadowCascades — three bias defaults and label styles for one technique — one `ShadowBias` type — sample → DONE: one `ShadowBias` (`constant`, `slopeScale`) with `.cascades`, `.spot`, `.cube` presets holding the old numbers; each pass takes `rasterBias:` at init and keeps it as a property, replacing `encode`'s `depthBias:slopeScale:`.
+[SHOULD] ParticleRenderer.swift:165-170 — needs a first-person `Camera` plus a separate matrix — take the view values — sample, Coldkeel → DONE: `draw(…viewProjection:cameraRight:cameraUp:matterLight:)` — the view's vectors, not a `Camera`. (Coldkeel draws with its own renderer, so only the sample changed.)
+[SHOULD] ParticleSystem.swift:18-53,239 — settable past init's checks (lifetime 0 divides by zero) — validate on set — sample → DONE: `ParticleRecipe.count`/`lifetime` and `ParticleEmitter.rate` re-clamp on set.
+[SHOULD] ClusteredLights.swift:143 — `busiestCluster` is a count — `maxLightsPerCluster` — sample → DONE: `maxLightsPerCluster`.
+[SHOULD] ClusteredLights.swift:159,204 — silently drops lights past the index limit — report it — sample → DONE: `droppedIndexCount`, tested. The sample's once-per-level log line is unchanged.
+[SHOULD] ClusteredLights.swift:66-67 — `depthBias` also means shadow bias — `sliceBias` — sample → DONE: `sliceScale`/`sliceBias`; the sample's packed struct and shader follow.
+[SHOULD] ClusteredLights.swift:100,157 — `fovY:` with no unit vs `fovyRadians:` — one label — sample → DONE (by the core pass's rename): the projection is now `simd_float4x4(perspectiveFovY:…)`, so `fovY:` is the one label; radians stated in both doc comments.
+[SHOULD] ProceduralSky.swift:33 — `sunDirection` settable unnormalized — normalize on set — engine, sample → DONE: normalized on set (a zero vector points up); the angle setters store their already-unit direction unchanged, so saved skies read and write identically.
+[SHOULD] ParticleRenderer.swift:114 and others — `allocations` typed two ways — one type — sample, Worldra, Coldkeel → DONE: `[any MTLAllocation]` on `ShadowMap`, `ShadowAtlas`, `ShadowCubes`, `EnvironmentMap` — every `allocations` in the engine now has one type.
+[CONSIDER] PunctualLight.swift:19 — `color` is color × intensity, while the file stores them apart — store apart or rename — sample, Sedgefall → DECLINED: the product is what every shader, ranking and `influence` reads; storing two numbers would make equality and the shaders' packing ask which is meant. The file already stores them apart and the doc says so in bold.
+[CONSIDER] PunctualLight/ProceduralSky — angle units named inconsistently — one convention — sample → DECLINED: there is one convention already — radians unless the name says `Degrees` (`innerAngle`, `sunAngularRadius` vs `sunPitchDegrees`), as `Camera` and `fovY` are; each doc comment states the unit.
+[CONSIDER] PunctualLight.swift:210 — `luminance(_:)` is a general color helper filed under lights — move — sample, Sedgefall → DECLINED: the only callers rank lights by it; an extension on `SIMD3<Float>` would hang a colour method on every position, and the engine has no colour type to move it to.
+[CONSIDER] PunctualLight.swift:257,272 — `LightSet` not `Equatable`; `negligible` naming — fix — sample, Sedgefall → DONE: `LightSet` is `Equatable`; `negligible` → `negligibleInfluence`.
+[CONSIDER] ShadowMap.swift:44-117 — `Batch`/`Pass`/`BufferIndex` nested in the sun's type but shared by all three — top-level — Worldra, Coldkeel, sample → DONE: top-level `ShadowBatch`, `ShadowPass`, `ShadowBufferIndex`.
+[CONSIDER] ShadowAtlas.swift:100-104 — `tile(_:)` clamps a bad index to another light's tile — precondition or optional — engine → DONE: `tile(forSlot:)` preconditions the slot (an exit test); `encode` still skips casters outside the atlas.
+[CONSIDER] ParticleSystem.swift:93-101 — `Particle` setters unreachable — `let` — sample, Coldkeel → DONE: `position`, `velocity`, `age` are `public internal(set)`; the rest `let`.
+[CONSIDER] ParticleSystem.swift:213 — `hash(_:_:)` public, engine-only — internal — engine → DONE: internal.
+[CONSIDER] ParticleSystem/ParticleRenderer — two capacities that must match — derive one — sample → DONE: the renderer's `capacity` has no default, documented as the system's; the sample names one `particleCapacity` for both. Not derived from a system, which is a value the renderer never holds.
+[CONSIDER] ParticleRenderer.swift:58-91 — init prints and returns nil — throw — sample, Coldkeel → DONE: throws `ParticleRendererError` (`.pipelineUnavailable`, `.couldNotCreate`).
+[CONSIDER] ParticleRenderer.swift:134 — sky property placed on the renderer — move to the sky — sample → DONE: `ProceduralSky.matterLight`.
+[CONSIDER] EnvironmentMap.swift:56 — only init blocks the main thread for ~2M evaluations — off-main build step — sample → DONE: `EnvironmentMap` is `nonisolated` and `@unchecked Sendable` (documented: every field `let`, textures written only in `init`), so a game builds it in `Task.detached`; tested. The sample still builds it where it did — moving that is the sample's call, and would change when its frames' environment exists.
+[CONSIDER] ToneMapping.swift:30-33 — not `Codable`; shader raw values public — add, hide — sample, Worldra → DONE: `Codable` (`curve` by name, every key optional); `Curve` is a `String` enum and the shader's number an internal `shaderValue`, pinned by a test.
 
 ### Core, meshes, HUD, math
 [MUST] Math.swift:12-108 — C-style public math function names — Swift names — Coldkeel, sample, Worldra → DONE: `simd_float4x4(translation:)`, `simd_float4x4(rotationAngle:axis:)` (angle-then-axis, as `simd_quatf(angle:axis:)`), one `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)` with `depthRange` defaulting to `0...1` (same matrix to the bit), `Float.radians(fromDegrees:)` / `Float.degrees(fromRadians:)`. Initializers rather than statics, per the guidelines; `fovY` matches `ClusteredLights`' label, radians in the doc.

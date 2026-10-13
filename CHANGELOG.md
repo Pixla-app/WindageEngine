@@ -30,6 +30,15 @@ printing and returning nil; the audio engine's distance curves are a game's to s
 defaults; a delayed sound waits on the audio clock. Level files read and write exactly as before. The
 sample's walks and frames are unchanged.
 
+**API audit, light, shadows, sky and particles.** A shadow batch is one of two kinds, each holding only
+what it uses — a self-drawing batch no longer carries a `mesh` that stopped the program if read — and it,
+the pass it is told about and the buffer indices are top-level, shared by the sun's cascades, the spot atlas
+and the lamp cubes. A pass says whether it is a cascade, a tile or a cube face. A cone, a sky's sun, a
+particle recipe and an emitter hold their limits however they are set; cascade splits are checked where they
+are made. The three passes take one `ShadowBias`, their slots and resolutions one name each. Level files
+read and write exactly as before, and the sample's walks and frames — and Worldra's — are unchanged, pixel
+for pixel.
+
 ### Changed — breaking
 
 - **The maths have Swift names.** `matrix4x4_translation(x, y, z)` → `simd_float4x4(translation: SIMD3(x, y, z))`;
@@ -169,6 +178,49 @@ sample's walks and frames are unchanged.
 - **`SkeletonError`, `RigLoaderError` and the new errors are `nonisolated` and `Equatable`**, like the code that
   throws them.
 
+- **`ShadowMap.Batch`, `ShadowMap.Pass` and `ShadowMap.BufferIndex` are the top-level `ShadowBatch`,
+  `ShadowPass` and `ShadowBufferIndex`** — shared by `ShadowMap`, `ShadowAtlas` and `ShadowCubes`, so nested
+  in none. **`ShadowBatch`'s fields are internal**: a batch of objects is
+  `ShadowBatch(pipeline:count:mesh:uniformAddress:jointPaletteAddress:bounds:)` and a self-encoding one
+  `ShadowBatch(pipeline:encode:)`, as before, and `pipeline` and `objectCount` (`nil` for a self-encoding
+  batch) are what a game reads. The self-encoding kind carried a `mesh` that was a `fatalError`.
+- **`ShadowPass.index` is `target`**, a `ShadowPass.Target`: `.cascade(i)`, `.atlasSlot(i)` or
+  `.cubeFace(slot:face:)`. An index meant a cascade, a tile or `slice × 6 + face` depending on who asked.
+- **One `ShadowBias` (`constant`, `slopeScale`) for the three passes' raster bias.**
+  `ShadowCascades.constantDepthBias` and `slopeScaledDepthBias` → `rasterBias` (an init parameter,
+  default `.cascades`, the old numbers); `ShadowAtlas` and `ShadowCubes` take `rasterBias:` at init (defaults
+  `.spot` and `.cube`, the old numbers) and keep it as a property, in place of `encode`'s
+  `depthBias:slopeScale:`.
+- **`ShadowAtlas`:** `size` → `resolution` (init label too), `tileCount` → `slotCount`, `tile(_:)` →
+  `tile(forSlot:)`, `Caster(tile:viewProjection:)` → `Caster(slot:viewProjection:)`, `Tile.size` →
+  `Tile.resolution`, `uvTransform(atlasSize:)` → `uvTransform(atlasResolution:)`.
+  **`ShadowCubes`:** `size` → `resolution`, `lightCount` → `slotCount` (init labels too),
+  `Caster(slice:position:range:)` → `Caster(slot:position:range:)` — a cube's slot, where "slice" also meant
+  the texture's `slot × 6 + face`. One name each: `resolution` is texels per side, as in `ShadowCascades`.
+- **`ShadowAtlas.tile(forSlot:)` stops on a slot outside `0..<slotCount`**, where `tile(_:)` clamped it to
+  another light's tile.
+- **`ShadowCascades` checks its splits**: one to `ShadowCascades.maximumCount` (4), positive, finite and
+  increasing, with a positive resolution and light depth range — a precondition, like its non-empty check.
+  A fifth split was recorded and never read, or trapped reading its bias.
+- **`ShadowCubes.faceBasis(_:)`, `lookup(direction:)` and `normalizedDepth(majorAxis:nearPlane:)` are
+  internal** — public only for tests. `viewProjection(face:position:nearPlane:)` stays public, beside the
+  atlas's.
+- **`ShadowMap`, `ShadowAtlas`, `ShadowCubes` and `EnvironmentMap` `allocations` are
+  `[any MTLAllocation]`**, the type every other `allocations` has.
+- **`ParticleRenderer.matterLight(under:)` is `ProceduralSky.matterLight`** — a property of the sky.
+- **`ParticleRenderer`'s initializer throws `ParticleRendererError`** (`.pipelineUnavailable`,
+  `.couldNotCreate`) instead of printing and returning nil, and **`capacity` has no default**: it is the
+  system's, named once by the game.
+- **`ParticleRenderer.draw(_:into:frameSlot:viewProjection:camera:matterLight:)` takes
+  `cameraRight:cameraUp:`** in place of a first-person `Camera`, so any view can draw particles.
+- **`ParticleSystem.Particle`'s fields are read-only** outside the engine, and **`ParticleSystem.hash(_:_:)`
+  is internal**.
+- **`ClusteredLights.busiestCluster` is `maxLightsPerCluster`**; **`ClusterGrid.depthScale` and `depthBias`
+  are `sliceScale` and `sliceBias`** — a slice offset, not a shadow's depth bias. The sample's shader struct
+  follows.
+- **`LightSet.negligible` is `negligibleInfluence`** (init label too), in the units of `influence(at:)`.
+- **`ToneMapping.Curve` is a `String` enum**; the number the shader selects a curve by is internal.
+
 ### Added
 
 - `FrameRenderer.makeDisplayLink(for:frameRateRange:)`, for a game that wants other than 30–120 Hz.
@@ -191,6 +243,16 @@ sample's walks and frames are unchanged.
 - `AudioEngine.pause()` and `resume()`; `stop()` is documented as final.
 - `LevelEditor.Configuration`, `LevelEditor.kinds()`, `RigLoader.Warning`, `JointTrack.empty(jointCount:)`.
 - `LevelEditor` is `Sendable`; `Volume` is `Sendable` and `Equatable`.
+
+- `ShadowBias` (`.cascades`, `.spot`, `.cube`), `ShadowPass.Target`, `ShadowBatch.objectCount`,
+  `ShadowCascades.maximumCount`, `ParticleRendererError`.
+- `ClusteredLights.droppedIndexCount`: entries past `maximumIndices` were dropped without a word.
+- `ToneMapping` is `Codable` — `{"curve": "aces", "exposureStops": 0, "whitePoint": 4}`, every key optional.
+- `ShadowCascades` is `Sendable` and `Equatable`; `LightSet` is `Equatable`; `ShadowAtlas.Caster` and
+  `ShadowCubes.Caster` are `nonisolated`, `Sendable` and `Equatable`, and `ShadowAtlas.viewProjection(for:nearPlane:)`
+  is `nonisolated` like its sibling.
+- `EnvironmentMap` is `nonisolated` and `Sendable` (unchecked, documented), so a game can build it off the
+  main actor.
 
 ### Fixed
 
@@ -217,6 +279,14 @@ sample's walks and frames are unchanged.
   skeleton or no clips; the URL and bundle clip-file loads report the same things the same way.
 - **`Level.decode(from:)` reads the version first**, so a newer file that would not decode as this format is
   `.unsupportedVersion` rather than malformed.
+
+- **`PunctualLight.Cone` holds its limits when set**, not only in `init`: the direction is normalized, the
+  outer angle held to `1e-4…π` and the inner to `0…outer`. An inner angle set past the outer lit
+  everything but the cone.
+- **`ProceduralSky.sunDirection` is normalized when set**, and a zero direction points up rather than
+  becoming NaN, in `init` too.
+- **`ParticleRecipe.count` and `lifetime` and `ParticleEmitter.rate` hold their limits when set.** A lifetime
+  set to zero divided by zero in every particle's progress.
 
 ### Removed
 

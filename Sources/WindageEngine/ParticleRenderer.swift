@@ -18,7 +18,7 @@ import simd
 ///
 /// A shadow pipeline needs the game's vertex function, because it draws the game's meshes. A
 /// particle is a point and a color — there is nothing of the game's in its geometry — so the whole
-/// pipeline, shaders included, lives here, and a game hands over a system and a camera.
+/// pipeline, shaders included, lives here, and a game hands over a system and where it looks from.
 ///
 /// ### Drawn into the HDR scene, after the opaque geometry
 ///
@@ -30,6 +30,22 @@ import simd
 /// **Unsorted**, which is a known compromise rather than an oversight. Light adds, and addition does
 /// not care about order. Matter covers, and does — but at the low opacities dust and smoke are drawn
 /// at, a wrong order is not something an eye finds. A game with dense smoke sorts, back to front.
+/// Why a ``ParticleRenderer`` could not be made.
+public nonisolated enum ParticleRendererError: Error, CustomStringConvertible, Sendable {
+    /// The particle shaders would not compile, or their pipeline would not build — the reason kept as
+    /// text.
+    case pipelineUnavailable(String)
+    /// The device would not create one of the objects drawing needs — named here.
+    case couldNotCreate(String)
+
+    public var description: String {
+        switch self {
+        case .pipelineUnavailable(let reason): "unable to build the particle pipeline: \(reason)"
+        case .couldNotCreate(let what): "the device would not create the \(what)"
+        }
+    }
+}
+
 public final class ParticleRenderer {
 
     /// One particle as the shader reads it. **Two `float4`s**, pinned by a test on size, stride and
@@ -54,8 +70,11 @@ public final class ParticleRenderer {
     private let instanceBytes: Int
     private static let frameStride = (MemoryLayout<Frame>.size + 255) & ~255
 
-    /// - Parameter capacity: the most particles drawn in one frame. Match the system's.
-    public init?(device: MTLDevice, capacity: Int = 1024) {
+    /// - Parameter capacity: the most particles drawn in one frame. **No default**: it is the
+    ///   ``ParticleSystem/capacity`` of the system drawn, and a game names one number for both — past
+    ///   it, live particles are not drawn.
+    /// - Throws: ``ParticleRendererError`` when the shaders, the pipeline or a buffer cannot be made.
+    public init(device: MTLDevice, capacity: Int) throws {
         self.capacity = max(1, capacity)
         instanceBytes = MemoryLayout<Instance>.stride * self.capacity
         do {
@@ -86,19 +105,22 @@ public final class ParticleRenderer {
             descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
             pipelineState = try compiler.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            print("\(Engine.name): unable to build the particle pipeline: \(error)")
-            return nil
+            throw ParticleRendererError.pipelineUnavailable(String(describing: error))
         }
 
         // Reversed-Z, like every other pass: nearer is greater.
         let depth = MTLDepthStencilDescriptor()
         depth.depthCompareFunction = .greater
         depth.isDepthWriteEnabled = false
-        guard let depthState = device.makeDepthStencilState(descriptor: depth),
-              let instances = device.makeBuffer(length: instanceBytes * FrameRenderer.maxFramesInFlight,
+        guard let depthState = device.makeDepthStencilState(descriptor: depth) else {
+            throw ParticleRendererError.couldNotCreate("depth state")
+        }
+        guard let instances = device.makeBuffer(length: instanceBytes * FrameRenderer.maxFramesInFlight,
                                                 options: .storageModeShared),
               let frames = device.makeBuffer(length: ParticleRenderer.frameStride * FrameRenderer.maxFramesInFlight,
-                                             options: .storageModeShared) else { return nil }
+                                             options: .storageModeShared) else {
+            throw ParticleRendererError.couldNotCreate("particle buffers")
+        }
         instances.label = "Particle Instances"
         frames.label = "Particle Frame"
         self.depthState = depthState
@@ -107,49 +129,14 @@ public final class ParticleRenderer {
 
         let table = MTL4ArgumentTableDescriptor()
         table.maxBufferBindCount = 2
-        guard let argumentTable = try? device.makeArgumentTable(descriptor: table) else { return nil }
-        self.argumentTable = argumentTable
+        do {
+            argumentTable = try device.makeArgumentTable(descriptor: table)
+        } catch {
+            throw ParticleRendererError.couldNotCreate("argument table")
+        }
     }
 
     public var allocations: [any MTLAllocation] { [instanceBuffer, frameBuffer] }
-
-    /// The radiance a white speck scatters toward the eye under a sky, for lighting dust and smoke.
-    ///
-    /// ### Why matter needs this and light does not
-    ///
-    /// **A particle's color is one of two different quantities, and treating them as one is the
-    /// bug this exists for.** For a spark the color *is* its radiance: it makes light. For dust it is
-    /// an **albedo** — how much of the light arriving it sends on — and drawn as if it were radiance,
-    /// a gray dust puff is a gray *lamp*. The first landing in the sample threw exactly that: a
-    /// 0.5-gray cloud on ground in shadow, reading as a white glow several times brighter than the
-    /// floor it came off.
-    ///
-    /// ### Isotropic, and unshadowed
-    ///
-    /// A speck that scatters equally in every direction sends the eye the *average* of what arrives
-    /// from all of them: the sky's mean radiance over the sphere, plus the sun's irradiance spread
-    /// over 4π. That is this. **It does not know about shadow** — dust in the shade of a wall is lit
-    /// as if it were in the open — which is the price of computing it once for the whole level; the
-    /// sky term alone would be right in shade and far too dark in sun.
-    public nonisolated static func matterLight(under sky: ProceduralSky) -> SIMD3<Float> {
-        // A Fibonacci sphere: even coverage with no clustering at the poles.
-        let samples = 256
-        let golden = Float.pi * (3 - Float(5).squareRoot())
-        // The sun is added analytically below. **A sample that landed on its disc would add its
-        // radiance once more** — tens of thousands of times the sky's — so the disc is stepped round.
-        let sunCone = cos(max(sky.sunAngularRadius * 3, Float.radians(fromDegrees: 2)))
-        var sum = SIMD3<Float>.zero
-        var counted = 0
-        for i in 0..<samples {
-            let y = 1 - 2 * (Float(i) + 0.5) / Float(samples)
-            let ring = (1 - y * y).squareRoot()
-            let direction = SIMD3(cos(golden * Float(i)) * ring, y, sin(golden * Float(i)) * ring)
-            guard simd_dot(direction, sky.sunDirection) < sunCone else { continue }
-            sum += sky.radiance(inDirection: direction)
-            counted += 1
-        }
-        return sum / Float(max(counted, 1)) + sky.sunIrradiance / (4 * .pi)
-    }
 
     /// Draws every live particle, in one instanced draw.
     ///
@@ -158,15 +145,20 @@ public final class ParticleRenderer {
     /// the encoder.
     ///
     /// - Parameters:
+    ///   - viewProjection: world to clip, the scene's.
+    ///   - cameraRight: the view's right, in world space, that a quad's width runs along.
+    ///   - cameraUp: the view's up, in world space, that its height runs along. Any view — a ``Camera``'s
+    ///     `right` and `up`, an orbiting editor's, a cutscene's.
     ///   - matterLight: the radiance a perfectly white speck of dust would scatter here — see
-    ///     ``matterLight(under:)``. Multiplies every particle that does not glow; light ignores it.
+    ///     ``ProceduralSky/matterLight``. Multiplies every particle that does not glow; light ignores it.
     /// - Returns: how many were drawn.
     @discardableResult
     public func draw(_ system: ParticleSystem,
                      into encoder: MTL4RenderCommandEncoder,
                      frameSlot: Int,
                      viewProjection: simd_float4x4,
-                     camera: Camera,
+                     cameraRight: SIMD3<Float>,
+                     cameraUp: SIMD3<Float>,
                      matterLight: SIMD3<Float> = SIMD3(repeating: 1)) -> Int {
         let base = instanceBytes * frameSlot
         let instances = instanceBuffer.contents().advanced(by: base)
@@ -183,8 +175,8 @@ public final class ParticleRenderer {
         guard count > 0 else { return 0 }
 
         var frame = Frame(viewProjection: viewProjection,
-                          right: SIMD4(camera.right, 0),
-                          up: SIMD4(camera.up, 0))
+                          right: SIMD4(cameraRight, 0),
+                          up: SIMD4(cameraUp, 0))
         let frameOffset = ParticleRenderer.frameStride * frameSlot
         frameBuffer.contents().advanced(by: frameOffset)
             .copyMemory(from: &frame, byteCount: MemoryLayout<Frame>.size)

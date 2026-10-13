@@ -104,20 +104,20 @@ for batch in rubble.batches {
 `ShadowMap` normally draws object by object. Copies are not objects, so they go in a batch that **encodes its own draws**:
 
 ```swift
-ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass in … }
+ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass in … }
 ```
 
-The engine binds the pipeline and the light matrix, then calls the closure once per sun cascade — and once per atlas tile and cube face for lamp shadows. Your closure binds what its vertex function reads and draws. The copies go at `ShadowMap.BufferIndex.instances` (4):
+The engine binds the pipeline and the light matrix, then calls the closure once per sun cascade — and once per atlas tile and cube face for lamp shadows. Your closure binds what its vertex function reads and draws. The copies go at `ShadowBufferIndex.instances` (4):
 
 ```swift
-batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, _ in
-    table.setAddress(uniforms, index: ShadowMap.BufferIndex.uniforms)
+batches.append(ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, _ in
+    table.setAddress(uniforms, index: ShadowBufferIndex.uniforms)
     for (bufferIndex, vertexBuffer) in box.mesh.vertexBuffers.enumerated() {
         table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
     }
     for batch in batchList {
         table.setAddress(copies.gpuAddress + UInt64(batch.byteOffset),
-                         index: ShadowMap.BufferIndex.instances)
+                         index: ShadowBufferIndex.instances)
         // draw each submesh with instanceCount: batch.count
     }
 })
@@ -136,7 +136,7 @@ vertex float4 sampleInstancedShadowVertex(VertexIn in [[stage_in]],
 }
 ```
 
-The engine cannot cull a self-drawing batch per object, so it hands you a `ShadowMap.Pass` with the pass's `viewProjection`. The sample's debris is small enough to ignore it; a wood should build a `Frustum` from it and draw only the copies that pass can see — see [culling](culling.html). See [shadows](shadows.html) for the rest of the pass.
+The engine cannot cull a self-drawing batch per object, so it hands you a `ShadowPass` with the pass's `target` — which cascade, tile or cube face — and its `viewProjection`. The sample's debris is small enough to ignore it; a wood should build a `Frustum` from it and draw only the copies that pass can see — see [culling](culling.html). See [shadows](shadows.html) for the rest of the pass.
 
 ## What it does not do
 

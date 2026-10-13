@@ -29,8 +29,13 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     /// image-based lit object looks like it is floating in a void.
     public var ground: SIMD3<Float>
 
-    /// Towards the sun, normalized.
-    public var sunDirection: SIMD3<Float>
+    /// Towards the sun, normalized — **however it is set**: a direction given at any length is
+    /// normalized, and a zero one points straight up.
+    public var sunDirection: SIMD3<Float> {
+        get { storedSunDirection }
+        set { storedSunDirection = ProceduralSky.normalized(newValue) }
+    }
+    private var storedSunDirection: SIMD3<Float>
 
     /// The sun's own radiance — how bright the disc *is*, looked at.
     ///
@@ -63,7 +68,12 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     }
 
     private mutating func setSun(pitchDegrees: Float, yawDegrees: Float) {
-        sunDirection = ProceduralSky.direction(pitchDegrees: pitchDegrees, yawDegrees: yawDegrees)
+        // Already unit length: stored as it comes, not normalized a second time.
+        storedSunDirection = ProceduralSky.direction(pitchDegrees: pitchDegrees, yawDegrees: yawDegrees)
+    }
+
+    private static func normalized(_ direction: SIMD3<Float>) -> SIMD3<Float> {
+        simd_length_squared(direction) > 0 ? normalize(direction) : SIMD3(0, 1, 0)
     }
 
     /// The convention two angles turn into, shared by whatever reads a level and whatever lights it.
@@ -86,7 +96,7 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
         self.zenith = zenith
         self.horizon = horizon
         self.ground = ground
-        self.sunDirection = normalize(sunDirection)
+        self.storedSunDirection = ProceduralSky.normalized(sunDirection)
         self.sunRadiance = sunRadiance
         self.sunAngularRadius = sunAngularRadius
     }
@@ -161,6 +171,46 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     /// wider sun is both softer and stronger, because it is more sky.
     public var sunIrradiance: SIMD3<Float> {
         sunRadiance * (2 * .pi * (1 - cos(sunAngularRadius)))
+    }
+
+    /// The radiance a white speck scatters toward the eye under this sky, for lighting dust and smoke —
+    /// what ``ParticleRenderer/draw(_:into:frameSlot:viewProjection:cameraRight:cameraUp:matterLight:)``
+    /// multiplies matter by. A property of the sky, so it lives with the sky.
+    ///
+    /// ### Why matter needs this and light does not
+    ///
+    /// **A particle's color is one of two different quantities, and treating them as one is the
+    /// bug this exists for.** For a spark the color *is* its radiance: it makes light. For dust it is
+    /// an **albedo** — how much of the light arriving it sends on — and drawn as if it were radiance,
+    /// a gray dust puff is a gray *lamp*. The first landing in the sample threw exactly that: a
+    /// 0.5-gray cloud on ground in shadow, reading as a white glow several times brighter than the
+    /// floor it came off.
+    ///
+    /// ### Isotropic, and unshadowed
+    ///
+    /// A speck that scatters equally in every direction sends the eye the *average* of what arrives
+    /// from all of them: the sky's mean radiance over the sphere, plus the sun's irradiance spread
+    /// over 4π. That is this. **It does not know about shadow** — dust in the shade of a wall is lit
+    /// as if it were in the open — which is the price of computing it once for the whole level; the
+    /// sky term alone would be right in shade and far too dark in sun.
+    public var matterLight: SIMD3<Float> {
+        // A Fibonacci sphere: even coverage with no clustering at the poles.
+        let samples = 256
+        let golden = Float.pi * (3 - Float(5).squareRoot())
+        // The sun is added analytically below. **A sample that landed on its disc would add its
+        // radiance once more** — tens of thousands of times the sky's — so the disc is stepped round.
+        let sunCone = cos(max(sunAngularRadius * 3, Float.radians(fromDegrees: 2)))
+        var sum = SIMD3<Float>.zero
+        var counted = 0
+        for i in 0..<samples {
+            let y = 1 - 2 * (Float(i) + 0.5) / Float(samples)
+            let ring = (1 - y * y).squareRoot()
+            let direction = SIMD3(cos(golden * Float(i)) * ring, y, sin(golden * Float(i)) * ring)
+            guard simd_dot(direction, sunDirection) < sunCone else { continue }
+            sum += radiance(inDirection: direction)
+            counted += 1
+        }
+        return sum / Float(max(counted, 1)) + sunIrradiance / (4 * .pi)
     }
 
     /// Radiance arriving from `direction`, which need not be normalized.

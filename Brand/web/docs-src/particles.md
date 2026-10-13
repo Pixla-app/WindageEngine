@@ -30,7 +30,7 @@ public init(count: Int, speed: Float, spread: Float, lifetime: Float, size: Floa
 
 Matter (dust, smoke, dirt) covers whatever is behind it. Light (a spark, an ember) adds to it and covers nothing. **Both go through one pipeline.** Color is premultiplied, and a glowing particle writes zero coverage, which turns the "over" blend into an add. A dozen overlapping sparks get brighter, and a dozen dust motes get more opaque.
 
-For a spark, `color` is the light it gives off. For dust, it's an **albedo**: how much of the arriving light the dust passes on. The sample found this by landing: a 0.5-gray cloud on shaded ground came out as a white glow, brighter than the floor. `ParticleRenderer.matterLight(under:)` gives the light a white speck of dust would scatter under a `ProceduralSky`. It is the sky's average radiance plus the sun's irradiance spread over 4π. Compute it once per level and pass it to `draw`. It ignores shadow, so dust beside a wall is lit as if it were in the open.
+For a spark, `color` is the light it gives off. For dust, it's an **albedo**: how much of the arriving light the dust passes on. The sample found this by landing: a 0.5-gray cloud on shaded ground came out as a white glow, brighter than the floor. A sky's `matterLight` gives the light a white speck of dust would scatter under that `ProceduralSky`. It is the sky's average radiance plus the sun's irradiance spread over 4π. Compute it once per level and pass it to `draw`. It ignores shadow, so dust beside a wall is lit as if it were in the open.
 
 ## ParticleSystem {#system}
 
@@ -49,11 +49,13 @@ Those are the sample's three recipes: embers, the pickup burst and landing dust.
 
 - **`burst(_:at:direction:seed:count:)`** throws a burst of the recipe at that index, along `direction` (up by default). `count` can be fewer than the recipe's count, never more.
 - **`step(deltaTime:)`** advances every live particle. Call it from your [fixed step](fixed-timestep.html), so a burst plays out the same way at any frame rate.
-- **`particles`**, `live`, `liveCount` and `appearance(of:)` are for reading the state. `appearance(of:)` returns a particle's premultiplied color, its coverage and its current size.
+- **`particles`**, `live`, `liveCount` and `appearance(of:)` are for reading the state. `appearance(of:)` returns a particle's premultiplied color, its coverage and its current size. A `Particle`'s fields are read-only: the system owns the pool.
+
+A recipe's `count` and `lifetime`, and an emitter's `rate`, hold their limits however they are set — a lifetime is never below a millisecond, a count or rate never negative.
 
 **The pool is fixed.** When it's full, a dead slot is reused, and otherwise the *oldest* particle is recycled. Dropping the newest instead would silently throw away the burst that just happened, which is the one the player is looking at.
 
-**There is no `random()`.** Spread comes from `ParticleSystem.hash(_:_:)`, an integer hash of the burst's seed and the particle's index. **The seed should come from the simulation, never from a clock.** The sample uses its step count:
+**There is no `random()`.** Spread comes from an integer hash of the burst's seed and the particle's index, inside the engine. **The seed should come from the simulation, never from a clock.** The sample uses its step count:
 
 ```swift
 particles.burst(SampleGame.pickupRecipe, at: crate + SIMD3(0, 1.6, 0), seed: stepCount)
@@ -86,14 +88,14 @@ The lanterns move, so an ember's origin is read from the lantern's light every s
 
 ## ParticleRenderer {#renderer}
 
-`ParticleRenderer(device:capacity:)` owns its whole pipeline, shaders included. A particle is just a point and a color, so there's nothing of your game's in its geometry. Match `capacity` to the system's, and add `allocations` to your residency set.
+`ParticleRenderer(device:capacity:)` owns its whole pipeline, shaders included, and throws a `ParticleRendererError` saying what could not be built. A particle is just a point and a color, so there's nothing of your game's in its geometry. `capacity` has no default: name one number for it and the system's, as the sample does with `particleCapacity`, and add `allocations` to your residency set.
 
 Draw **last in `encode`**, after everything opaque:
 
 ```swift
 particleRenderer.draw(particles, into: encoder, frameSlot: frameSlot,
-                      viewProjection: simd_mul(projection, view.viewMatrix), camera: view,
-                      matterLight: matterLight)
+                      viewProjection: simd_mul(projection, view.viewMatrix),
+                      cameraRight: view.right, cameraUp: view.up, matterLight: matterLight)
 ```
 
 - **Into the scene, not the HUD.** A spark goes through the [tone map](tone-mapping.html) like the lamp it came from.

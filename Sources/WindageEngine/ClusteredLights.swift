@@ -61,10 +61,11 @@ public nonisolated struct ClusterGrid: Sendable, Equatable {
 
     public var clusterCount: Int { tilesX * tilesY * slices }
 
-    /// `slice = log(z) * scale + bias`, which is the form a shader wants: two constants and a
-    /// logarithm rather than a loop or a divide chain.
-    public var depthScale: Float { Float(slices) / log(lightRange / nearPlane) }
-    public var depthBias: Float { -Float(slices) * log(nearPlane) / log(lightRange / nearPlane) }
+    /// `slice = log(z) * sliceScale + sliceBias`, which is the form a shader wants: two constants and
+    /// a logarithm rather than a loop or a divide chain. (A slice offset, not a shadow's depth bias.)
+    public var sliceScale: Float { Float(slices) / log(lightRange / nearPlane) }
+    /// See ``sliceScale``.
+    public var sliceBias: Float { -Float(slices) * log(nearPlane) / log(lightRange / nearPlane) }
 
     /// Which slice a view-space depth falls in, clamped into the grid.
     ///
@@ -73,7 +74,7 @@ public nonisolated struct ClusterGrid: Sendable, Equatable {
     /// alternative is a hard line across the world where local lighting stops.
     public func slice(forViewDepth depth: Float) -> Int {
         guard depth > nearPlane else { return 0 }
-        let raw = log(depth) * depthScale + depthBias
+        let raw = log(depth) * sliceScale + sliceBias
         return min(max(Int(raw), 0), slices - 1)
     }
 
@@ -95,7 +96,8 @@ public nonisolated struct ClusterGrid: Sendable, Equatable {
     ///
     /// Built from the slice's near and far depths and the tile's share of the frustum at each. The
     /// union of the two rectangles, because a cluster is a frustum wedge and its bounding box has to
-    /// contain the wider, far end.
+    /// contain the wider, far end. `fovY` is the projection's vertical field of view in radians, as
+    /// ``simd_float4x4/init(perspectiveFovY:aspectRatio:nearZ:depthRange:)`` takes it.
     public func bounds(tileX: Int, tileY: Int, slice: Int,
                        fovY: Float, aspectRatio: Float) -> BoundingBox {
         let depths = depthRange(ofSlice: slice)
@@ -140,12 +142,21 @@ public nonisolated struct ClusteredLights: Sendable {
 
     /// The most lights any one cluster ended up with — worth watching, because it is the number that
     /// decides the worst fragment's cost.
-    public let busiestCluster: Int
+    public let maxLightsPerCluster: Int
+
+    /// How many light entries did not fit in `maximumIndices` and were dropped — each one a light
+    /// missing from one cluster. **Zero in a frame that fits**; anything else is a cell lit short, and
+    /// a reason to raise the limit or lose lights.
+    public let droppedIndexCount: Int
 
     /// Bins lights into the clusters they reach.
     ///
-    /// - Parameter viewMatrix: world to view. Lights arrive in world space and are clustered in view
-    ///   space, because that is where the grid is.
+    /// - Parameters:
+    ///   - viewMatrix: world to view. Lights arrive in world space and are clustered in view space,
+    ///     because that is where the grid is.
+    ///   - fovY: the projection's vertical field of view, in radians.
+    ///   - maximumIndices: the most entries ``indices`` may hold — the shader's buffer. Entries past it
+    ///     are dropped, and counted in ``droppedIndexCount``.
     ///
     /// **Walks lights rather than clusters.** Testing every cluster against every light is three
     /// thousand times however many lights there are; a light instead touches the few slices its range
@@ -195,6 +206,7 @@ public nonisolated struct ClusteredLights: Sendable {
         flat.reserveCapacity(min(maximumIndices, grid.clusterCount))
         var built = [SIMD2<UInt32>](repeating: .zero, count: grid.clusterCount)
         var busiest = 0
+        var dropped = 0
 
         for cluster in 0..<grid.clusterCount {
             let bucket = buckets[cluster]
@@ -204,12 +216,14 @@ public nonisolated struct ClusteredLights: Sendable {
             let room = max(0, maximumIndices - flat.count)
             let kept = bucket.prefix(room)
             built[cluster] = SIMD2(UInt32(flat.count), UInt32(kept.count))
+            dropped += bucket.count - kept.count
             flat.append(contentsOf: kept)
             busiest = max(busiest, kept.count)
         }
 
         self.ranges = built
         self.indices = flat
-        self.busiestCluster = busiest
+        self.maxLightsPerCluster = busiest
+        self.droppedIndexCount = dropped
     }
 }

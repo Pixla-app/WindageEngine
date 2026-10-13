@@ -34,24 +34,29 @@ public final class ShadowAtlas {
         /// Where this tile starts, in the atlas's texels.
         public let origin: SIMD2<Int>
         /// Its edge length, in texels.
-        public let size: Int
+        public let resolution: Int
 
         /// The tile as the shader wants it: a UV offset and a scale, so a lookup in `0…1` for one
         /// light lands inside its own tile.
-        public func uvTransform(atlasSize: Int) -> (offset: SIMD2<Float>, scale: Float) {
-            let inverse = 1 / Float(atlasSize)
+        public func uvTransform(atlasResolution: Int) -> (offset: SIMD2<Float>, scale: Float) {
+            let inverse = 1 / Float(atlasResolution)
             return (SIMD2(Float(origin.x) * inverse, Float(origin.y) * inverse),
-                    Float(size) * inverse)
+                    Float(resolution) * inverse)
         }
     }
 
     public let texture: MTLTexture
-    public let size: Int
+    /// The whole atlas's edge, in texels.
+    public let resolution: Int
     public let tilesPerSide: Int
 
-    /// How many lights may cast at once. **A hard number, and the shader does not need to know it** —
-    /// a light either carries a tile or does not, which it says in its own data.
-    public var tileCount: Int { tilesPerSide * tilesPerSide }
+    /// How many lights may cast at once — one tile each, addressed by ``Caster/slot``. **A hard number,
+    /// and the shader does not need to know it** — a light either carries a tile or does not, which it
+    /// says in its own data.
+    public var slotCount: Int { tilesPerSide * tilesPerSide }
+
+    /// The rasterizer's depth bias while recording. A game tunes it for its lamps.
+    public var rasterBias: ShadowBias
 
     private let depthState: MTLDepthStencilState
     private let argumentTable: MTL4ArgumentTable
@@ -59,14 +64,17 @@ public final class ShadowAtlas {
     private static let matrixStride = 256   // one light matrix per tile per frame, aligned
 
     /// - Parameters:
-    ///   - size: the whole atlas, in texels.
+    ///   - resolution: the whole atlas's edge, in texels.
     ///   - tilesPerSide: cut into this many columns and rows, so `tilesPerSide²` lights may cast.
-    public init?(device: MTLDevice, size: Int = 2048, tilesPerSide: Int = 4) {
-        self.size = max(64, size)
+    ///   - rasterBias: the depth bias while recording.
+    public init?(device: MTLDevice, resolution: Int = 2048, tilesPerSide: Int = 4,
+                 rasterBias: ShadowBias = .spot) {
+        self.resolution = max(64, resolution)
         self.tilesPerSide = max(1, tilesPerSide)
+        self.rasterBias = rasterBias
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: ShadowMap.depthPixelFormat, width: self.size, height: self.size,
+            pixelFormat: ShadowMap.depthPixelFormat, width: self.resolution, height: self.resolution,
             mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]
         // Private but **not memoryless**: read again in the shading pass, like the cascades.
@@ -84,7 +92,7 @@ public final class ShadowAtlas {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 5      // matching ShadowMap.BufferIndex, instances included
+        tableDescriptor.maxBufferBindCount = 5      // matching ShadowBufferIndex, instances included
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
               let matrices = device.makeBuffer(
                 length: ShadowAtlas.matrixStride * self.tilesPerSide * self.tilesPerSide
@@ -95,13 +103,18 @@ public final class ShadowAtlas {
         self.matrixBuffer = matrices
     }
 
-    public var allocations: [MTLResource] { [texture, matrixBuffer] }
+    public var allocations: [any MTLAllocation] { [texture, matrixBuffer] }
 
-    public func tile(_ index: Int) -> Tile {
-        let clamped = min(max(index, 0), tileCount - 1)
-        let edge = size / tilesPerSide
-        return Tile(origin: SIMD2((clamped % tilesPerSide) * edge, (clamped / tilesPerSide) * edge),
-                    size: edge)
+    /// Where a slot's tile sits in the atlas.
+    ///
+    /// - Precondition: `slot` is in `0..<slotCount`. A bad one used to be clamped — to another light's
+    ///   tile, which is a shadow in the wrong room.
+    public func tile(forSlot slot: Int) -> Tile {
+        precondition((0..<slotCount).contains(slot),
+                     "shadow atlas slot \(slot) is outside 0..<\(slotCount)")
+        let edge = resolution / tilesPerSide
+        return Tile(origin: SIMD2((slot % tilesPerSide) * edge, (slot / tilesPerSide) * edge),
+                    resolution: edge)
     }
 
     /// Where a spot light's shadow map looks from, and how it projects.
@@ -114,7 +127,7 @@ public final class ShadowAtlas {
     /// already cuts it off, so a far plane would be a second place to get the same number wrong.
     ///
     /// Returns `nil` for a light with no cone: a point light needs six of these, not one.
-    public static func viewProjection(for light: PunctualLight, nearPlane: Float = 0.05)
+    public nonisolated static func viewProjection(for light: PunctualLight, nearPlane: Float = 0.05)
         -> simd_float4x4? {
         guard let cone = light.cone else { return nil }
 
@@ -142,13 +155,14 @@ public final class ShadowAtlas {
         return simd_mul(projection, view)
     }
 
-    /// One light's shadow pass: which tile, and where it looks from.
-    public struct Caster {
-        public let tile: Int
+    /// One light's shadow pass: which slot — and so which tile — and where it looks from.
+    public nonisolated struct Caster: Sendable, Equatable {
+        /// Which tile, in `0..<slotCount`. A caster outside that is skipped.
+        public let slot: Int
         public let viewProjection: simd_float4x4
 
-        public init(tile: Int, viewProjection: simd_float4x4) {
-            self.tile = tile
+        public init(slot: Int, viewProjection: simd_float4x4) {
+            self.slot = slot
             self.viewProjection = viewProjection
         }
     }
@@ -161,9 +175,7 @@ public final class ShadowAtlas {
     public func encode(into commandBuffer: MTL4CommandBuffer,
                        frameSlot: Int,
                        casters: [Caster],
-                       batches: [ShadowMap.Batch],
-                       depthBias: Float = -0.0015,
-                       slopeScale: Float = -2.5) {
+                       batches: [ShadowBatch]) {
         let descriptor = MTL4RenderPassDescriptor()
         let attachment = MTLRenderPassDepthAttachmentDescriptor()
         attachment.texture = texture
@@ -180,54 +192,41 @@ public final class ShadowAtlas {
         encoder.setCullMode(.front)
         encoder.setFrontFacing(.counterClockwise)
         encoder.setDepthStencilState(depthState)
-        encoder.setDepthBias(depthBias, slopeScale: slopeScale, clamp: 0)
+        encoder.setDepthBias(rasterBias.constant, slopeScale: rasterBias.slopeScale, clamp: 0)
         encoder.setArgumentTable(argumentTable, stages: .vertex)
 
-        let base = frameSlot * ShadowAtlas.matrixStride * tileCount
-        for caster in casters where caster.tile >= 0 && caster.tile < tileCount {
-            let region = tile(caster.tile)
+        let base = frameSlot * ShadowAtlas.matrixStride * slotCount
+        for caster in casters where (0..<slotCount).contains(caster.slot) {
+            let region = tile(forSlot: caster.slot)
             encoder.setViewport(MTLViewport(originX: Double(region.origin.x),
                                             originY: Double(region.origin.y),
-                                            width: Double(region.size), height: Double(region.size),
+                                            width: Double(region.resolution), height: Double(region.resolution),
                                             znear: 0, zfar: 1))
             // **Scissored as well as viewported.** A viewport limits where geometry lands; it does
             // not stop a clear or a wide triangle touching a neighbour's tile, and one light bleeding
             // into another's map is a shadow that appears in the wrong room.
             encoder.setScissorRect(MTLScissorRect(x: region.origin.x, y: region.origin.y,
-                                                  width: region.size, height: region.size))
+                                                  width: region.resolution, height: region.resolution))
 
             var matrix = caster.viewProjection
-            let offset = base + caster.tile * ShadowAtlas.matrixStride
+            let offset = base + caster.slot * ShadowAtlas.matrixStride
             matrixBuffer.contents().advanced(by: offset)
                 .copyMemory(from: &matrix, byteCount: MemoryLayout<simd_float4x4>.size)
             argumentTable.setAddress(matrixBuffer.gpuAddress + UInt64(offset),
-                                     index: ShadowMap.BufferIndex.lightViewProjection)
+                                     index: ShadowBufferIndex.lightViewProjection)
 
-            for batch in batches where batch.count > 0 {
-                encoder.setRenderPipelineState(batch.pipeline)
-                // A batch that draws itself — instanced copies, a game-built mesh — see `ShadowMap.Batch.encode`.
-                if let encode = batch.encode {
-                    encode(encoder, argumentTable, ShadowMap.Pass(index: caster.tile, viewProjection: caster.viewProjection))
-                    continue
-                }
-                for index in 0..<batch.count {
-                    argumentTable.setAddress(batch.uniformAddress(index),
-                                             index: ShadowMap.BufferIndex.uniforms)
-                    if let joints = batch.jointPaletteAddress {
-                        argumentTable.setAddress(joints(index), index: ShadowMap.BufferIndex.jointPalette)
-                    }
-                    let mesh = batch.mesh(index)
-                    for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
-                        argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
-                                                 index: bufferIndex)
-                    }
-                    for submesh in mesh.submeshes {
-                        encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
-                                                      indexCount: submesh.indexCount,
-                                                      indexType: submesh.indexType,
-                                                      indexBuffer: submesh.indexBuffer.buffer.gpuAddress
-                                                          + UInt64(submesh.indexBuffer.offset),
-                                                      indexBufferLength: submesh.indexBuffer.length)
+            for batch in batches {
+                switch batch.kind {
+                case .encodes(let encode):
+                    // A batch that draws itself — instanced copies, a game-built mesh.
+                    encoder.setRenderPipelineState(batch.pipeline)
+                    encode(encoder, argumentTable,
+                           ShadowPass(target: .atlasSlot(caster.slot), viewProjection: caster.viewProjection))
+                case .objects(let objects):
+                    guard objects.count > 0 else { continue }
+                    encoder.setRenderPipelineState(batch.pipeline)
+                    for index in 0..<objects.count {
+                        ShadowBatch.drawObject(index, of: objects, encoder: encoder, table: argumentTable)
                     }
                 }
             }

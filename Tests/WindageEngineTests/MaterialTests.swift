@@ -20,7 +20,7 @@ struct MaterialTests {
         var found: MDLMaterial?
         func descend(_ object: MDLObject) {
             if let mesh = object as? MDLMesh {
-                for case let submesh as MDLSubmesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
+                for submesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
                     if found == nil { found = submesh.material }
                 }
             }
@@ -89,7 +89,7 @@ struct MaterialTests {
         var found: MDLMaterial?
         func descend(_ object: MDLObject) {
             if let mesh = object as? MDLMesh {
-                for case let submesh as MDLSubmesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
+                for submesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
                     if found == nil { found = submesh.material }
                 }
             }
@@ -138,7 +138,7 @@ struct MaterialTests {
         var found: MDLMaterial?
         func descend(_ object: MDLObject) {
             if let mesh = object as? MDLMesh {
-                for case let submesh as MDLSubmesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
+                for submesh in (mesh.submeshes as? [MDLSubmesh] ?? []) {
                     if found == nil { found = submesh.material }
                 }
             }

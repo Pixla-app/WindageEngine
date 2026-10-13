@@ -37,20 +37,44 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// **Two angles rather than one**, because a single cutoff gives a hard-edged circle that reads
     /// as a stencil rather than as a lamp. Full brightness within the inner angle, nothing beyond the
     /// outer, and a smooth fall between.
+    ///
+    /// **Its limits hold however it is set**, not only in `init`: a direction is normalized (a zero one
+    /// points straight down), the outer angle is held to `1e-4…π`, and the inner to `0…outer`. Narrowing
+    /// the outer angle past the inner one narrows the inner with it.
     public nonisolated struct Cone: Sendable, Equatable {
         /// Where the light points, normalized.
-        public var direction: SIMD3<Float>
-        /// Half-angle of the fully-lit core, in radians.
-        public var innerAngle: Float
-        /// Half-angle at which the light has fallen to nothing, in radians.
-        public var outerAngle: Float
+        public var direction: SIMD3<Float> {
+            get { storedDirection }
+            set { storedDirection = Cone.normalized(newValue) }
+        }
+        /// Half-angle of the fully-lit core, in radians. Held to `0…outerAngle`.
+        public var innerAngle: Float {
+            get { storedInnerAngle }
+            set { storedInnerAngle = simd_clamp(newValue, 0, storedOuterAngle) }
+        }
+        /// Half-angle at which the light has fallen to nothing, in radians. Held to `1e-4…π`.
+        public var outerAngle: Float {
+            get { storedOuterAngle }
+            set {
+                storedOuterAngle = simd_clamp(newValue, 1e-4, .pi)
+                storedInnerAngle = min(storedInnerAngle, storedOuterAngle)
+            }
+        }
+
+        private var storedDirection: SIMD3<Float>
+        private var storedInnerAngle: Float
+        private var storedOuterAngle: Float
 
         public init(direction: SIMD3<Float>, innerAngle: Float, outerAngle: Float) {
-            self.direction = simd_length(direction) > 1e-6 ? simd_normalize(direction) : SIMD3(0, -1, 0)
+            storedDirection = Cone.normalized(direction)
             // Clamped so the inner never exceeds the outer: reversed, the scale below goes negative
             // and the cone lights everything *except* where it points.
-            self.outerAngle = simd_clamp(outerAngle, 1e-4, .pi)
-            self.innerAngle = simd_clamp(innerAngle, 0, self.outerAngle)
+            storedOuterAngle = simd_clamp(outerAngle, 1e-4, .pi)
+            storedInnerAngle = simd_clamp(innerAngle, 0, storedOuterAngle)
+        }
+
+        private static func normalized(_ direction: SIMD3<Float>) -> SIMD3<Float> {
+            simd_length(direction) > 1e-6 ? simd_normalize(direction) : SIMD3(0, -1, 0)
         }
 
         var cosOuter: Float { cos(outerAngle) }
@@ -254,7 +278,7 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 /// **Extracted from a probe built to ask this question**, and stripped of the game that asked it. A
 /// fragment shader cannot loop over every lamp in a building, so a game needs a budget for how many
 /// may affect one draw and a rule for choosing which.
-public nonisolated struct LightSet: Sendable {
+public nonisolated struct LightSet: Sendable, Equatable {
 
     /// How many lights may affect one draw.
     ///
@@ -269,14 +293,14 @@ public nonisolated struct LightSet: Sendable {
     ///
     /// In the same units as ``PunctualLight/influence(at:)`` — a contribution, so it is comparable to
     /// the sun's irradiance, which in this engine is a few units.
-    public let negligible: Float
+    public let negligibleInfluence: Float
 
     public var lights: [PunctualLight]
 
-    public init(lights: [PunctualLight] = [], budget: Int = 4, negligible: Float = 0.02) {
+    public init(lights: [PunctualLight] = [], budget: Int = 4, negligibleInfluence: Float = 0.02) {
         self.lights = lights
         self.budget = max(0, budget)
-        self.negligible = negligible
+        self.negligibleInfluence = negligibleInfluence
     }
 
     /// The lights that reach a point, strongest first, at most ``budget`` of them.
@@ -322,11 +346,11 @@ public nonisolated struct LightSet: Sendable {
     /// number at which it happens.
     ///
     /// So the promise is conditional, and this checks the condition: **where no more than ``budget``
-    /// lights are above ``negligible``, nothing the player can see is ever dropped.** A level that
+    /// lights are above ``negligibleInfluence``, nothing the player can see is ever dropped.** A level that
     /// violates it has a lighting fault built into its geometry — and one that is findable before it
     /// ships rather than after somebody reports a flicker in one corridor.
     public func isOverSubscribed(at point: SIMD3<Float>) -> Bool {
-        lights.count { $0.influence(at: point) > negligible } > budget
+        lights.count { $0.influence(at: point) > negligibleInfluence } > budget
     }
 
     /// Every point of a level worth checking, and whether any of them is over-subscribed.

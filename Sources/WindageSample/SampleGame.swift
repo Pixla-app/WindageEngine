@@ -380,8 +380,8 @@ final class SampleGame: GameLoop {
         var tilesX: UInt32 = 0
         var tilesY: UInt32 = 0
         var slices: UInt32 = 0
-        var depthScale: Float = 0
-        var depthBias: Float = 0
+        var sliceScale: Float = 0
+        var sliceBias: Float = 0
         // **Three separate floats, not a `SIMD3`.** A `SIMD3<Float>` has 16-byte alignment in Swift
         // and the shader's three trailing scalars have four — so the struct came out 48 bytes on one
         // side and 32 on the other, and every field after it in `FrameUniforms` was read from the
@@ -395,8 +395,8 @@ final class SampleGame: GameLoop {
             tilesX = UInt32(grid.tilesX)
             tilesY = UInt32(grid.tilesY)
             slices = UInt32(grid.slices)
-            depthScale = grid.depthScale
-            depthBias = grid.depthBias
+            sliceScale = grid.sliceScale
+            sliceBias = grid.sliceBias
         }
     }
     private static let shadowFrameStride = (MemoryLayout<FrameUniforms>.stride + 255) & ~255
@@ -407,7 +407,7 @@ final class SampleGame: GameLoop {
     private let skinnedPipeline: MTLRenderPipelineState?
     /// Debris, drawn instanced. **Optional, the same way: no pipeline means no debris.**
     private let instancedPipeline: MTLRenderPipelineState?
-    /// The debris's shadows: a batch that encodes its own instanced draws (`ShadowMap.Batch.encode`).
+    /// The debris's shadows: a batch that encodes its own instanced draws (`ShadowBatch(pipeline:encode:)`).
     private let instancedShadowPipeline: MTLRenderPipelineState?
     /// This frame's debris transforms, written before the shadow passes so they and the scene draw the
     /// same copies.
@@ -557,7 +557,10 @@ final class SampleGame: GameLoop {
         // **Matter**: it covers what is behind it, spreads as it thins, and does not glow.
         ParticleRecipe(count: 14, speed: 0.6, spread: 1.4, lifetime: 0.9, size: 0.35, growth: 1.8,
                        gravity: -1, drag: 3, color: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
-    ], capacity: 1024)
+    ], capacity: SampleGame.particleCapacity)
+    /// **One number for the pool and what draws it**: a renderer smaller than its system leaves live
+    /// particles undrawn.
+    private static let particleCapacity = 1024
     private let particleRenderer: ParticleRenderer?
     /// Where a stream of embers comes from.
     private enum EmberSource {
@@ -1245,7 +1248,7 @@ final class SampleGame: GameLoop {
         }
 
         shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
-        shadowAtlas = ShadowAtlas(device: device, size: 2048, tilesPerSide: 4)
+        shadowAtlas = ShadowAtlas(device: device, resolution: 2048, tilesPerSide: 4)
         if shadowAtlas == nil { print("WindageSample: no shadow atlas — lamps will reach through walls") }
         // **Four rather than the engine's two.** The ruins holds two braziers and the figures carry
         // lanterns, which is exactly the "a level should be choosing" case the default is mean about
@@ -1254,9 +1257,13 @@ final class SampleGame: GameLoop {
         // carried lanterns, which is exactly the "a level should be choosing" case the engine's
         // default is mean about — so the sample chooses, out loud, and pays for it in resolution
         // rather than in lamps that do not cast. Six faces at 384² is 21 MB.
-        shadowCubes = ShadowCubes(device: device, size: 384, lightCount: 6)
-        particleRenderer = ParticleRenderer(device: device, capacity: 1024)
-        if particleRenderer == nil { print("WindageSample: no particle renderer — nothing will spark") }
+        shadowCubes = ShadowCubes(device: device, resolution: 384, slotCount: 6)
+        do {
+            particleRenderer = try ParticleRenderer(device: device, capacity: SampleGame.particleCapacity)
+        } catch {
+            particleRenderer = nil
+            print("WindageSample: no particle renderer — nothing will spark (\(error))")
+        }
         if shadowCubes == nil { print("WindageSample: no shadow cubes — point lights will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
@@ -1655,7 +1662,7 @@ final class SampleGame: GameLoop {
     /// **The sun here is the level's sun.** An environment lit from somewhere the sun is not reads as
     /// a bug in the shading rather than as a mismatched sky, so the two come from one place.
     private func rebuildEnvironment() {
-        matterLight = ParticleRenderer.matterLight(under: level.resolvedSky)
+        matterLight = level.resolvedSky.matterLight
         // **Nothing to reflect in, as a walk's check** — which draws no frame at all — and prefiltering
         // the sky is the slowest thing at start-up: 2.6 s of the 3.3 a walk waits before its first step.
         // A frame's check draws, so it builds the sky like anything else.
@@ -1891,7 +1898,7 @@ final class SampleGame: GameLoop {
     private var sunIrradiance: SIMD3<Float> { level.resolvedSky.sunIrradiance }
 
     /// What lights dust under this level's sky. Computed once per level, since the sky is the
-    /// level's — see `ParticleRenderer.matterLight(under:)`.
+    /// level's — see `ProceduralSky.matterLight`.
     private var matterLight = SIMD3<Float>(repeating: 1)
 
     // MARK: - Levels
@@ -3212,7 +3219,8 @@ final class SampleGame: GameLoop {
         var lights = lightSet.lights.prefix(SampleGame.maxSceneLights).map(PackedLight.init)
         if let shadowAtlas {
             for (lightIndex, caster) in shadowCasters where lightIndex < lights.count {
-                let (offset, scale) = shadowAtlas.tile(caster.tile).uvTransform(atlasSize: shadowAtlas.size)
+                let (offset, scale) = shadowAtlas.tile(forSlot: caster.slot)
+                    .uvTransform(atlasResolution: shadowAtlas.resolution)
                 lights[lightIndex].shadowTile = SIMD4(offset.x, offset.y, scale, 1)
                 lights[lightIndex].shadowViewProjection = caster.viewProjection
             }
@@ -3226,8 +3234,8 @@ final class SampleGame: GameLoop {
                 // written as `2 / 512`, which is a number in two places the moment a game asks for a
                 // different resolution — and the failure is a filter kernel of the wrong width, which
                 // looks like a bias problem rather than like a stale constant.
-                lights[lightIndex].shadowCube = SIMD4(Float(caster.slice), shadowCubes.nearPlane,
-                                                      2 / Float(shadowCubes.size), 1)
+                lights[lightIndex].shadowCube = SIMD4(Float(caster.slot), shadowCubes.nearPlane,
+                                                      2 / Float(shadowCubes.resolution), 1)
             }
         }
         lights.withUnsafeBytes { source in
@@ -3249,7 +3257,7 @@ final class SampleGame: GameLoop {
                 .advanced(by: frameSlot * MemoryLayout<UInt32>.stride * SampleGame.maxClusterIndices)
                 .copyMemory(from: base, byteCount: source.count)
         }
-        busiestCluster = clustered.busiestCluster
+        maxLightsPerCluster = clustered.maxLightsPerCluster
 
         // **Said once per level, because it is the number that decides the worst fragment's cost.**
         // Per-draw selection made that number a constant the game chose; clustering makes it a fact
@@ -3260,7 +3268,7 @@ final class SampleGame: GameLoop {
             print("WindageSample: \(lightSet.lights.count) lights binned into "
                   + "\(grid.tilesX)×\(grid.tilesY)×\(grid.slices) clusters — "
                   + "\(clustered.indices.count) entries, busiest cluster holds "
-                  + "\(clustered.busiestCluster)")
+                  + "\(clustered.maxLightsPerCluster)")
         }
     }
 
@@ -3275,11 +3283,11 @@ final class SampleGame: GameLoop {
             .filter { $0.element.cone != nil }
             .sorted { PunctualLight.luminance($0.element.color) * $0.element.range
                     > PunctualLight.luminance($1.element.color) * $1.element.range }
-            .prefix(shadowAtlas.tileCount)
+            .prefix(shadowAtlas.slotCount)
 
-        return candidates.enumerated().compactMap { tile, entry in
+        return candidates.enumerated().compactMap { slot, entry in
             guard let matrix = ShadowAtlas.viewProjection(for: entry.element) else { return nil }
-            return (entry.offset, ShadowAtlas.Caster(tile: tile, viewProjection: matrix))
+            return (entry.offset, ShadowAtlas.Caster(slot: slot, viewProjection: matrix))
         }
     }
 
@@ -3294,17 +3302,17 @@ final class SampleGame: GameLoop {
             .filter { $0.element.cone == nil }
             .sorted { PunctualLight.luminance($0.element.color) * $0.element.range
                     > PunctualLight.luminance($1.element.color) * $1.element.range }
-            .prefix(shadowCubes.lightCount)
+            .prefix(shadowCubes.slotCount)
             .enumerated()
-            .map { slice, entry in
-                (entry.offset, ShadowCubes.Caster(slice: slice, position: entry.element.position,
+            .map { slot, entry in
+                (entry.offset, ShadowCubes.Caster(slot: slot, position: entry.element.position,
                                                   range: entry.element.range))
             }
     }
 
     /// The most lights any one cluster held last frame — **the number that decides the worst
     /// fragment's cost**, and the one clustering exists to keep small.
-    private(set) var busiestCluster = 0
+    private(set) var maxLightsPerCluster = 0
     private var reportClustersNextFrame = true
     private var reportCubeDrawsNextFrame = true
 
@@ -3336,7 +3344,7 @@ final class SampleGame: GameLoop {
             .copyMemory(from: &frame, byteCount: MemoryLayout<FrameUniforms>.size)
 
         guard let shadowPipeline else { return }
-        var batches = [ShadowMap.Batch(
+        var batches = [ShadowBatch(
             pipeline: shadowPipeline,
             count: visibleDrawableCount,
             mesh: { self.drawables[$0].mesh.mesh },
@@ -3347,7 +3355,7 @@ final class SampleGame: GameLoop {
             bounds: { self.volumes[$0].worldBounds })]
 
         if let skinnedShadowPipeline, let mesh = figureMesh, visibleFigureCount > 0 {
-            batches.append(ShadowMap.Batch(
+            batches.append(ShadowBatch(
                 pipeline: skinnedShadowPipeline,
                 count: visibleFigureCount,
                 mesh: { _ in mesh.mesh },
@@ -3369,14 +3377,14 @@ final class SampleGame: GameLoop {
                 + UInt64(uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot))
             let batchList = rubble.batches
             // The debris is small enough to draw whole into every pass; a game with a wood culls per `pass`.
-            batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, _ in
-                table.setAddress(uniforms, index: ShadowMap.BufferIndex.uniforms)
+            batches.append(ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, _ in
+                table.setAddress(uniforms, index: ShadowBufferIndex.uniforms)
                 for (bufferIndex, vertexBuffer) in box.mesh.vertexBuffers.enumerated() {
                     table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
                 }
                 for batch in batchList {
                     table.setAddress(copies.gpuAddress + UInt64(batch.byteOffset),
-                                     index: ShadowMap.BufferIndex.instances)
+                                     index: ShadowBufferIndex.instances)
                     for submesh in box.mesh.submeshes {
                         encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
                                                       indexCount: submesh.indexCount,
@@ -3407,8 +3415,9 @@ final class SampleGame: GameLoop {
                                            casters: cubeCasters.map(\.caster), batches: batches)
             if reportCubeDrawsNextFrame {
                 reportCubeDrawsNextFrame = false
+                // A batch that encodes itself is one draw per face, culled or not.
                 let unculled = cubeCasters.count * ShadowCubes.faceCount
-                    * batches.reduce(0) { $0 + $1.count }
+                    * batches.reduce(0) { $0 + ($1.objectCount ?? 1) }
                 print("WindageSample: \(cubeCasters.count) point light(s) casting — \(draws) draws "
                       + "against \(unculled) unculled")
             }
@@ -3486,8 +3495,8 @@ final class SampleGame: GameLoop {
             let projection = simd_float4x4(
                 perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
             particleRenderer.draw(particles, into: encoder, frameSlot: frameSlot,
-                                  viewProjection: simd_mul(projection, view.viewMatrix), camera: view,
-                                  matterLight: matterLight)
+                                  viewProjection: simd_mul(projection, view.viewMatrix),
+                                  cameraRight: view.right, cameraUp: view.up, matterLight: matterLight)
         }
     }
 

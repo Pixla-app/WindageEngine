@@ -111,7 +111,7 @@ struct SkeletonPoseTests {
         var pose = SkeletonPose(skeleton: skeleton)
         let clip = try AnimationClipTests.swing(jointPaths: ["root/mid"])
 
-        var still = AnimationPlayhead(clip: clip, skeleton: skeleton)      // t = 0, no rotation
+        let still = AnimationPlayhead(clip: clip, skeleton: skeleton)      // t = 0, no rotation
         var swung = AnimationPlayhead(clip: clip, skeleton: skeleton)
         swung.advance(by: 1)                                               // t = 1, quarter turn
 

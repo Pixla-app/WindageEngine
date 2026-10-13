@@ -71,8 +71,10 @@ struct ShadowMapTests {
     /// reads as the bias having no effect at all.
     @Test("The depth biases are negative, because depth is reversed")
     func biasesAreNegative() {
-        #expect(cascades.constantDepthBias < 0)
-        #expect(cascades.slopeScaledDepthBias < 0)
+        #expect(cascades.rasterBias.constant < 0)
+        #expect(cascades.rasterBias.slopeScale < 0)
+        #expect(ShadowBias.spot.constant < 0 && ShadowBias.spot.slopeScale < 0)
+        #expect(ShadowBias.cube.constant == 0 && ShadowBias.cube.slopeScale < 0)
     }
 
     /// A cascade covering 8× the world per texel needs roughly 8× the bias, and the near cascade is
@@ -89,10 +91,10 @@ struct ShadowMapTests {
     /// scene from nowhere, so they are constants rather than a comment.
     @Test("The buffer indices are distinct and stated")
     func bufferIndicesAreDistinct() {
-        let indices = [ShadowMap.BufferIndex.vertices,
-                       ShadowMap.BufferIndex.uniforms,
-                       ShadowMap.BufferIndex.lightViewProjection,
-                       ShadowMap.BufferIndex.jointPalette]
+        let indices = [ShadowBufferIndex.vertices,
+                       ShadowBufferIndex.uniforms,
+                       ShadowBufferIndex.lightViewProjection,
+                       ShadowBufferIndex.jointPalette]
         #expect(Set(indices).count == indices.count)
     }
 
@@ -111,9 +113,9 @@ struct ShadowMapTests {
 
     @Test("A batch that encodes its own draws has its own index for instances")
     func instancesHaveTheirOwnIndex() {
-        let indices = [ShadowMap.BufferIndex.vertices, ShadowMap.BufferIndex.uniforms,
-                       ShadowMap.BufferIndex.lightViewProjection, ShadowMap.BufferIndex.jointPalette,
-                       ShadowMap.BufferIndex.instances]
+        let indices = [ShadowBufferIndex.vertices, ShadowBufferIndex.uniforms,
+                       ShadowBufferIndex.lightViewProjection, ShadowBufferIndex.jointPalette,
+                       ShadowBufferIndex.instances]
         #expect(Set(indices).count == indices.count)
     }
 }

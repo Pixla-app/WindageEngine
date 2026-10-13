@@ -21,7 +21,9 @@ A second initializer takes `sunDirection:` in place of the two angles. All value
 - **`ground` shouldn't be black.** Surfaces facing down are lit by the ground. A black lower hemisphere is the most common reason an object lit by its environment looks like it's floating in a void.
 - **`sunAngularRadius`** is in radians. The real sun is about 0.00465. A wider disc gives a softer reflection.
 - **`sunPitchDegrees` and `sunYawDegrees`** read and write `sunDirection` as angles, which are easier to picture and adjust than a vector. `ProceduralSky.direction(pitchDegrees:yawDegrees:)` does the same conversion for any code that needs it.
+- **`sunDirection`** is normalized however it is set; a zero vector points straight up.
 - **`radiance(inDirection:)`** returns the radiance arriving from any direction, which doesn't need to be normalized.
+- **`matterLight`** is the light a white speck of dust scatters under this sky — see [particles](particles.html).
 
 ### Radiance is not irradiance {#irradiance}
 
@@ -61,7 +63,7 @@ public init?(device: MTLDevice,
 | `specular` | The sky convolved with the GGX lobe, **one roughness per mip**. Mip 0 is the sky itself, and the last mip is nearly uniform. Sample it at `roughness * Float(specularMipCount - 1)`. |
 | `irradiance` | The sky convolved with a cosine lobe: what a diffuse surface facing each direction receives. Sixteen texels a side is enough, because the result has almost no detail. |
 
-Add `allocations` to your residency set. Building a map is a load-time cost, not a per-frame one: 92 ms in a release build and 2.6 s in a debug build.
+Add `allocations` to your residency set. Building a map is a load-time cost, not a per-frame one: 92 ms in a release build and 2.6 s in a debug build. `EnvironmentMap` is `nonisolated` and `Sendable`, so a game that would rather not spend that on the main actor builds it in a `Task.detached` and hands the map back.
 
 ### Built on the CPU {#cpu}
 
@@ -90,4 +92,4 @@ It takes its sun from the same sky: `level.resolvedSky.sunDirection` for directi
 
 **Divide irradiance by π.** The irradiance cube holds light integrated over the hemisphere, and Lambert's BRDF is `albedo / π`. Skip the division and every surface lit by ambient light is π times too bright.
 
-`ParticleRenderer.matterLight(under:)` also reads the sky, to light dust. See [particles](particles.html).
+The sky's `matterLight` lights dust. See [particles](particles.html).

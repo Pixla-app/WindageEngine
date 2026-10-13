@@ -66,8 +66,8 @@
 <pre class="code-swift">bounds: { Volume(localBounds: mesh.bounds, transform: <span class="k">self</span>.figures[$0].transform)
     .worldBounds.expanded(by: 0.5) }</pre>
 <h2 id="culling-shadow-passes">Culling shadow passes</h2>
-<p>A shadow is the scene drawn again from a light's point of view, so the same test applies per pass. <code>ShadowMap.Batch</code> takes an optional <code>bounds</code> closure — this drawable's world-space box — for the passes that can use it:</p>
-<pre class="code-swift">ShadowMap.Batch(
+<p>A shadow is the scene drawn again from a light's point of view, so the same test applies per pass. A <code>ShadowBatch</code> of objects takes an optional <code>bounds</code> closure — this drawable's world-space box — for the passes that can use it:</p>
+<pre class="code-swift">ShadowBatch(
     pipeline: shadowPipeline,
     count: visibleDrawableCount,
     mesh: { <span class="k">self</span>.drawables[$0].mesh.mesh },
@@ -77,14 +77,19 @@
 <div class="table"><table><thead><tr><th>Pass</th><th>What it culls</th></tr></thead><tbody><tr><td><code>ShadowCubes</code> (point lights)</td><td>Casters outside the light's range skip all six faces; casters outside a face's <code>Frustum</code> skip that face.</td></tr><tr><td><code>ShadowMap</code> (sun cascades)</td><td>Ordinary batches are drawn whole: a cascade covers what the camera covers, so there is little to remove.</td></tr></tbody></table></div>
 <p>See <a href="shadows.html">shadows</a> and <a href="lights.html">lights</a>.</p>
 <h3 id="a-batch-that-draws-itself-culls-itself">A batch that draws itself culls itself</h3>
-<p>A batch built with <code>ShadowMap.Batch(pipeline:encode:)</code> — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:</p>
-<pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> Pass {
-    <span class="k">public</span> <span class="k">let</span> index: Int                       <span class="c">// cascade, atlas tile, or cube face (slice × 6 + face)</span>
-    <span class="k">public</span> <span class="k">let</span> viewProjection: simd_float4x4  <span class="c">// world to this pass's light clip space</span>
+<p>A batch built with <code>ShadowBatch(pipeline:encode:)</code> — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:</p>
+<pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> ShadowPass {
+    <span class="k">public</span> <span class="k">enum</span> Target {
+        <span class="k">case</span> cascade(Int)                       <span class="c">// a sun cascade, nearest first</span>
+        <span class="k">case</span> atlasSlot(Int)                     <span class="c">// a spot light's tile</span>
+        <span class="k">case</span> cubeFace(slot: Int, face: Int)     <span class="c">// one face of a lamp's cube</span>
+    }
+    <span class="k">public</span> <span class="k">let</span> target: Target
+    <span class="k">public</span> <span class="k">let</span> viewProjection: simd_float4x4    <span class="c">// world to this pass's light clip space</span>
 }</pre>
 <p>Build a <code>Frustum</code> from <code>pass.viewProjection</code> and draw only what it can see:</p>
 <pre class="code-swift"><span class="c">// Your game</span>
-ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span>
+ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span>
     <span class="k">let</span> frustum = Frustum(viewProjection: pass.viewProjection)
     <span class="c">// keep the copies whose world bounds frustum.mayIntersect(_:) accepts, then draw them</span>
 }</pre>

@@ -76,8 +76,8 @@ struct ClusterUniforms {
     uint  tilesX;
     uint  tilesY;
     uint  slices;
-    float depthScale;    // slice = log(viewDepth) * depthScale + depthBias
-    float depthBias;
+    float sliceScale;    // slice = log(viewDepth) * sliceScale + sliceBias
+    float sliceBias;
     float padding0;
     float padding1;
     float padding2;
@@ -248,7 +248,7 @@ vertex float4 sampleShadowVertex(VertexIn in [[stage_in]],
 }
 
 /// The shadow pass for instanced copies — the debris. Each copy's transform from the buffer the engine's
-/// `ShadowMap.BufferIndex.instances` names, on top of the object's own, exactly as the main pass draws it.
+/// `ShadowBufferIndex.instances` names, on top of the object's own, exactly as the main pass draws it.
 vertex float4 sampleInstancedShadowVertex(VertexIn in [[stage_in]],
                                           uint instance [[instance_id]],
                                           constant Uniforms &uniforms [[buffer(1)]],
@@ -575,8 +575,8 @@ fragment float4 sampleFragment(VertexOut in [[stage_in]],
                            frame.clusters.tilesX - 1);
     const uint tileY = min(uint(in.position.y / frame.viewportSize.y * float(frame.clusters.tilesY)),
                            frame.clusters.tilesY - 1);
-    const float rawSlice = log(max(viewDepth, 1e-4)) * frame.clusters.depthScale
-                         + frame.clusters.depthBias;
+    const float rawSlice = log(max(viewDepth, 1e-4)) * frame.clusters.sliceScale
+                         + frame.clusters.sliceBias;
     const uint slice = uint(clamp(rawSlice, 0.0, float(frame.clusters.slices - 1)));
     const uint cluster = (slice * frame.clusters.tilesY + tileY) * frame.clusters.tilesX + tileX;
 

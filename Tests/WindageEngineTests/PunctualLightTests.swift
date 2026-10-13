@@ -318,3 +318,65 @@ struct SpotLightTests {
         #expect(simd_distance(read.color, light.color) < 1e-5)
     }
 }
+
+/// **A cone's limits hold however it is set**, not only in `init`. Set past them, an inner angle wider
+/// than the outer turned the angular scale negative and lit everything *except* where the lamp pointed.
+struct ConeLimitTests {
+
+    private func cone() -> PunctualLight.Cone {
+        PunctualLight.Cone(direction: SIMD3(0, -1, 0), innerAngle: 0.3, outerAngle: 0.5)
+    }
+
+    @Test("An inner angle set wider than the outer is held to the outer")
+    func innerHeldToOuter() {
+        var cone = cone()
+        cone.innerAngle = 2
+        #expect(cone.innerAngle == cone.outerAngle)
+        #expect(cone.angleScale > 0)
+    }
+
+    @Test("Narrowing the outer angle past the inner narrows the inner with it")
+    func outerNarrowsInner() {
+        var cone = cone()
+        cone.outerAngle = 0.1
+        #expect(cone.outerAngle == 0.1)
+        #expect(cone.innerAngle == 0.1)
+    }
+
+    @Test("Angles set out of range are clamped as init clamps them")
+    func anglesClampedOnSet() {
+        var cone = cone()
+        cone.outerAngle = 10
+        #expect(cone.outerAngle == .pi)
+        cone.outerAngle = -1
+        #expect(cone.outerAngle == 1e-4)
+        cone.innerAngle = -1
+        #expect(cone.innerAngle == 0)
+    }
+
+    @Test("A direction set at any length is normalized, and a zero one points down")
+    func directionNormalizedOnSet() {
+        var cone = cone()
+        cone.direction = SIMD3(0, 0, 5)
+        #expect(cone.direction == SIMD3(0, 0, 1))
+        cone.direction = .zero
+        #expect(cone.direction == SIMD3(0, -1, 0))
+    }
+
+    @Test("Set within its limits, a cone is the one init would make")
+    func setMatchesInit() {
+        var cone = cone()
+        cone.outerAngle = 0.7
+        cone.innerAngle = 0.4
+        cone.direction = SIMD3(1, -1, 0)
+        #expect(cone == PunctualLight.Cone(direction: SIMD3(1, -1, 0), innerAngle: 0.4, outerAngle: 0.7))
+    }
+
+    @Test("A light set set the same way is equal")
+    func lightSetsCompare() {
+        let lamp = PunctualLight(position: .zero, color: SIMD3(repeating: 4), range: 6)
+        #expect(LightSet(lights: [lamp], budget: 2) == LightSet(lights: [lamp], budget: 2))
+        #expect(LightSet(lights: [lamp], budget: 2) != LightSet(lights: [lamp], budget: 3))
+        #expect(LightSet(lights: [lamp]).negligibleInfluence == 0.02)
+    }
+}

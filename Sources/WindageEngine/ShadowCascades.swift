@@ -20,7 +20,11 @@ import simd
 /// spend 99% of every shadow texel on empty ground.
 ///
 /// So this is a value you configure, and a game's own numbers live with the game.
-public nonisolated struct ShadowCascades {
+public nonisolated struct ShadowCascades: Sendable, Equatable {
+
+    /// The most cascades a set may have: the shader interface — ``splitVector`` and the rest — has four
+    /// slots.
+    public static let maximumCount = 4
 
     /// View-space distance at which each cascade stops applying, in world units.
     ///
@@ -65,14 +69,34 @@ public nonisolated struct ShadowCascades {
     /// ``normalizedDepthBias(forCascade:)`` for what the alternative cost.
     public let biasTexels: Float
 
+    /// The rasterizer's depth bias while recording, before ``biasScales`` scales it per cascade.
+    ///
+    /// Kept here beside ``biasScales`` rather than passed at the call site: the numbers are one tuning,
+    /// and a pass that scaled one of them independently would be tuned against nothing.
+    public let rasterBias: ShadowBias
+
+    /// - Precondition: one to ``maximumCount`` splits, each positive, finite and further than the one
+    ///   before; a positive resolution and light depth range. Past four, the fifth cascade was
+    ///   recorded and never read, or stopped the program reading its bias; out of order, a cascade
+    ///   covered a band no fragment chooses.
     public init(splits: [Float],
                 resolution: Int = 2048,
                 lightDepthRange: Float = 1500,
                 blendFraction: Float = 0.12,
                 extentFraction: Float = 0.62,
                 focusFraction: Float = 0.45,
-                biasTexels: Float = 1.5) {
+                biasTexels: Float = 1.5,
+                rasterBias: ShadowBias = .cascades) {
         precondition(!splits.isEmpty, "a cascade set needs at least one split")
+        precondition(splits.count <= ShadowCascades.maximumCount,
+                     "a cascade set has at most \(ShadowCascades.maximumCount) splits, given \(splits.count)")
+        precondition(splits.allSatisfy { $0.isFinite && $0 > 0 },
+                     "cascade splits must be positive and finite: \(splits)")
+        precondition(zip(splits, splits.dropFirst()).allSatisfy { $0 < $1 },
+                     "cascade splits must increase, nearest first: \(splits)")
+        precondition(resolution > 0, "a cascade's resolution must be positive, given \(resolution)")
+        precondition(lightDepthRange.isFinite && lightDepthRange > 0,
+                     "the light depth range must be positive, given \(lightDepthRange)")
         self.splits = splits
         self.resolution = resolution
         self.lightDepthRange = lightDepthRange
@@ -80,6 +104,7 @@ public nonisolated struct ShadowCascades {
         self.extentFraction = extentFraction
         self.focusFraction = focusFraction
         self.biasTexels = biasTexels
+        self.rasterBias = rasterBias
     }
 
     public var count: Int { splits.count }
@@ -122,28 +147,12 @@ public nonisolated struct ShadowCascades {
 
     /// The four-cascade shader interface. **Fewer than four cascades repeats the last entry**, which
     /// is not a fudge: the shader picks a cascade by comparing view depth against these distances, so
-    /// a repeated split is a band of zero width and is never chosen. More than four is truncated —
+    /// a repeated split is a band of zero width and is never chosen. More than four cannot be made —
     /// the shader has four slots.
     private func vector(_ value: (Int) -> Float) -> SIMD4<Float> {
         SIMD4(value(min(0, count - 1)), value(min(1, count - 1)),
               value(min(2, count - 1)), value(min(3, count - 1)))
     }
-
-    /// The constant part of the rasterizer's depth bias, before the per-cascade scale.
-    ///
-    /// **Negative because depth is reversed.** Under reversed-Z, pushing a recorded occluder *away*
-    /// from the light means a smaller value, so the sign is the opposite of every textbook. Getting
-    /// it wrong doubles the acne instead of removing it, which reads as the bias having no effect.
-    ///
-    /// Kept here beside ``biasScales`` rather than passed at the call site: the three numbers are one
-    /// tuning, and a pass that scaled one of them independently would be tuned against nothing.
-    public var constantDepthBias: Float { -0.0006 }
-
-    /// The slope-scaled part. Also negative, for the same reason.
-    ///
-    /// This is the one that matters: a surface nearly edge-on to the light spans many depth values
-    /// within a single texel, and needs room proportional to that slope rather than a flat amount.
-    public var slopeScaledDepthBias: Float { -1.8 }
 
     /// Depth bias multiplier per cascade, relative to the near one.
     ///

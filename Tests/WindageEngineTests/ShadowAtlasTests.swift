@@ -12,9 +12,9 @@ import simd
 @MainActor
 struct ShadowAtlasTests {
 
-    private func atlas(size: Int = 2048, tilesPerSide: Int = 4) -> ShadowAtlas? {
+    private func atlas(resolution: Int = 2048, tilesPerSide: Int = 4) -> ShadowAtlas? {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
-        return ShadowAtlas(device: device, size: size, tilesPerSide: tilesPerSide)
+        return ShadowAtlas(device: device, resolution: resolution, tilesPerSide: tilesPerSide)
     }
 
     private func spot(pointing direction: SIMD3<Float>,
@@ -91,15 +91,15 @@ struct ShadowAtlasTests {
 
     @Test("Tiles partition the atlas exactly")
     func tilesPartitionTheAtlas() {
-        guard let atlas = atlas(size: 2048, tilesPerSide: 4) else { return }
-        #expect(atlas.tileCount == 16)
+        guard let atlas = atlas(resolution: 2048, tilesPerSide: 4) else { return }
+        #expect(atlas.slotCount == 16)
 
         var covered = Set<SIMD2<Int>>()
-        for index in 0..<atlas.tileCount {
-            let tile = atlas.tile(index)
-            #expect(tile.size == 512)
-            #expect(tile.origin.x >= 0 && tile.origin.x + tile.size <= atlas.size)
-            #expect(tile.origin.y >= 0 && tile.origin.y + tile.size <= atlas.size)
+        for index in 0..<atlas.slotCount {
+            let tile = atlas.tile(forSlot: index)
+            #expect(tile.resolution == 512)
+            #expect(tile.origin.x >= 0 && tile.origin.x + tile.resolution <= atlas.resolution)
+            #expect(tile.origin.y >= 0 && tile.origin.y + tile.resolution <= atlas.resolution)
             #expect(covered.insert(tile.origin).inserted, "two tiles share an origin")
         }
         #expect(covered.count == 16)
@@ -109,31 +109,37 @@ struct ShadowAtlasTests {
     /// tile — **one light reading another's map is a shadow from the wrong room**.
     @Test("A tile's UV transform maps the unit square onto that tile")
     func uvTransformStaysInsideTheTile() {
-        guard let atlas = atlas(size: 1024, tilesPerSide: 4) else { return }
-        for index in 0..<atlas.tileCount {
-            let tile = atlas.tile(index)
-            let (offset, scale) = tile.uvTransform(atlasSize: atlas.size)
+        guard let atlas = atlas(resolution: 1024, tilesPerSide: 4) else { return }
+        for index in 0..<atlas.slotCount {
+            let tile = atlas.tile(forSlot: index)
+            let (offset, scale) = tile.uvTransform(atlasResolution: atlas.resolution)
             for corner in [SIMD2<Float>(0, 0), SIMD2(1, 0), SIMD2(0, 1), SIMD2(1, 1)] {
                 let uv = offset + corner * scale
                 #expect(uv.x >= -1e-6 && uv.x <= 1 + 1e-6)
                 #expect(uv.y >= -1e-6 && uv.y <= 1 + 1e-6)
             }
             // The tile's own corners, exactly.
-            #expect(abs(offset.x - Float(tile.origin.x) / Float(atlas.size)) < 1e-6)
-            #expect(abs(scale - Float(tile.size) / Float(atlas.size)) < 1e-6)
+            #expect(abs(offset.x - Float(tile.origin.x) / Float(atlas.resolution)) < 1e-6)
+            #expect(abs(scale - Float(tile.resolution) / Float(atlas.resolution)) < 1e-6)
         }
     }
 
-    @Test("An index outside the atlas is clamped rather than crashing")
-    func tileIndexClamps() {
-        guard let atlas = atlas() else { return }
-        #expect(atlas.tile(-5) == atlas.tile(0))
-        #expect(atlas.tile(9999) == atlas.tile(atlas.tileCount - 1))
+    /// **Clamped, it was another light's tile** — a shadow drawn in the wrong room, with nothing to say
+    /// why. A slot outside the atlas is a mistake in the caller, and stops there.
+    @Test("A slot outside the atlas stops rather than borrowing another light's tile")
+    func tileSlotOutsideStops() async {
+        await #expect(processExitsWith: .failure) {
+            await MainActor.run {
+                guard let device = MTLCreateSystemDefaultDevice(),
+                      let atlas = ShadowAtlas(device: device) else { fatalError("no device: nothing to test") }
+                _ = atlas.tile(forSlot: atlas.slotCount)
+            }
+        }
     }
 
     @Test("The atlas survives its own render pass and is readable afterwards")
     func textureIsShaped() {
-        guard let atlas = atlas(size: 512, tilesPerSide: 2) else { return }
+        guard let atlas = atlas(resolution: 512, tilesPerSide: 2) else { return }
         #expect(atlas.texture.pixelFormat == ShadowMap.depthPixelFormat)
         #expect(atlas.texture.width == 512 && atlas.texture.height == 512)
         #expect(atlas.texture.storageMode == .private)

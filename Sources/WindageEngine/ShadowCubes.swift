@@ -43,19 +43,21 @@ import simd
 /// costs a draw and a false negative deletes a shadow.
 public final class ShadowCubes {
 
-    /// Always six. Named rather than written as a literal because `slice = light * 6 + face` appears
+    /// Always six. Named rather than written as a literal because `slice = slot * 6 + face` appears
     /// in three places and a `6` in the wrong one addresses another light's cube.
     public nonisolated static let faceCount = 6
 
     public let texture: MTLTexture
     /// Edge length of one face, in texels.
-    public let size: Int
-    /// How many lights may cast at once.
-    public let lightCount: Int
+    public let resolution: Int
+    /// How many lights may cast at once — one cube each, addressed by ``Caster/slot``.
+    public let slotCount: Int
     /// Where each face's projection starts. **Small on purpose**: the depth stored is `near / distance`,
     /// so the near plane is the whole of the precision budget and a lamp is usually inside the
     /// geometry it lights.
     public let nearPlane: Float
+    /// The rasterizer's depth bias while recording. A game tunes it for its lamps.
+    public var rasterBias: ShadowBias
 
     private let depthState: MTLDepthStencilState
     private let argumentTable: MTL4ArgumentTable
@@ -63,24 +65,27 @@ public final class ShadowCubes {
     private static let matrixStride = 256
 
     /// - Parameters:
-    ///   - size: one face's edge, in texels. A cube is six of these, so the memory is `6 × size² ×
-    ///     lightCount × 4` bytes — 12.6 MB at the defaults.
-    ///   - lightCount: how many lamps may cast at once. **Two by default**, which is deliberately
+    ///   - resolution: one face's edge, in texels. A cube is six of these, so the memory is
+    ///     `6 × resolution² × slotCount × 4` bytes — 12.6 MB at the defaults.
+    ///   - slotCount: how many lamps may cast at once. **Two by default**, which is deliberately
     ///     mean: six passes each is the real cost, and a level that wants more should be saying so
     ///     rather than discovering it.
-    public init?(device: MTLDevice, size: Int = 512, lightCount: Int = 2, nearPlane: Float = 0.05) {
-        self.size = max(16, size)
-        self.lightCount = max(1, lightCount)
+    ///   - rasterBias: the depth bias while recording.
+    public init?(device: MTLDevice, resolution: Int = 512, slotCount: Int = 2, nearPlane: Float = 0.05,
+                 rasterBias: ShadowBias = .cube) {
+        self.resolution = max(16, resolution)
+        self.slotCount = max(1, slotCount)
         self.nearPlane = max(nearPlane, 1e-4)
+        self.rasterBias = rasterBias
 
         let descriptor = MTLTextureDescriptor()
         descriptor.textureType = .typeCubeArray
         descriptor.pixelFormat = ShadowMap.depthPixelFormat
-        descriptor.width = self.size
-        descriptor.height = self.size
+        descriptor.width = self.resolution
+        descriptor.height = self.resolution
         // **Cubes, not faces.** `arrayLength` counts whole cubes; the six faces are implied by the
-        // texture type, and the slice a render pass writes is `light * 6 + face`.
-        descriptor.arrayLength = self.lightCount
+        // texture type, and the slice a render pass writes is `slot * 6 + face`.
+        descriptor.arrayLength = self.slotCount
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
@@ -95,10 +100,10 @@ public final class ShadowCubes {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 5      // matching ShadowMap.BufferIndex, instances included
+        tableDescriptor.maxBufferBindCount = 5      // matching ShadowBufferIndex, instances included
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
               let matrices = device.makeBuffer(
-                length: ShadowCubes.matrixStride * ShadowCubes.faceCount * self.lightCount
+                length: ShadowCubes.matrixStride * ShadowCubes.faceCount * self.slotCount
                       * FrameRenderer.maxFramesInFlight,
                 options: .storageModeShared) else { return nil }
         matrices.label = "Shadow Cube Matrices"
@@ -106,7 +111,7 @@ public final class ShadowCubes {
         self.matrixBuffer = matrices
     }
 
-    public var allocations: [MTLResource] { [texture, matrixBuffer] }
+    public var allocations: [any MTLAllocation] { [texture, matrixBuffer] }
 
     // MARK: - The cube convention
 
@@ -122,7 +127,7 @@ public final class ShadowCubes {
     /// sampled from the inside, so its faces are mirrored relative to a camera looking out. The same
     /// relation holds in ``ShadowAtlas/viewProjection(for:nearPlane:)`` and in the cascades, so the
     /// winding — and therefore the front-face cull — is the same in all three.
-    public nonisolated static func faceBasis(_ face: Int)
+    nonisolated static func faceBasis(_ face: Int)
         -> (right: SIMD3<Float>, up: SIMD3<Float>, forward: SIMD3<Float>) {
         switch face {
         case 0:  return (SIMD3( 0, 0, -1), SIMD3(0, 1,  0), SIMD3( 1,  0,  0))  // +X
@@ -164,7 +169,7 @@ public final class ShadowCubes {
     /// that reads as "the bias is off".
     ///
     /// Returns `nil` for a zero direction, which has no face.
-    public nonisolated static func lookup(direction d: SIMD3<Float>) -> (face: Int, uv: SIMD2<Float>)? {
+    nonisolated static func lookup(direction d: SIMD3<Float>) -> (face: Int, uv: SIMD2<Float>)? {
         let a = abs(d)
         let face: Int, sc: Float, tc: Float, ma: Float
         if a.x >= a.y && a.x >= a.z {
@@ -188,22 +193,24 @@ public final class ShadowCubes {
     /// is a 90° frustum, so what its projection divides by is the offset's largest component — the
     /// corner of a face is `√3` further away than its center and stores a *smaller* depth for it.
     /// Comparing against a euclidean distance instead darkens every face towards its corners.
-    public nonisolated static func normalizedDepth(majorAxis: Float, nearPlane: Float) -> Float {
+    nonisolated static func normalizedDepth(majorAxis: Float, nearPlane: Float) -> Float {
         nearPlane / max(majorAxis, 1e-6)
     }
 
     // MARK: - The pass
 
-    /// One light's cube: which slice, where it is, and how far it reaches.
-    public struct Caster {
-        public let slice: Int
+    /// One light's cube: which slot, where it is, and how far it reaches.
+    public nonisolated struct Caster: Sendable, Equatable {
+        /// Which cube, in `0..<slotCount` — the cube-array index a shader samples. A caster outside that
+        /// is skipped.
+        public let slot: Int
         public let position: SIMD3<Float>
         /// Used to skip casters the light cannot reach at all. **Not a far plane** — the projection
         /// has none — just a cull.
         public let range: Float
 
-        public init(slice: Int, position: SIMD3<Float>, range: Float) {
-            self.slice = slice
+        public init(slot: Int, position: SIMD3<Float>, range: Float) {
+            self.slot = slot
             self.position = position
             self.range = range
         }
@@ -221,24 +228,24 @@ public final class ShadowCubes {
     public func encode(into commandBuffer: MTL4CommandBuffer,
                        frameSlot: Int,
                        casters: [Caster],
-                       batches: [ShadowMap.Batch],
-                       depthBias: Float = 0,
-                       slopeScale: Float = -2.5) -> Int {
+                       batches: [ShadowBatch]) -> Int {
         var draws = 0
-        let base = frameSlot * ShadowCubes.matrixStride * ShadowCubes.faceCount * lightCount
+        let base = frameSlot * ShadowCubes.matrixStride * ShadowCubes.faceCount * slotCount
 
-        for caster in casters where caster.slice >= 0 && caster.slice < lightCount {
+        for caster in casters where (0..<slotCount).contains(caster.slot) {
             // **Which casters this lamp can reach at all**, decided once for the whole cube rather
             // than six times. Tested against the nearest point of each box, because a long wall whose
             // centre is out of range still has an end inside it.
             let reachable = batches.map { batch -> [Int] in
-                guard let bounds = batch.bounds else { return Array(0..<batch.count) }
-                return (0..<batch.count).filter {
+                guard case .objects(let objects) = batch.kind else { return [] }
+                guard let bounds = objects.bounds else { return Array(0..<objects.count) }
+                return (0..<objects.count).filter {
                     simd_distance(bounds($0).closestPoint(to: caster.position), caster.position)
                         <= caster.range
                 }
             }
-            if reachable.allSatisfy(\.isEmpty) { continue }
+            let drawsItself = batches.contains { if case .encodes = $0.kind { true } else { false } }
+            if reachable.allSatisfy(\.isEmpty) && !drawsItself { continue }
 
             for face in 0..<ShadowCubes.faceCount {
                 let matrix = ShadowCubes.viewProjection(face: face, position: caster.position,
@@ -250,7 +257,7 @@ public final class ShadowCubes {
                 attachment.texture = texture
                 // **The slice is the whole addressing scheme.** A cube array is flat underneath: six
                 // consecutive slices per light, face-major.
-                attachment.slice = caster.slice * ShadowCubes.faceCount + face
+                attachment.slice = caster.slot * ShadowCubes.faceCount + face
                 attachment.loadAction = .clear
                 attachment.clearDepth = FrameRenderer.reversedZClearDepth
                 attachment.storeAction = .store
@@ -258,62 +265,42 @@ public final class ShadowCubes {
 
                 guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
                 else { continue }
-                encoder.label = "Shadow Cube \(caster.slice) Face \(face)"
+                encoder.label = "Shadow Cube \(caster.slot) Face \(face)"
 
                 // Front-face culling, as in the cascades and the atlas: recording the *back* of an
                 // occluder removes most acne before any bias.
                 encoder.setCullMode(.front)
                 encoder.setFrontFacing(.counterClockwise)
                 encoder.setDepthStencilState(depthState)
-                encoder.setDepthBias(depthBias, slopeScale: slopeScale, clamp: 0)
+                encoder.setDepthBias(rasterBias.constant, slopeScale: rasterBias.slopeScale, clamp: 0)
                 encoder.setArgumentTable(argumentTable, stages: .vertex)
 
                 var value = matrix
                 let offset = base
-                    + (caster.slice * ShadowCubes.faceCount + face) * ShadowCubes.matrixStride
+                    + (caster.slot * ShadowCubes.faceCount + face) * ShadowCubes.matrixStride
                 matrixBuffer.contents().advanced(by: offset)
                     .copyMemory(from: &value, byteCount: MemoryLayout<simd_float4x4>.size)
                 argumentTable.setAddress(matrixBuffer.gpuAddress + UInt64(offset),
-                                         index: ShadowMap.BufferIndex.lightViewProjection)
+                                         index: ShadowBufferIndex.lightViewProjection)
 
                 for (batchIndex, batch) in batches.enumerated() {
-                    // A batch that draws itself cannot be culled per object here: it is drawn whole,
-                    // which costs draws rather than deleting shadows — `ShadowMap.Batch.encode`.
-                    if let encode = batch.encode {
+                    switch batch.kind {
+                    case .encodes(let encode):
+                        // A batch that draws itself cannot be culled per object here: it is drawn
+                        // whole, which costs draws rather than deleting shadows.
                         encoder.setRenderPipelineState(batch.pipeline)
                         draws += 1
                         encode(encoder, argumentTable,
-                               ShadowMap.Pass(index: caster.slice * ShadowCubes.faceCount + face, viewProjection: matrix))
-                        continue
-                    }
-                    var bound = false
-                    for index in reachable[batchIndex] {
-                        // A face sees a sixth of the sphere. **Skipping the other five sixths is what
-                        // stops six passes costing six times one.**
-                        if let bounds = batch.bounds, !frustum.mayIntersect(bounds(index)) { continue }
-                        if !bound { encoder.setRenderPipelineState(batch.pipeline); bound = true }
-                        draws += 1
-
-                        argumentTable.setAddress(batch.uniformAddress(index),
-                                                 index: ShadowMap.BufferIndex.uniforms)
-                        if let joints = batch.jointPaletteAddress {
-                            argumentTable.setAddress(joints(index),
-                                                     index: ShadowMap.BufferIndex.jointPalette)
-                        }
-                        let mesh = batch.mesh(index)
-                        for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
-                            argumentTable.setAddress(
-                                vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset),
-                                index: bufferIndex)
-                        }
-                        for submesh in mesh.submeshes {
-                            encoder.drawIndexedPrimitives(
-                                primitiveType: submesh.primitiveType,
-                                indexCount: submesh.indexCount,
-                                indexType: submesh.indexType,
-                                indexBuffer: submesh.indexBuffer.buffer.gpuAddress
-                                    + UInt64(submesh.indexBuffer.offset),
-                                indexBufferLength: submesh.indexBuffer.length)
+                               ShadowPass(target: .cubeFace(slot: caster.slot, face: face), viewProjection: matrix))
+                    case .objects(let objects):
+                        var bound = false
+                        for index in reachable[batchIndex] {
+                            // A face sees a sixth of the sphere. **Skipping the other five sixths is
+                            // what stops six passes costing six times one.**
+                            if let bounds = objects.bounds, !frustum.mayIntersect(bounds(index)) { continue }
+                            if !bound { encoder.setRenderPipelineState(batch.pipeline); bound = true }
+                            draws += 1
+                            ShadowBatch.drawObject(index, of: objects, encoder: encoder, table: argumentTable)
                         }
                     }
                 }

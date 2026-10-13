@@ -33,7 +33,14 @@ import simd
 /// The trade is real and it is stated: this prefilters a **function**, not a photograph. An engine
 /// that wants to prefilter a captured HDR panorama on the GPU will want the compute version, and the
 /// maths here is what it would be written against.
-public final class EnvironmentMap {
+///
+/// ### Built anywhere
+///
+/// **`nonisolated` and `Sendable`**, so a game that would rather not spend the build on the main actor
+/// — about two million evaluations — makes it on a worker (`Task.detached`) and hands the finished map
+/// over. Unchecked, because Metal does not mark its textures `Sendable`: every field is a `let`, and
+/// the textures are written only inside `init`, before anything else can hold them.
+public nonisolated final class EnvironmentMap: @unchecked Sendable {
 
     /// The environment convolved with the GGX lobe, roughness increasing with mip level.
     public let specular: MTLTexture
@@ -44,7 +51,7 @@ public final class EnvironmentMap {
     /// Sample ``specular`` at `roughness * Float(specularMipCount - 1)`.
     public let specularMipCount: Int
 
-    public var allocations: [MTLResource] { [specular, irradiance] }
+    public var allocations: [any MTLAllocation] { [specular, irradiance] }
 
     /// - Parameters:
     ///   - size: edge length of the specular cube's base mip. 128 is plenty for a sky — the detail a
@@ -110,10 +117,11 @@ public final class EnvironmentMap {
     private static func fill(_ texture: MTLTexture,
                              mip: Int,
                              size: Int,
-                             radiance: @escaping (SIMD3<Float>) -> SIMD3<Float>) {
+                             radiance: @escaping @Sendable (SIMD3<Float>) -> SIMD3<Float>) {
         let bytesPerPixel = MemoryLayout<Float16>.size * 4
         let bytesPerRow = size * bytesPerPixel
-        let faces = UnsafeMutableBufferPointer<Float16>.allocate(capacity: size * size * 4 * 6)
+        // Each face writes only its own sixth, so the workers never touch the same element.
+        nonisolated(unsafe) let faces = UnsafeMutableBufferPointer<Float16>.allocate(capacity: size * size * 4 * 6)
         defer { faces.deallocate() }
 
         DispatchQueue.concurrentPerform(iterations: 6) { face in

@@ -91,16 +91,16 @@
 <div class="note"><p><strong>Every piece is evenly sized</strong>, so the shader can turn normals with the copy's own rotation. A copy squashed along one axis would need its inverse transpose, per copy.</p></div>
 <h2 id="shadows-for-instanced-copies">Shadows for instanced copies</h2>
 <p><code>ShadowMap</code> normally draws object by object. Copies are not objects, so they go in a batch that <strong>encodes its own draws</strong>:</p>
-<pre class="code-swift">ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span> … }</pre>
-<p>The engine binds the pipeline and the light matrix, then calls the closure once per sun cascade — and once per atlas tile and cube face for lamp shadows. Your closure binds what its vertex function reads and draws. The copies go at <code>ShadowMap.BufferIndex.instances</code> (4):</p>
-<pre class="code-swift">batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, _ <span class="k">in</span>
-    table.setAddress(uniforms, index: ShadowMap.BufferIndex.uniforms)
+<pre class="code-swift">ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span> … }</pre>
+<p>The engine binds the pipeline and the light matrix, then calls the closure once per sun cascade — and once per atlas tile and cube face for lamp shadows. Your closure binds what its vertex function reads and draws. The copies go at <code>ShadowBufferIndex.instances</code> (4):</p>
+<pre class="code-swift">batches.append(ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, _ <span class="k">in</span>
+    table.setAddress(uniforms, index: ShadowBufferIndex.uniforms)
     <span class="k">for</span> (bufferIndex, vertexBuffer) <span class="k">in</span> box.mesh.vertexBuffers.enumerated() {
         table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
     }
     <span class="k">for</span> batch <span class="k">in</span> batchList {
         table.setAddress(copies.gpuAddress + UInt64(batch.byteOffset),
-                         index: ShadowMap.BufferIndex.instances)
+                         index: ShadowBufferIndex.instances)
         <span class="c">// draw each submesh with instanceCount: batch.count</span>
     }
 })</pre>
@@ -113,7 +113,7 @@
 {
     <span class="k">return</span> lightViewProjection * (copies[instance] * uniforms.model * float4(<span class="k">in</span>.position, 1.0));
 }</pre>
-<p>The engine cannot cull a self-drawing batch per object, so it hands you a <code>ShadowMap.Pass</code> with the pass's <code>viewProjection</code>. The sample's debris is small enough to ignore it; a wood should build a <code>Frustum</code> from it and draw only the copies that pass can see — see <a href="culling.html">culling</a>. See <a href="shadows.html">shadows</a> for the rest of the pass.</p>
+<p>The engine cannot cull a self-drawing batch per object, so it hands you a <code>ShadowPass</code> with the pass's <code>target</code> — which cascade, tile or cube face — and its <code>viewProjection</code>. The sample's debris is small enough to ignore it; a wood should build a <code>Frustum</code> from it and draw only the copies that pass can see — see <a href="culling.html">culling</a>. See <a href="shadows.html">shadows</a> for the rest of the pass.</p>
 <h2 id="what-it-does-not-do">What it does not do</h2>
 <ul><li><strong>Pick detail by distance.</strong> That is <code>MeshDetail</code> — see <a href="level-of-detail.html">level-of-detail</a>. The sample's scenes are too small to need it.</li><li><strong>Cull for you.</strong> Which copies go into a frame is your game's choice.</li><li><strong>Own the vertex function.</strong> The contract is the buffer layout; the shader is yours.</li></ul>
   </main>

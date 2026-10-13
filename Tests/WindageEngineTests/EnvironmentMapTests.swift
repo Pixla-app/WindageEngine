@@ -259,3 +259,47 @@ struct EnvironmentMapTests {
         #expect(environment.allocations.count == 2)
     }
 }
+
+/// **The sun's direction stays normalized however it is set.** Set by hand at any other length, every
+/// shader dot product with it was scaled by that length and the pitch read back was wrong.
+struct ProceduralSkyDirectionTests {
+
+    @Test("A sun direction set at any length is normalized")
+    func sunDirectionNormalizedOnSet() {
+        var sky = ProceduralSky()
+        sky.sunDirection = SIMD3(0, 3, 4)
+        #expect(abs(simd_length(sky.sunDirection) - 1) < 1e-6)
+        #expect(abs(sky.sunDirection.y - 0.6) < 1e-6 && abs(sky.sunDirection.z - 0.8) < 1e-6)
+    }
+
+    @Test("A zero sun direction points straight up rather than becoming NaN")
+    func zeroSunPointsUp() {
+        var sky = ProceduralSky()
+        sky.sunDirection = .zero
+        #expect(sky.sunDirection == SIMD3(0, 1, 0))
+        #expect(ProceduralSky(sunDirection: .zero).sunDirection == SIMD3(0, 1, 0))
+    }
+
+    @Test("Setting the sun by its angles stores the direction they give, unchanged")
+    func anglesStoreTheirDirection() {
+        var sky = ProceduralSky()
+        sky.sunPitchDegrees = 34
+        sky.sunYawDegrees = 295
+        let expected = ProceduralSky.direction(pitchDegrees: 34, yawDegrees: 295)
+        #expect(abs(sky.sunPitchDegrees - 34) < 1e-3)
+        #expect(simd_distance(sky.sunDirection, expected) < 1e-6)
+    }
+}
+
+/// **`nonisolated` and `Sendable`, so the build can leave the main actor.**
+struct EnvironmentMapIsolationTests {
+
+    @Test("An environment map can be built on a worker and handed back")
+    func buildsOffTheMainActor() async {
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let map = await Task.detached {
+            EnvironmentMap(device: device, sky: ProceduralSky(), size: 16, irradianceSize: 4)
+        }.value
+        #expect(map?.specular.width == 16)
+    }
+}

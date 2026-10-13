@@ -69,10 +69,10 @@ bounds: { Volume(localBounds: mesh.bounds, transform: self.figures[$0].transform
 
 ## Culling shadow passes
 
-A shadow is the scene drawn again from a light's point of view, so the same test applies per pass. `ShadowMap.Batch` takes an optional `bounds` closure — this drawable's world-space box — for the passes that can use it:
+A shadow is the scene drawn again from a light's point of view, so the same test applies per pass. A `ShadowBatch` of objects takes an optional `bounds` closure — this drawable's world-space box — for the passes that can use it:
 
 ```swift
-ShadowMap.Batch(
+ShadowBatch(
     pipeline: shadowPipeline,
     count: visibleDrawableCount,
     mesh: { self.drawables[$0].mesh.mesh },
@@ -91,12 +91,17 @@ See [shadows](shadows.html) and [lights](lights.html).
 
 ### A batch that draws itself culls itself
 
-A batch built with `ShadowMap.Batch(pipeline:encode:)` — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:
+A batch built with `ShadowBatch(pipeline:encode:)` — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:
 
 ```swift
-public struct Pass {
-    public let index: Int                       // cascade, atlas tile, or cube face (slice × 6 + face)
-    public let viewProjection: simd_float4x4  // world to this pass's light clip space
+public struct ShadowPass {
+    public enum Target {
+        case cascade(Int)                       // a sun cascade, nearest first
+        case atlasSlot(Int)                     // a spot light's tile
+        case cubeFace(slot: Int, face: Int)     // one face of a lamp's cube
+    }
+    public let target: Target
+    public let viewProjection: simd_float4x4    // world to this pass's light clip space
 }
 ```
 
@@ -104,7 +109,7 @@ Build a `Frustum` from `pass.viewProjection` and draw only what it can see:
 
 ```swift
 // Your game
-ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass in
+ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass in
     let frustum = Frustum(viewProjection: pass.viewProjection)
     // keep the copies whose world bounds frustum.mayIntersect(_:) accepts, then draw them
 }

@@ -41,7 +41,7 @@ private static let clusterGrid = ClusterGrid(tilesX: 16, tilesY: 8, slices: 24,
                                              nearPlane: 0.1, lightRange: 120)
 ```
 
-- **Slices are exponential.** An even cut would make the near slices microscopic and the far ones hundreds of meters deep. `depthScale` and `depthBias` let a shader find its slice with one logarithm: `slice = log(z) * scale + bias`.
+- **Slices are exponential.** An even cut would make the near slices microscopic and the far ones hundreds of meters deep. `sliceScale` and `sliceBias` let a shader find its slice with one logarithm: `slice = log(z) * sliceScale + sliceBias`.
 - **`lightRange` is not a view distance.** The engine's projection has an infinite far plane, but clustering needs a finite end. Geometry beyond `lightRange` still draws, it just gets no local lights. Choose the distance past which none of your lamps reaches.
 
 Rebuild `ClusteredLights` every frame. The grid is in view space, so it changes whenever the camera moves, even if the lights don't:
@@ -55,15 +55,15 @@ let clustered = ClusteredLights(lights: Array(lightSet.lights.prefix(SampleGame.
                                 maximumIndices: SampleGame.maxClusterIndices)
 ```
 
-It produces two arrays for your shader. `ranges` holds, for each cluster, an offset and a count into `indices`, which is a list of light indices grouped by cluster. Upload both, plus your own packed light array. The packed light layout belongs to your game, as does the shader that loops over a cluster's lights. `busiestCluster` is worth logging, because it sets the cost of the worst fragment. With 64 lights in a test scene, the busiest cluster held 9 and the average was 2.2. The sample's ruins have ten lights, and the busiest cluster holds 6.
+It produces two arrays for your shader. `ranges` holds, for each cluster, an offset and a count into `indices`, which is a list of light indices grouped by cluster. Upload both, plus your own packed light array. The packed light layout belongs to your game, as does the shader that loops over a cluster's lights. `maxLightsPerCluster` is worth logging, because it sets the cost of the worst fragment. `droppedIndexCount` says how many entries did not fit in `maximumIndices` — zero in a frame that fits; anything else is a cell lit short. With 64 lights in a test scene, the busiest cluster held 9 and the average was 2.2. The sample's ruins have ten lights, and the busiest cluster holds 6.
 
 ## LightSet, and a budget that can't promise much {#budget}
 
-`LightSet(lights:budget:negligible:)` holds a level's lights. It defaults to a budget of 4 and a `negligible` threshold of 0.02. `affecting(_:)` ranks the lights that reach a point or a box by influence, strongest first, and returns at most the budget.
+`LightSet(lights:budget:negligibleInfluence:)` holds a level's lights. It defaults to a budget of 4 and a `negligibleInfluence` threshold of 0.02. `affecting(_:)` ranks the lights that reach a point or a box by influence, strongest first, and returns at most the budget.
 
 Ranking by influence instead of distance fixes the common problem: a light leaves the set at the point where it had nearly stopped mattering. It can't fix the general case. **A fixed light budget can't promise a smooth hand-over in an arbitrary level.** If five lights all contribute at one point, one of them gets dropped, and a bigger budget only changes where that happens.
 
-So the promise is conditional, and `isOverSubscribed(at:)` checks the condition: wherever no more than `budget` lights are above `negligible`, nothing the player can see is ever dropped. `overSubscribedPoints(among:)` runs that check over a list of points. The sample runs it at load, on spawn points and objectives:
+So the promise is conditional, and `isOverSubscribed(at:)` checks the condition: wherever no more than `budget` lights are above `negligibleInfluence`, nothing the player can see is ever dropped. `overSubscribedPoints(among:)` runs that check over a list of points. The sample runs it at load, on spawn points and objectives:
 
 ```swift
 let crowded = lightSet.overSubscribedPoints(among: points)

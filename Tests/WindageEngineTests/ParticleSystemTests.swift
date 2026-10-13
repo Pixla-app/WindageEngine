@@ -206,7 +206,7 @@ struct ParticleLightingTests {
         let grey = SIMD3<Float>(0.4, 0.5, 0.6)
         let sky = ProceduralSky(zenith: grey, horizon: grey, ground: grey,
                                 sunRadiance: .zero, sunAngularRadius: 0.05)
-        let light = ParticleRenderer.matterLight(under: sky)
+        let light = sky.matterLight
         #expect(simd_distance(light, grey) < 1e-3, "\(light)")
     }
 
@@ -219,7 +219,7 @@ struct ParticleLightingTests {
                                  sunRadiance: .zero, sunAngularRadius: 0.05)
         let lit = ProceduralSky(zenith: grey, horizon: grey, ground: grey,
                                 sunRadiance: SIMD3(repeating: 330), sunAngularRadius: 0.05)
-        let difference = ParticleRenderer.matterLight(under: lit) - ParticleRenderer.matterLight(under: dark)
+        let difference = lit.matterLight - dark.matterLight
         let expected = lit.sunIrradiance / (4 * .pi)
         #expect(simd_distance(difference, expected) < 1e-3, "\(difference) against \(expected)")
     }
@@ -230,7 +230,7 @@ struct ParticleLightingTests {
         for pitch in stride(from: Float(5), through: 90, by: 5) {
             for yaw in stride(from: Float(0), to: 360, by: 15) {
                 let sky = ProceduralSky(sunPitchDegrees: pitch, sunYawDegrees: yaw)
-                let light = ParticleRenderer.matterLight(under: sky)
+                let light = sky.matterLight
                 #expect(light.max() < 5, "pitch \(pitch) yaw \(yaw) gave \(light)")
             }
         }
@@ -289,5 +289,39 @@ struct ParticleEmitterTests {
             s.step(deltaTime: step)
         }
         #expect(s.liveCount < s.capacity - dirt.count, "steady emitters left \(s.liveCount) of \(s.capacity)")
+    }
+}
+
+/// **A recipe's and an emitter's limits hold however they are set.** A lifetime set to zero divided by
+/// zero in every particle's progress; a negative count or rate threw nothing and owed forever.
+@Suite("Particle limits")
+struct ParticleLimitTests {
+
+    @Test("A recipe's lifetime and count set past their limits are held to them")
+    func recipeLimitsHoldOnSet() {
+        var recipe = ParticleRecipe(count: 4, speed: 1, spread: 1, lifetime: 1, size: 0.1, color: .one)
+        recipe.lifetime = 0
+        #expect(recipe.lifetime == 1e-3)
+        recipe.count = -3
+        #expect(recipe.count == 0)
+        recipe.lifetime = 2
+        recipe.count = 7
+        #expect(recipe == ParticleRecipe(count: 7, speed: 1, spread: 1, lifetime: 2, size: 0.1, color: .one))
+    }
+
+    @Test("A recipe whose lifetime was set to zero still steps to a finite progress")
+    func zeroLifetimeIsFinite() {
+        var recipe = ParticleRecipe(count: 1, speed: 1, spread: 0, lifetime: 1, size: 0.1, color: .one)
+        recipe.lifetime = 0
+        var system = ParticleSystem(recipes: [recipe], capacity: 8)
+        system.burst(0, at: .zero, seed: 1)
+        for particle in system.particles { #expect(particle.progress.isFinite) }
+    }
+
+    @Test("An emitter's rate set negative is held at zero")
+    func emitterRateHoldsOnSet() {
+        var emitter = ParticleEmitter(recipe: 0, rate: 5, seedBase: 1)
+        emitter.rate = -10
+        #expect(emitter.rate == 0)
     }
 }

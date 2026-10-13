@@ -12,16 +12,25 @@ import simd
 /// as an enum — dirt, dust, muzzle flash — which is exactly right inside one game and exactly wrong
 /// in an engine, because the next game's kinds are embers, sparks and spray. What was genuinely
 /// shared was the *shape* of a kind, and that is this.
+///
+/// **Its limits hold however it is set**: ``count`` is never negative and ``lifetime`` never below a
+/// millisecond — a lifetime of zero divided by zero in every particle's ``ParticleSystem/Particle/progress``.
 public nonisolated struct ParticleRecipe: Sendable, Equatable {
 
-    /// How many one burst throws.
-    public var count: Int
+    /// How many one burst throws. Never negative.
+    public var count: Int {
+        get { storedCount }
+        set { storedCount = max(0, newValue) }
+    }
     /// Meters per second along the burst's axis, before the per-particle variation.
     public var speed: Float
     /// Meters per second across it — how wide the cone opens.
     public var spread: Float
-    /// Seconds, before the per-particle variation.
-    public var lifetime: Float
+    /// Seconds, before the per-particle variation. At least a millisecond.
+    public var lifetime: Float {
+        get { storedLifetime }
+        set { storedLifetime = max(newValue, 1e-3) }
+    }
     /// Edge length in meters at birth.
     public var size: Float
     /// How much the size grows over a lifetime: 0 stays the same, 1 doubles. Smoke spreads as it
@@ -52,13 +61,16 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
     /// blend into an add. Two pipelines would mean two draws and a sort between them.
     public var glows: Bool = false
 
+    private var storedCount: Int
+    private var storedLifetime: Float
+
     public init(count: Int, speed: Float, spread: Float, lifetime: Float, size: Float,
                 growth: Float = 0, gravity: Float = -6.5, drag: Float = 2.4,
                 color: SIMD3<Float>, opacity: Float = 1, fade: Float = 1, glows: Bool = false) {
-        self.count = max(0, count)
+        self.storedCount = max(0, count)
         self.speed = speed
         self.spread = spread
-        self.lifetime = max(lifetime, 1e-3)
+        self.storedLifetime = max(lifetime, 1e-3)
         self.size = size
         self.growth = growth
         self.gravity = gravity
@@ -81,7 +93,7 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
 /// always the one the player is looking at.
 ///
 /// What did not come across unchanged is the list of kinds, which is now ``ParticleRecipe``, and the
-/// spread's source of randomness — see ``hash(_:_:)``.
+/// spread's source of randomness — an integer hash, below.
 ///
 /// ### Deterministic
 ///
@@ -90,17 +102,19 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
 /// of the simulation — an event's index, a step count — never a clock.
 public nonisolated struct ParticleSystem: Sendable {
 
+    /// One particle, as the system last stepped it. **Read-only outside the engine**: the system owns
+    /// the pool, and a copy changed by a game changes nothing it draws.
     public struct Particle: Sendable {
-        public var position: SIMD3<Float>
-        public var velocity: SIMD3<Float>
-        public var age: Float
-        public var lifetime: Float
-        public var size: Float
+        public internal(set) var position: SIMD3<Float>
+        public internal(set) var velocity: SIMD3<Float>
+        public internal(set) var age: Float
+        public let lifetime: Float
+        public let size: Float
         /// Which recipe it came from, by index into the system's ``recipes``. **An index rather than
         /// a copy**, so a pool of a thousand is not a thousand copies of the same color and curve.
-        public var recipe: Int
+        public let recipe: Int
         /// When it was born, in bursts thrown — what "oldest" means when the pool is full.
-        var birth: Int
+        let birth: Int
 
         /// 0 at birth, 1 at death.
         public var progress: Float { min(1, age / lifetime) }
@@ -210,7 +224,7 @@ public nonisolated struct ParticleSystem: Sendable {
     /// This is an integer mixer (Wellons' *lowbias32*), exact on every platform, with 24 bits kept
     /// for the float: the same 300,000 draws give 297,320 distinct values, which is what a perfect
     /// 24-bit output would do.
-    public static func hash(_ seed: Int, _ index: Int) -> Float {
+    static func hash(_ seed: Int, _ index: Int) -> Float {
         let mixed = mix(mix(UInt32(truncatingIfNeeded: seed)) ^ (UInt32(truncatingIfNeeded: index) &* 0x9E37_79B9))
         return Float(mixed >> 8) * (1 / 16_777_216)
     }
@@ -235,8 +249,12 @@ public nonisolated struct ParticleSystem: Sendable {
 /// This keeps the fractional particle owed from one step to the next, so twelve a second is twelve a
 /// second at 60 Hz, 120 Hz or whatever the simulation runs at.
 public nonisolated struct ParticleEmitter: Sendable {
-    /// Particles per second.
-    public var rate: Float
+    /// Particles per second. Never negative, however it is set.
+    public var rate: Float {
+        get { storedRate }
+        set { storedRate = max(0, newValue) }
+    }
+    private var storedRate: Float
     public var recipe: Int
     private var owed: Float = 0
     private var bursts = 0
@@ -245,7 +263,7 @@ public nonisolated struct ParticleEmitter: Sendable {
 
     public init(recipe: Int, rate: Float, seedBase: Int) {
         self.recipe = recipe
-        self.rate = max(0, rate)
+        self.storedRate = max(0, rate)
         self.seedBase = seedBase
     }
 
