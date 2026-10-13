@@ -2,7 +2,7 @@
 title: Camera
 description: The first-person Camera type, its view matrix, and the reversed-Z projection with an infinite far plane that every Windage Engine frame is drawn through.
 ---
-`Camera` is an eye in the world: a position in meters, a yaw and a pitch, and the view matrix that follows from them. Pair it with `matrix_perspective_right_hand_reverse_z` for the projection, and you have everything a frame needs to know about where it is looking from.
+`Camera` is an eye in the world: a position in meters, a yaw and a pitch, and the view matrix that follows from them. Pair it with `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)` for the projection, and you have everything a frame needs to know about where it is looking from.
 
 ## The Camera type
 
@@ -49,9 +49,13 @@ Sensitivities are `Camera.lookSensitivity` (radians per unit of mouse movement) 
 ## Reversed-Z, with an infinite far plane {#reversed-z}
 
 ```swift
-public nonisolated func matrix_perspective_right_hand_reverse_z(
-    fovyRadians fovy: Float, aspectRatio: Float, nearZ: Float) -> matrix_float4x4
+public extension simd_float4x4 {
+    init(perspectiveFovY fovY: Float, aspectRatio: Float, nearZ: Float,
+         depthRange: ClosedRange<Float> = 0...1)
+}
 ```
+
+`fovY` is the vertical field of view in radians; `Float.radians(fromDegrees:)` converts.
 
 This projection maps the near plane to depth **1** and infinite distance to depth **0** — the opposite of the conventional near-0, far-1. Depth is stored as floating point, and floats hold far more precision near zero, so the conventional mapping spends almost all of it in the first few meters and leaves the far field to z-fight. Reversed, the precision is where the distance is.
 
@@ -63,7 +67,7 @@ Reversed-Z needs the projection, the depth compare function and the depth clear 
 
 | Piece | Where it comes from |
 | --- | --- |
-| The projection | `matrix_perspective_right_hand_reverse_z` |
+| The projection | `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)` |
 | Compare `.greater` (nearer is now larger) | `FrameRenderer.makeDepthStencilState()` |
 | Clear to 0 | `FrameRenderer.reversedZClearDepth` |
 
@@ -73,7 +77,7 @@ Use all three and they cannot disagree.
 
 ### A slice of the depth buffer
 
-A second form takes `depthRange: ClosedRange<Float>`. It confines the projection to part of the depth buffer, for drawing something held in the player's hands with its own field of view and in front of the world. `0...1` gives exactly the world projection; `0.9...1` is the front tenth. Because depth is reversed, `depthRange.upperBound` is the near end.
+`depthRange` confines the projection to part of the depth buffer, for drawing something held in the player's hands with its own field of view and in front of the world. `0...1`, the default, is the whole buffer; `0.9...1` is the front tenth. Because depth is reversed, `depthRange.upperBound` is the near end.
 
 ## How the sample drives it
 
@@ -86,8 +90,8 @@ camera.turn(rate: input.lookRate * settings.stickLookScale, deltaTime: deltaTime
 
 // Each frame
 let view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
-let projection = matrix_perspective_right_hand_reverse_z(
-    fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+let projection = simd_float4x4(
+    perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
 let viewProjection = simd_mul(projection, view.viewMatrix)
 ```
 

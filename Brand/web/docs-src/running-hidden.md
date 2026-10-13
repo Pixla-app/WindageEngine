@@ -64,7 +64,7 @@ descriptor.storageMode = .shared
 guard let texture = engine.device.makeTexture(descriptor: descriptor) else { return false }
 engine.residencySet.addAllocation(texture)
 engine.commitResidency()
-viewportChanged(width: width, height: height)
+viewportSizeChanged(width: width, height: height)
 engine.render(into: texture)
 
 var bgra = [UInt8](repeating: 0, count: width * height * 4)
@@ -74,7 +74,7 @@ bgra.withUnsafeMutableBytes {
 }
 ```
 
-The bytes are BGRA. Swap red and blue to write an RGBA image. `render(into:)` does nothing if `engine.game` is not set. It informs the game of a new size through `viewportChanged` the same way a displayed frame does; the sample also calls it directly so the aspect ratio is right before anything else.
+The bytes are BGRA. Swap red and blue to write an RGBA image. `render(into:)` does nothing if `engine.game` is not set. It informs the game of a new size through `viewportSizeChanged` the same way a displayed frame does; the sample also calls it directly so the aspect ratio is right before anything else.
 
 The sample draws its frame **before any step**, so the picture is identical on every run. Pass `interpolation` if you want a moment between steps.
 

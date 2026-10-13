@@ -40,7 +40,7 @@ public final class ParticleRenderer {
     }
 
     struct Frame {
-        var viewProjection: matrix_float4x4
+        var viewProjection: simd_float4x4
         var right: SIMD4<Float>
         var up: SIMD4<Float>
     }
@@ -137,7 +137,7 @@ public final class ParticleRenderer {
         let golden = Float.pi * (3 - Float(5).squareRoot())
         // The sun is added analytically below. **A sample that landed on its disc would add its
         // radiance once more** — tens of thousands of times the sky's — so the disc is stepped round.
-        let sunCone = cos(max(sky.sunAngularRadius * 3, radians_from_degrees(2)))
+        let sunCone = cos(max(sky.sunAngularRadius * 3, Float.radians(fromDegrees: 2)))
         var sum = SIMD3<Float>.zero
         var counted = 0
         for i in 0..<samples {
@@ -165,7 +165,7 @@ public final class ParticleRenderer {
     public func draw(_ system: ParticleSystem,
                      into encoder: MTL4RenderCommandEncoder,
                      frameSlot: Int,
-                     viewProjection: matrix_float4x4,
+                     viewProjection: simd_float4x4,
                      camera: Camera,
                      matterLight: SIMD3<Float> = SIMD3(repeating: 1)) -> Int {
         let base = instanceBytes * frameSlot

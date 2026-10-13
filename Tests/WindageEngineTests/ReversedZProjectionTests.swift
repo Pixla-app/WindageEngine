@@ -21,15 +21,15 @@ import simd
 /// (~380,000 per frame correct, 0 with a deliberately mismatched clear value).
 struct ReversedZProjectionTests {
 
-    private let fovy = radians_from_degrees(65)
+    private let fovy = Float.radians(fromDegrees: 65)
     private let aspect: Float = 16.0 / 9.0
     private let near: Float = 0.1
 
     /// Normalised device depth of a point on the view axis, `distance` metres in front of the
     /// camera. View space is right-handed, so the camera looks down **-z**.
     private func depth(atDistance distance: Float) -> Float {
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: fovy, aspectRatio: aspect, nearZ: near)
+        let projection = simd_float4x4(
+            perspectiveFovY: fovy, aspectRatio: aspect, nearZ: near)
         let clip = projection * SIMD4<Float>(0, 0, -distance, 1)
         return clip.z / clip.w
     }

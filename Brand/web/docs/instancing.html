@@ -37,9 +37,9 @@
 <pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> InstanceBatches&lt;Key: Hashable &amp; Sendable&gt;: Sendable {
     <span class="k">public</span> <span class="k">struct</span> Batch: Sendable, Equatable {
         <span class="k">public</span> <span class="k">let</span> key: Key
-        <span class="k">public</span> <span class="k">let</span> first: Int          <span class="c">// index of this kind's first transform</span>
+        <span class="k">public</span> <span class="k">let</span> start: Int          <span class="c">// index of this kind's first transform</span>
         <span class="k">public</span> <span class="k">let</span> count: Int
-        <span class="k">public</span> <span class="k">var</span> byteOffset: Int     <span class="c">// first * MemoryLayout&lt;simd_float4x4&gt;.stride</span>
+        <span class="k">public</span> <span class="k">var</span> byteOffset: Int     <span class="c">// start * MemoryLayout&lt;simd_float4x4&gt;.stride</span>
     }
     <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> transforms: [simd_float4x4]
     <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> batches: [Batch]
@@ -52,13 +52,11 @@
 <p><strong>Kinds come in the order they were first seen, and copies in the order they were given.</strong> A dictionary's order would change between runs, and with it which kind is drawn first — invisible in an opaque pass, and a flicker the day a transparent kind is instanced. The same input gives the same draws every run.</p>
 <h2 id="instancebuffer">InstanceBuffer</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">final</span> <span class="k">class</span> InstanceBuffer {
-    <span class="k">public</span> <span class="k">nonisolated</span> <span class="k">static</span> <span class="k">let</span> minimumCapacity = 1024
     <span class="k">public</span> <span class="k">init</span>(renderer: FrameRenderer)
-    <span class="k">public</span> <span class="k">nonisolated</span> <span class="k">static</span> <span class="k">func</span> capacity(<span class="k">for</span> needed: Int, current: Int) -&gt; Int
     <span class="k">public</span> <span class="k">func</span> write&lt;Key&gt;(_ batches: InstanceBatches&lt;Key&gt;, frameSlot: Int) -&gt; MTLBuffer?
 }</pre>
 <p><code>write(_:frameSlot:)</code> copies a frame's transforms into a buffer and returns it, or <code>nil</code> when there are none.</p>
-<ul><li><strong>One buffer per frame in flight.</strong> A frame still being drawn is reading the previous one; rewriting it in place would draw a copy at the next frame's position for a frame.</li><li><strong>Grown, never shrunk</strong>, with room to spare: half as much again as needed, never below 1,024 copies. A scene that keeps adding copies does not reallocate every frame. <code>capacity(for:current:)</code> is that rule, and it is tested.</li><li><strong>Residency is handled.</strong> A grown buffer is added to the renderer's residency set and committed, and the old one is removed.</li></ul>
+<ul><li><strong>One buffer per frame in flight.</strong> A frame still being drawn is reading the previous one; rewriting it in place would draw a copy at the next frame's position for a frame.</li><li><strong>Grown, never shrunk</strong>, with room to spare: half as much again as needed, never below 1,024 copies. A scene that keeps adding copies does not reallocate every frame. The rule is tested.</li><li><strong>Residency is handled.</strong> A grown buffer is added to the renderer's residency set and committed, and the old one is removed.</li></ul>
 <p>The engine draws nothing here. Your vertex function reads the copies, because the vertices are yours.</p>
 <h2 id="the-shader-contract">The shader contract</h2>
 <p>One <code>float4x4</code> per copy, starting at the batch's <code>byteOffset</code>, indexed by <code>[[instance_id]]</code>, applied on top of whatever per-object transform you already have. Bind the buffer's address plus <code>byteOffset</code>, then draw each submesh with <code>instanceCount: batch.count</code>.</p>

@@ -12,17 +12,22 @@ A thrown object or a falling player is integrated step by step, and each step's 
 
 ```swift
 public nonisolated struct FixedTimestep: Sendable {
-    public let step: Double
+    public let stepDuration: Double
     public let maxFrameTime: Double
+    public private(set) var simulatedTime: Double
+    public private(set) var totalSteps: Int
     public init(stepsPerSecond: Double, maxFrameTime: Double = 0.25)
     public mutating func advance(by frameTime: Double) -> Int
-    public var interpolationAlpha: Float { get }
+    public var interpolation: Float { get }
 }
 ```
 
+Seconds are `Double` here because this is a clock that adds frame times up for as long as the game runs; what a step hands the simulation, `step(deltaTime:)`, is one short span and is `Float`, like the rest of the engine's per-step arithmetic.
+
 - `advance(by:)` adds one frame's elapsed time and returns how many whole steps are now due. Unspent time carries over to the next frame. A negative delta counts as zero; the clock never runs backwards.
 - `maxFrameTime` caps what one frame may add. Without it, a long stall (a breakpoint, a window drag) becomes a burst of steps that takes longer than a frame, which makes the next delta larger still. Time is deliberately lost instead: the game runs slow for an instant rather than spiraling.
-- `interpolationAlpha` is how far the display sits between the last completed step and the next, in `0..<1`.
+- `interpolation` is how far the display sits between the last completed step and the next, in `0..<1`. It is the value every `encode` hook is handed.
+- `simulatedTime` and `totalSteps` count whole steps since the clock started, so they are exactly reproducible.
 
 It is `nonisolated` pure arithmetic, so you can use it on its own and test with it:
 
@@ -36,10 +41,12 @@ let steps = clock.advance(by: 1.0 / 60.0)   // 2
 You rarely touch it directly. `FrameRenderer` owns one, and you choose its rate when you create the renderer:
 
 ```swift
-public init?(device: MTLDevice, simulationStepsPerSecond: Double = 120)
+public init(device: MTLDevice, simulationStepsPerSecond: Double = 120) throws
 ```
 
-Each frame it credits the time since the previous frame's presentation, calls `beginFrame()`, calls `step(deltaTime:)` once per due step with `Float(timestep.step)`, then renders with `timestep.interpolationAlpha`. The display link asks for 30 to 120 frames a second, preferring 120. `engine.timestep` is readable if you want the step length.
+It throws a `FrameRendererError` when the GPU is not Metal 4 or will not make what a frame needs.
+
+Each frame it credits the time since the previous frame's presentation, calls `beginFrame()`, calls `step(deltaTime:)` once per due step with `Float(timestep.stepDuration)`, then renders with `timestep.interpolation`. The display link asks for 30 to 120 frames a second, preferring 120, unless you pass `makeDisplayLink(for:frameRateRange:)` another range. `engine.timestep` is readable if you want the step length or the simulated time.
 
 The sample picks its rate from the environment, which is how it shows the choice does not change the game:
 
@@ -47,8 +54,7 @@ The sample picks its rate from the environment, which is how it shows the choice
 static let stepsPerSecond = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_RATE"]
     .flatMap(Double.init) ?? 120
 
-guard let engine = FrameRenderer(device: device,
-                                 simulationStepsPerSecond: SampleGame.stepsPerSecond) else { exit(1) }
+let engine = try FrameRenderer(device: device, simulationStepsPerSecond: SampleGame.stepsPerSecond)
 ```
 
 ## Drawing between steps {#interpolation}

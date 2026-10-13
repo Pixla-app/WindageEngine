@@ -59,10 +59,10 @@ public nonisolated struct SkeletonPose: Sendable {
     public private(set) var localTransforms: [JointTransform]
 
     /// Each joint in the character's own space, the parent chain accumulated.
-    public private(set) var modelTransforms: [matrix_float4x4]
+    public private(set) var modelTransforms: [simd_float4x4]
 
     /// What the vertex shader wants: model-space, relative to where the mesh was bound.
-    public private(set) var skinningMatrices: [matrix_float4x4]
+    public private(set) var skinningMatrices: [simd_float4x4]
 
     public var jointCount: Int { skeleton.jointCount }
 
@@ -146,5 +146,5 @@ public nonisolated struct SkeletonPose: Sendable {
     ///
     /// The thing to hang a weapon, a muzzle flash or a camera off. Multiply by the character's
     /// world transform to get somewhere in the world.
-    public func modelTransform(ofJoint index: Int) -> matrix_float4x4 { modelTransforms[index] }
+    public func modelTransform(ofJoint index: Int) -> simd_float4x4 { modelTransforms[index] }
 }

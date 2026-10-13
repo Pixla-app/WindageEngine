@@ -11,10 +11,10 @@ A 70° field of view is under a fifth of the circle. In a scene of a few hundred
 ## Frustum
 
 ```swift
-public struct Frustum {
+public struct Frustum: Sendable, Equatable {
     public private(set) var planes: [SIMD4<Float>]
-    public init(viewProjection m: matrix_float4x4)
-    public func canSee(_ box: BoundingBox) -> Bool
+    public init(viewProjection m: simd_float4x4)
+    public func mayIntersect(_ box: BoundingBox) -> Bool
 }
 ```
 
@@ -25,7 +25,7 @@ Build it from the same world-to-clip matrix you draw with, and test world-space 
 let viewProjection = simd_mul(projection, camera.viewMatrix)
 let frustum = Frustum(viewProjection: viewProjection)
 
-for object in objects where frustum.canSee(object.worldBounds) {
+for object in objects where frustum.mayIntersect(object.worldBounds) {
     draw(object)
 }
 ```
@@ -34,7 +34,7 @@ Each plane is a `(normal, distance)` pair, unit-normalized and pointing inward: 
 
 ### Five planes, not six
 
-The engine's projection, `matrix_perspective_right_hand_reverse_z`, has an **infinite far plane** (see [camera](camera.html)). Extract the far plane from it and you get a zero normal, because there is no far plane to extract. `Frustum` drops it, so a Windage Engine frustum has **five** planes: left, right, bottom, top and near.
+The engine's projection, `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)`, has an **infinite far plane** (see [camera](camera.html)). Extract the far plane from it and you get a zero normal, because there is no far plane to extract. `Frustum` drops it, so a Windage Engine frustum has **five** planes: left, right, bottom, top and near.
 
 Code written expecting six is written for a different projection. It would either carry a plane that always passes or divide by zero normalizing it. The tests check for exactly five unit-length planes, and that a box 100 km down the view is still visible.
 
@@ -44,14 +44,14 @@ The planes are extracted from the matrix rows (Gribb–Hartmann). The textbook f
 
 ## The asymmetry behind every detail
 
-**A false positive costs a draw call. A false negative deletes something the player can see.** Those are not comparable, so `canSee` leans toward keeping:
+**A false positive costs a draw call. A false negative deletes something the player can see.** Those are not comparable, so `mayIntersect` leans toward keeping:
 
 - It is the standard conservative box test. For each plane it takes the box corner furthest along the plane's normal and rejects only if even that corner is outside.
 - A box straddling a plane is kept, even when most of it is outside. That costs a draw, never a missing object.
 
 ## BoundingBox, in world space
 
-`canSee` takes a `BoundingBox` in **world** space. A `LoadedMesh`'s `bounds` are in the mesh's own space, so transform them first. `BoundingBox.transformed(by:)` re-derives the box from all eight corners, which stays correct under rotation. A `Volume` does this for you:
+`mayIntersect` takes a `BoundingBox` in **world** space. A `LoadedMesh`'s `bounds` are in the mesh's own space, so transform them first. `BoundingBox.transformed(by:)` re-derives the box from all eight corners, which stays correct under rotation. A `Volume` does this for you:
 
 ```swift
 let volume = Volume(local: mesh.bounds, transform: transform)
@@ -96,7 +96,7 @@ A batch built with `ShadowMap.Batch(pipeline:encode:)` — instanced copies, or 
 ```swift
 public struct Pass {
     public let index: Int                       // cascade, atlas tile, or cube face (slice × 6 + face)
-    public let viewProjection: matrix_float4x4  // world to this pass's light clip space
+    public let viewProjection: simd_float4x4  // world to this pass's light clip space
 }
 ```
 
@@ -106,7 +106,7 @@ Build a `Frustum` from `pass.viewProjection` and draw only what it can see:
 // Your game
 ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass in
     let frustum = Frustum(viewProjection: pass.viewProjection)
-    // keep the copies whose world bounds frustum.canSee(_:) accepts, then draw them
+    // keep the copies whose world bounds frustum.mayIntersect(_:) accepts, then draw them
 }
 ```
 
@@ -117,5 +117,5 @@ The sample's debris is small enough to draw whole into every pass, so its batch 
 ## What it does not do
 
 - **No occlusion culling.** Something hidden behind a wall but inside the frustum is drawn.
-- **No spatial structure.** `canSee` is a test you call per box; a game with many thousands of objects groups them first.
+- **No spatial structure.** `mayIntersect` is a test you call per box; a game with many thousands of objects groups them first.
 - **No automatic culling of the main view.** The engine draws nothing of yours, so which objects reach a draw call is your game's loop.

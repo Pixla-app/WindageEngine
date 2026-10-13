@@ -44,7 +44,7 @@ descriptor.storageMode = .shared
 <span class="k">guard</span> <span class="k">let</span> texture = engine.device.makeTexture(descriptor: descriptor) <span class="k">else</span> { <span class="k">return</span> <span class="k">false</span> }
 engine.residencySet.addAllocation(texture)
 engine.commitResidency()
-viewportChanged(width: width, height: height)
+viewportSizeChanged(width: width, height: height)
 engine.render(into: texture)
 
 <span class="k">var</span> bgra = [UInt8](repeating: 0, count: width * height * 4)

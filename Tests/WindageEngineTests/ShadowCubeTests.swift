@@ -154,8 +154,8 @@ struct ShadowCubeTests {
 
         let inFront = BoundingBox(minimum: SIMD3(-1, 2, 4), maximum: SIMD3(1, 4, 6))
         let behind = BoundingBox(minimum: SIMD3(-1, 2, -6), maximum: SIMD3(1, 4, -4))
-        #expect(frustum.canSee(inFront))
-        #expect(!frustum.canSee(behind))
+        #expect(frustum.mayIntersect(inFront))
+        #expect(!frustum.mayIntersect(behind))
     }
 
     /// Directions on a lattice, plus the six axes and the eight corners — enough to land on every

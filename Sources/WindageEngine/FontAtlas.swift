@@ -8,6 +8,21 @@ import CoreText
 import Metal
 import simd
 
+/// Why a ``FontAtlas`` could not be built.
+public enum FontAtlasError: Error, CustomStringConvertible, Sendable {
+    /// The characters asked for do not fit on one 1024 × 1024 sheet at the raster height.
+    case tooManyCharacters(Int)
+    /// CoreGraphics or the device would not create what the sheet is drawn into or uploaded to.
+    case couldNotCreate(String)
+
+    public var description: String {
+        switch self {
+        case .tooManyCharacters(let count): "\(count) characters do not fit on one glyph sheet"
+        case .couldNotCreate(let what): "could not create the font atlas's \(what)"
+        }
+    }
+}
+
 /// A rasterized glyph sheet, built at launch from an installed font.
 ///
 /// **Why rasterize at runtime rather than ship an atlas file.** A baked atlas is another asset to
@@ -28,20 +43,22 @@ public final class FontAtlas {
     /// Gap between glyphs in the sheet, so linear filtering cannot pull in a neighbor's edge.
     private static let padding: CGFloat = 4
 
-    public struct Glyph: Sendable {
+    struct Glyph: Sendable {
         /// Position in the sheet, normalized.
-        public let uvOrigin: SIMD2<Float>
-        public let uvSize: SIMD2<Float>
+        let uvOrigin: SIMD2<Float>
+        let uvSize: SIMD2<Float>
         /// Size and offset in raster pixels, relative to the text origin and baseline.
-        public let size: SIMD2<Float>
-        public let bearing: SIMD2<Float>
-        public let advance: Float
+        let size: SIMD2<Float>
+        let bearing: SIMD2<Float>
+        let advance: Float
     }
 
-    public let texture: MTLTexture
+    /// The sheet. ``HUDRenderer/allocations`` carries it to the residency set.
+    let texture: MTLTexture
     /// A fully opaque texel, so solid rectangles and text can share one pipeline and one draw call.
-    public let whiteTexelUV: SIMD2<Float>
-    public let lineHeight: Float
+    let whiteTexelUV: SIMD2<Float>
+    /// Ascent, descent and leading at ``rasterHeight``.
+    private let rasterLineHeight: Float
 
     private var glyphs: [Character: Glyph] = [:]
 
@@ -56,9 +73,10 @@ public final class FontAtlas {
     /// - Parameter additionalCharacters: anything beyond printable ASCII the game intends to draw.
     ///   **ASCII is the default and not a limit** — a HUD that wants `×`, `·` or `⌘` asks for it
     ///   here, and finds out at load whether the font can supply it.
-    public init?(device: MTLDevice,
+    /// - Throws: ``FontAtlasError``.
+    public init(device: MTLDevice,
                  font: NSFont = .monospacedSystemFont(ofSize: FontAtlas.rasterHeight, weight: .medium),
-                 additionalCharacters: Set<Character> = []) {
+                 additionalCharacters: Set<Character> = []) throws {
         let ctFont = font as CTFont
         let ascii = (32...126).map { Character(UnicodeScalar($0)!) }
         let characters = ascii + additionalCharacters.subtracting(ascii).sorted()
@@ -88,13 +106,15 @@ public final class FontAtlas {
         let columns = max(1, Int((1024 / widest).rounded(.down)))
         let rows = Int(ceil(Double(measured.count + 1) / Double(columns)))
         let sheetSize = 1024
-        guard Double(rows) * Double(cellHeight) <= Double(sheetSize) else { return nil }
+        guard Double(rows) * Double(cellHeight) <= Double(sheetSize) else {
+            throw FontAtlasError.tooManyCharacters(measured.count)
+        }
 
         guard let context = CGContext(
             data: nil, width: sheetSize, height: sheetSize,
             bitsPerComponent: 8, bytesPerRow: sheetSize,
             space: CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+            bitmapInfo: CGImageAlphaInfo.none.rawValue) else { throw FontAtlasError.couldNotCreate("drawing context") }
 
         context.setFillColor(gray: 0, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: sheetSize, height: sheetSize))
@@ -147,15 +167,22 @@ public final class FontAtlas {
             pixelFormat: .r8Unorm, width: sheetSize, height: sheetSize, mipmapped: false)
         descriptor.usage = .shaderRead
         descriptor.storageMode = .shared
-        guard let texture = device.makeTexture(descriptor: descriptor), let data = context.data else { return nil }
+        guard let texture = device.makeTexture(descriptor: descriptor), let data = context.data else {
+            throw FontAtlasError.couldNotCreate("texture")
+        }
         texture.label = "FontAtlas"
         texture.replace(region: MTLRegionMake2D(0, 0, sheetSize, sheetSize),
                         mipmapLevel: 0, withBytes: data, bytesPerRow: sheetSize)
         self.texture = texture
-        self.lineHeight = Float(CTFontGetAscent(ctFont) + CTFontGetDescent(ctFont) + CTFontGetLeading(ctFont))
+        self.rasterLineHeight = Float(CTFontGetAscent(ctFont) + CTFontGetDescent(ctFont) + CTFontGetLeading(ctFont))
     }
 
-    public func glyph(for character: Character) -> Glyph? { glyphs[character] }
+    func glyph(for character: Character) -> Glyph? { glyphs[character] }
+
+    /// The distance from one baseline to the next when drawn at `pointSize`, in the same units.
+    public func lineHeight(pointSize: Float) -> Float {
+        rasterLineHeight * pointSize / Float(FontAtlas.rasterHeight)
+    }
 
     /// Width of a string when drawn at `pointSize`, in the same units.
     public func width(of text: String, pointSize: Float) -> Float {

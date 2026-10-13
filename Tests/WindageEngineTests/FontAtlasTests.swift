@@ -15,7 +15,7 @@ struct FontAtlasTests {
 
     private func makeAtlas() throws -> FontAtlas {
         let device = try #require(MTLCreateSystemDefaultDevice())
-        return try #require(FontAtlas(device: device))
+        return try FontAtlas(device: device)
     }
 
     @Test("The sheet builds and covers printable ASCII")
@@ -79,4 +79,12 @@ struct FontAtlasTests {
             #expect(abs(width - widths[0]) < 0.001)
         }
     }
+}
+
+/// A line's height follows the point size it is drawn at, as a glyph's width does.
+@MainActor @Test func lineHeightScalesWithPointSize() throws {
+    let device = try #require(MTLCreateSystemDefaultDevice())
+    let atlas = try FontAtlas(device: device)
+    #expect(atlas.lineHeight(pointSize: 20) > 20)
+    #expect(abs(atlas.lineHeight(pointSize: 40) - 2 * atlas.lineHeight(pointSize: 20)) < 1e-3)
 }

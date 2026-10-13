@@ -24,12 +24,6 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
     public var center: SIMD3<Float> { (minimum + maximum) * 0.5 }
     public var size: SIMD3<Float> { maximum - minimum }
 
-    /// The box containing this one after a transform.
-    ///
-    /// **Re-derived from the eight corners, not by transforming two points.** Transforming only the
-    /// min and max gives the right answer for a translation and a wrong one for any rotation — the
-    /// resulting "box" can be inside-out or far too small, and the failure is a shot that passes
-    /// through a target rather than an obvious visual glitch.
     /// Whether a point is inside, edges included.
     ///
     /// **Inclusive on purpose.** A point exactly on a face is a coincidence that happens constantly
@@ -41,7 +35,13 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
             && point.z >= minimum.z && point.z <= maximum.z
     }
 
-    public func transformed(by matrix: matrix_float4x4) -> BoundingBox {
+    /// The box containing this one after a transform.
+    ///
+    /// **Re-derived from the eight corners, not by transforming two points.** Transforming only the
+    /// min and max gives the right answer for a translation and a wrong one for any rotation — the
+    /// resulting "box" can be inside-out or far too small, and the failure is a shot that passes
+    /// through a target rather than an obvious visual glitch.
+    public func transformed(by matrix: simd_float4x4) -> BoundingBox {
         var low = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
         var high = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
 
@@ -63,7 +63,11 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
     /// division by zero for a ray exactly parallel to an axis is intentional and correct — IEEE
     /// infinities make the comparisons fall out the right way, where guarding against it with a
     /// branch is where implementations usually go wrong.
-    public func intersection(origin: SIMD3<Float>, direction: SIMD3<Float>, maxDistance: Float = .greatestFiniteMagnitude) -> Float? {
+    ///
+    /// - Parameter direction: the distance comes back in multiples of its length, so pass a unit vector to
+    ///   get one in the box's own units.
+    public func hitDistance(ofRayFrom origin: SIMD3<Float>, direction: SIMD3<Float>,
+                            maxDistance: Float = .greatestFiniteMagnitude) -> Float? {
         let inverse = 1 / direction
         let t0 = (minimum - origin) * inverse
         let t1 = (maximum - origin) * inverse
@@ -79,15 +83,16 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
         return max(entry, 0)
     }
 
-    /// Whether a segment from `start` to `end` touches the box.
-    public func intersects(segmentFrom start: SIMD3<Float>, to end: SIMD3<Float>) -> Float? {
+    /// Distance from `start` to where a segment running to `end` first touches the box, or nil if it
+    /// does not — 0 when `start` is inside.
+    public func hitDistance(ofSegmentFrom start: SIMD3<Float>, to end: SIMD3<Float>) -> Float? {
         let delta = end - start
         let length = simd_length(delta)
         guard length > 0 else {
             let inside = all(start .>= minimum) && all(start .<= maximum)
             return inside ? 0 : nil
         }
-        return intersection(origin: start, direction: delta / length, maxDistance: length)
+        return hitDistance(ofRayFrom: start, direction: delta / length, maxDistance: length)
     }
 
     /// The point of the box nearest to somewhere else, which is the box itself if it contains it.

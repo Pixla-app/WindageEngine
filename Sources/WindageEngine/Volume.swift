@@ -30,9 +30,9 @@ public nonisolated struct Volume {
     public let local: BoundingBox
 
     /// Where it is now. For anything on a deck this is recomputed as the deck moves.
-    public var transform: matrix_float4x4
+    public var transform: simd_float4x4
 
-    public init(local: BoundingBox, transform: matrix_float4x4 = matrix_identity_float4x4) {
+    public init(local: BoundingBox, transform: simd_float4x4 = matrix_identity_float4x4) {
         self.local = local
         self.transform = transform
     }
@@ -58,7 +58,7 @@ public nonisolated struct Volume {
                                 against volumes: [Volume]) -> (index: Int, distance: Float)? {
         var best: (index: Int, distance: Float)?
         for (index, volume) in volumes.enumerated() {
-            if let distance = volume.worldBounds.intersects(segmentFrom: start, to: end) {
+            if let distance = volume.worldBounds.hitDistance(ofSegmentFrom: start, to: end) {
                 if best == nil || distance < best!.distance { best = (index, distance) }
             }
         }
@@ -76,7 +76,7 @@ public nonisolated struct Volume {
                                 maxDistance: Float = .greatestFiniteMagnitude) -> (index: Int, distance: Float)? {
         var best: (index: Int, distance: Float)?
         for (index, volume) in volumes.enumerated() {
-            if let distance = volume.worldBounds.intersection(origin: origin,
+            if let distance = volume.worldBounds.hitDistance(ofRayFrom: origin,
                                                               direction: direction,
                                                               maxDistance: maxDistance) {
                 if best == nil || distance < best!.distance { best = (index, distance) }

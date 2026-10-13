@@ -15,10 +15,10 @@ struct SkeletonTests {
     static func offsetRig() throws -> Skeleton {
         try Skeleton(
             jointPaths: ["root", "root/mid"],
-            restTransforms: [matrix4x4_translation(5, 0, 0),      // joint-local
-                             matrix4x4_translation(0, 1, 0)],
-            bindTransforms: [matrix4x4_translation(5, 0, 0),      // skeleton-space
-                             matrix4x4_translation(5, 1, 0)])
+            restTransforms: [simd_float4x4(translation: SIMD3(5, 0, 0)),      // joint-local
+                             simd_float4x4(translation: SIMD3(0, 1, 0))],
+            bindTransforms: [simd_float4x4(translation: SIMD3(5, 0, 0)),      // skeleton-space
+                             simd_float4x4(translation: SIMD3(5, 1, 0))])
     }
 
     @Test("Parentage comes out of the joint paths")

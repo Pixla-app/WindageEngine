@@ -54,10 +54,10 @@ struct SplashScreenTests {
     @Test("A press too early is not a skip")
     func tooEarly() {
         var splash = SplashScreen()
-        splash.advance(by: splash.ignoresSkipsFor / 2)
+        splash.advance(by: splash.skipDelay / 2)
         splash.skip()
         #expect(!splash.isSkipped && splash.opacity > 0 && splash.elapsed < splash.fadeIn,
-                "a press \(splash.ignoresSkipsFor / 2) s in took it to \(splash.elapsed)")
+                "a press \(splash.skipDelay / 2) s in took it to \(splash.elapsed)")
     }
 
     /// A skip runs it to the *start of its fade*, so it leaves the way it would have anyway. Cutting
@@ -109,8 +109,8 @@ struct SplashScreenTests {
         #expect(splash.duration <= 3, "it lasts \(splash.duration) s before anybody presses anything")
         #expect(splash.fadeIn + splash.fadeOut < splash.hold,
                 "it spends \(splash.fadeIn + splash.fadeOut) s fading and \(splash.hold) s being read")
-        #expect(splash.ignoresSkipsFor < splash.fadeIn,
-                "it cannot be skipped until \(splash.ignoresSkipsFor) s, by which time it has finished appearing")
+        #expect(splash.skipDelay < splash.fadeIn,
+                "it cannot be skipped until \(splash.skipDelay) s, by which time it has finished appearing")
     }
 
     /// The name it draws is the engine's, from the one place that holds it.

@@ -124,8 +124,8 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
             let outer = try container.decodeIfPresent(Float.self, forKey: .outerAngle) ?? 35
             let inner = try container.decodeIfPresent(Float.self, forKey: .innerAngle) ?? outer * 0.6
             cone = Cone(direction: SIMD3(direction[0], direction[1], direction[2]),
-                        innerAngle: radians_from_degrees(inner),
-                        outerAngle: radians_from_degrees(outer))
+                        innerAngle: Float.radians(fromDegrees: inner),
+                        outerAngle: Float.radians(fromDegrees: outer))
         }
 
         self.init(position: try triple(.position, .zero),
@@ -149,8 +149,8 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
         if let cone {
             try container.encode([cone.direction.x, cone.direction.y, cone.direction.z],
                                  forKey: .direction)
-            try container.encode(radians_to_degrees(cone.innerAngle), forKey: .innerAngle)
-            try container.encode(radians_to_degrees(cone.outerAngle), forKey: .outerAngle)
+            try container.encode(Float.degrees(fromRadians: cone.innerAngle), forKey: .innerAngle)
+            try container.encode(Float.degrees(fromRadians: cone.outerAngle), forKey: .outerAngle)
         }
     }
 

@@ -85,18 +85,18 @@ public nonisolated struct TransformHierarchy: Sendable {
     public let externalCount: Int
 
     /// Each node relative to whatever it hangs off.
-    public var localTransforms: [matrix_float4x4]
+    public var localTransforms: [simd_float4x4]
 
     /// Where each node has ended up. Valid after ``refresh(attachedTo:)``.
-    public private(set) var worldTransforms: [matrix_float4x4]
+    public private(set) var worldTransforms: [simd_float4x4]
 
     public var count: Int { attachments.count }
 
     public init(attachments: [Attachment],
-                localTransforms: [matrix_float4x4]? = nil,
+                localTransforms: [simd_float4x4]? = nil,
                 externalCount: Int = 0) throws {
         let locals = localTransforms
-            ?? [matrix_float4x4](repeating: matrix_identity_float4x4, count: attachments.count)
+            ?? [simd_float4x4](repeating: matrix_identity_float4x4, count: attachments.count)
         guard locals.count == attachments.count else {
             throw Fault.countMismatch(attachments: attachments.count, transforms: locals.count)
         }
@@ -129,7 +129,7 @@ public nonisolated struct TransformHierarchy: Sendable {
     /// - Parameter externals: the world transforms of the things outside this hierarchy that nodes
     ///   are attached to, in the order ``Attachment/external(_:)`` indexes. Must hold at least
     ///   ``externalCount`` of them.
-    public mutating func refresh(attachedTo externals: [matrix_float4x4] = []) {
+    public mutating func refresh(attachedTo externals: [simd_float4x4] = []) {
         precondition(externals.count >= externalCount,
                      "a hierarchy declaring \(externalCount) external attachments was given "
                      + "\(externals.count)")
@@ -143,35 +143,5 @@ public nonisolated struct TransformHierarchy: Sendable {
         }
     }
 
-    public func worldTransform(of node: Int) -> matrix_float4x4 { worldTransforms[node] }
-}
-
-/// The same transform with its scale removed, leaving rotation and position.
-///
-/// ### Why a hierarchy needs this and a rig does not
-///
-/// **A child inherits its parent's scale, which is right for a limb and wrong for a held object.** A
-/// rig exported from a package that works in centimeters carries a hundredfold scale down to the
-/// wrist, and it belongs there — the arm is a hundred units long in that space. Hang a lantern off
-/// the same matrix and the lantern is drawn at one percent of its size, in a place that is otherwise
-/// correct, which reads as the wrong mesh rather than as the wrong space.
-///
-/// The alternative — an attachment flag that says "do not inherit scale" — puts a policy inside the
-/// hierarchy that only some callers want. This is the same thing at the call site, where the caller
-/// can see what it is attaching to.
-///
-/// **A mirrored basis stays mirrored.** Each axis is normalized, and nothing here tries to decide
-/// that a negative determinant was a mistake; a shear is flattened onto its own axes, which is the
-/// only thing it can mean once the scale is gone.
-public nonisolated func matrix_without_scale(_ m: matrix_float4x4) -> matrix_float4x4 {
-    func unit(_ column: SIMD4<Float>) -> SIMD4<Float> {
-        let axis = SIMD3(column.x, column.y, column.z)
-        let length = simd_length(axis)
-        // A zero axis has no direction to preserve, and normalising it would make every component of
-        // the matrix NaN — which draws nothing at all, from anywhere.
-        guard length > 1e-6 else { return column }
-        return SIMD4(axis / length, 0)
-    }
-    return matrix_float4x4(columns: (unit(m.columns.0), unit(m.columns.1), unit(m.columns.2),
-                                     m.columns.3))
+    public func worldTransform(of node: Int) -> simd_float4x4 { worldTransforms[node] }
 }

@@ -23,7 +23,7 @@ descriptor.storageMode = .shared
 guard let texture = engine.device.makeTexture(descriptor: descriptor) else { return false }
 engine.residencySet.addAllocation(texture)
 engine.commitResidency()
-viewportChanged(width: width, height: height)
+viewportSizeChanged(width: width, height: height)
 engine.render(into: texture)
 
 var bgra = [UInt8](repeating: 0, count: width * height * 4)

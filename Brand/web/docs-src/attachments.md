@@ -52,7 +52,7 @@ Each frame, **after posing the figures**, it hands over each hand's world transf
 
 ```swift
 rig.refresh(attachedTo: figures.map {
-    matrix_without_scale($0.transform * $0.pose.modelTransform(ofJoint: joint))
+    ($0.transform * $0.pose.modelTransform(ofJoint: joint)).withoutScale
 })
 for (slot, index) in lanternDrawables.enumerated() {
     let world = rig.worldTransform(of: slot)
@@ -65,7 +65,7 @@ The same matrix moves the drawable, its volume and its light. Placed from last s
 
 ### Strip the scale
 
-A child inherits its parent's scale. That is right for a limb and wrong for a held object: a rig authored in centimeters carries a hundredfold scale down to the wrist, and a lantern hung off that matrix is drawn at one percent of its size, in a place that is otherwise correct. `matrix_without_scale(_:)` removes the scale and keeps rotation and position. It is a function you call, not a flag on the hierarchy, because whether to inherit scale is a decision about what is being attached, and only your game can see that. A mirrored basis stays mirrored.
+A child inherits its parent's scale. That is right for a limb and wrong for a held object: a rig authored in centimeters carries a hundredfold scale down to the wrist, and a lantern hung off that matrix is drawn at one percent of its size, in a place that is otherwise correct. `(_:).withoutScale` removes the scale and keeps rotation and position. It is a function you call, not a flag on the hierarchy, because whether to inherit scale is a decision about what is being attached, and only your game can see that. A mirrored basis stays mirrored.
 
 ### A grip is a number you set by looking
 

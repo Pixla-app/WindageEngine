@@ -26,6 +26,16 @@ struct SemanticVersionTests {
         }
     }
 
+    @Test("A version is a key and a lossless string")
+    func hashableAndLossless() {
+        let versions: Set<SemanticVersion> = [SemanticVersion(major: 0, minor: 28, patch: 0),
+                                              SemanticVersion(major: 0, minor: 28, patch: 0),
+                                              SemanticVersion(major: 1, minor: 0, patch: 0)]
+        #expect(versions.count == 2)
+        func roundTrip<T: LosslessStringConvertible & Equatable>(_ value: T) -> Bool { T(value.description) == value }
+        #expect(roundTrip(Engine.semanticVersion))
+    }
+
     @Test("Ordering is by major, then minor, then patch")
     func ordering() {
         #expect(SemanticVersion("0.1.0")! < SemanticVersion("0.2.0")!)

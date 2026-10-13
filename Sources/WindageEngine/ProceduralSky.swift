@@ -52,13 +52,13 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     /// is something you can picture and adjust; the same thing as `(-0.75, 0.56, 0.35)` is three
     /// numbers that must stay normalized and that nobody can read.
     public var sunPitchDegrees: Float {
-        get { radians_to_degrees(asin(simd_clamp(sunDirection.y, -1, 1))) }
+        get { Float.degrees(fromRadians: asin(simd_clamp(sunDirection.y, -1, 1))) }
         set { setSun(pitchDegrees: newValue, yawDegrees: sunYawDegrees) }
     }
 
     /// The compass direction of the sun, in degrees, measured the same way a level's yaws are.
     public var sunYawDegrees: Float {
-        get { radians_to_degrees(atan2(sunDirection.x, sunDirection.z)) }
+        get { Float.degrees(fromRadians: atan2(sunDirection.x, sunDirection.z)) }
         set { setSun(pitchDegrees: sunPitchDegrees, yawDegrees: newValue) }
     }
 
@@ -72,8 +72,8 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     /// level file. The moment the sky itself is *in* the file, the two have to agree, and the place
     /// they can only agree is here.
     public static func direction(pitchDegrees: Float, yawDegrees: Float) -> SIMD3<Float> {
-        let pitch = radians_from_degrees(pitchDegrees)
-        let yaw = radians_from_degrees(yawDegrees)
+        let pitch = Float.radians(fromDegrees: pitchDegrees)
+        let yaw = Float.radians(fromDegrees: yawDegrees)
         return simd_normalize(SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)))
     }
 

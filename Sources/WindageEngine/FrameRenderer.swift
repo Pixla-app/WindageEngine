@@ -22,8 +22,10 @@ public protocol GameLoop: AnyObject {
     /// One fixed simulation step. Never called with a variable delta — see ``FixedTimestep``.
     func step(deltaTime: Float)
 
-    /// The drawable changed size. Rebuild anything that depends on aspect ratio.
-    func viewportChanged(width: Int, height: Int)
+    /// The drawable changed size, **in pixels**. Rebuild anything that depends on aspect ratio.
+    ///
+    /// Called once before the first frame, and again whenever the size changes.
+    func viewportSizeChanged(width: Int, height: Int)
 
     /// Encode any passes that must run *before* the main one — shadow maps, depth prepasses,
     /// offscreen effects.
@@ -45,18 +47,36 @@ public protocol GameLoop: AnyObject {
 
     /// Encode the interface, **after** the scene.
     ///
+    /// - Parameter interpolation: the same value ``encode(into:frameSlot:interpolation:)`` was given,
+    ///   so a marker over a moving thing is drawn where the thing was drawn.
+    ///
     /// Separate from ``encode(into:frameSlot:interpolation:)`` so the ordering is structural rather
     /// than a convention each title has to remember. Scene color is radiance and gets tone mapped;
     /// interface color is a specification and must not be. Draw HUD inside the scene's shading and
     /// a brand color arrives on screen desaturated, with nothing to say why.
     ///
     /// Default implementation does nothing.
-    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int)
+    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float)
 }
 
 public extension GameLoop {
     func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float) {}
-    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {}
+    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {}
+}
+
+/// Why a ``FrameRenderer`` could not be made.
+public enum FrameRendererError: Error, CustomStringConvertible, Sendable {
+    /// The GPU is not in the Metal 4 family, which every part of the engine is written against.
+    case metal4Unsupported
+    /// The device would not create one of the objects every frame needs — named here.
+    case couldNotCreate(String)
+
+    public var description: String {
+        switch self {
+        case .metal4Unsupported: "this GPU does not support Metal 4"
+        case .couldNotCreate(let what): "the device would not create the \(what)"
+        }
+    }
 }
 
 /// Drives frames, owns the Metal 4 objects every renderer needs, and enforces the engine's
@@ -66,9 +86,9 @@ public extension GameLoop {
 /// projection, the compare function and the clear value to agree, and a mismatch renders *nothing at
 /// all* rather than rendering badly. Three constants that must match, spread across three files, in
 /// every title, is a trap that will be sprung. Here, a game that uses `FrameRenderer` and
-/// ``matrix_perspective_right_hand_reverse_z`` gets a consistent set by construction, and
+/// ``simd_float4x4/init(perspectiveFovY:aspectRatio:nearZ:depthRange:)`` gets a consistent set by construction, and
 /// ``makeDepthStencilState()`` hands back the matching depth state.
-public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
+public final class FrameRenderer {
 
     /// Frames the CPU may run ahead of the GPU.
     public static let maxFramesInFlight = 3
@@ -95,8 +115,10 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     public static let reversedZClearDepth: Double = 0.0
 
     public let device: MTLDevice
-    public let commandQueue: MTL4CommandQueue
-    public let commandBuffer: MTL4CommandBuffer
+    /// The engine's own: a game encodes into the command buffer and encoders it is handed, and never
+    /// commits work of its own on these.
+    let commandQueue: MTL4CommandQueue
+    let commandBuffer: MTL4CommandBuffer
 
     /// Everything the GPU touches must be in here. Add allocations as they are created, then
     /// ``commitResidency()``.
@@ -171,6 +193,21 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     private var hiddenActivity: NSObjectProtocol?
     private var clock = FrameClock()
 
+    /// Receives the display link's frames, so the renderer itself need not be an `NSObject` or show the
+    /// delegate method in its API. Holds the renderer weakly: the caller owns the link, and the link
+    /// owning the renderer would keep both alive after the window closed.
+    private final class DisplayLinkTarget: NSObject, CAMetalDisplayLinkDelegate {
+        weak var renderer: FrameRenderer?
+
+        init(renderer: FrameRenderer) { self.renderer = renderer }
+
+        func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
+            renderer?.frame(update)
+        }
+    }
+
+    private var displayLinkTarget: DisplayLinkTarget?
+
     isolated deinit {
         hiddenTimer?.invalidate()
         hiddenActivity.map(ProcessInfo.processInfo.endActivity)
@@ -180,35 +217,53 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         guard let elapsed = clock.tick(now: CACurrentMediaTime()) else { return }
         let steps = timestep.advance(by: elapsed)
         for _ in 0..<steps {
-            game?.step(deltaTime: Float(timestep.step))
+            game?.step(deltaTime: Float(timestep.stepDuration))
         }
     }
 
-    public init?(device: MTLDevice, simulationStepsPerSecond: Double = 120) {
-        guard device.supportsFamily(.metal4) else { return nil }
-        guard let queue = device.makeMTL4CommandQueue(),
-              let buffer = device.makeCommandBuffer(),
-              let event = device.makeSharedEvent() else { return nil }
+    /// - Throws: ``FrameRendererError`` when the GPU is not Metal 4 or will not make what a frame needs.
+    public init(device: MTLDevice, simulationStepsPerSecond: Double = 120) throws {
+        guard device.supportsFamily(.metal4) else { throw FrameRendererError.metal4Unsupported }
+        guard let queue = device.makeMTL4CommandQueue() else {
+            throw FrameRendererError.couldNotCreate("command queue")
+        }
+        guard let buffer = device.makeCommandBuffer() else {
+            throw FrameRendererError.couldNotCreate("command buffer")
+        }
+        guard let event = device.makeSharedEvent() else { throw FrameRendererError.couldNotCreate("frame event") }
+        var allocators: [MTL4CommandAllocator] = []
+        for _ in 0..<FrameRenderer.maxFramesInFlight {
+            guard let allocator = device.makeCommandAllocator() else {
+                throw FrameRendererError.couldNotCreate("command allocator")
+            }
+            allocators.append(allocator)
+        }
 
         self.device = device
         self.commandQueue = queue
         self.commandBuffer = buffer
         self.endFrameEvent = event
         self.timestep = FixedTimestep(stepsPerSecond: simulationStepsPerSecond)
-        self.commandAllocators = (0..<FrameRenderer.maxFramesInFlight).map { _ in device.makeCommandAllocator()! }
+        self.commandAllocators = allocators
 
         let descriptor = MTLResidencySetDescriptor()
         descriptor.initialCapacity = 64
-        guard let set = try? device.makeResidencySet(descriptor: descriptor) else { return nil }
+        guard let set = try? device.makeResidencySet(descriptor: descriptor) else {
+            throw FrameRendererError.couldNotCreate("residency set")
+        }
         self.residencySet = set
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         tableDescriptor.maxBufferBindCount = 1      // 0: the exposure and curve
         tableDescriptor.maxTextureBindCount = 1     // 0: the scene, in radiance
-        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
-              let uniforms = device.makeBuffer(
+        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
+            throw FrameRendererError.couldNotCreate("tone-map argument table")
+        }
+        guard let uniforms = device.makeBuffer(
                 length: FrameRenderer.toneMapStride * FrameRenderer.maxFramesInFlight,
-                options: .storageModeShared) else { return nil }
+                options: .storageModeShared) else {
+            throw FrameRendererError.couldNotCreate("tone-map uniform buffer")
+        }
         uniforms.label = "Tone Mapping"
         self.toneMapArgumentTable = table
         self.toneMapUniformBuffer = uniforms
@@ -216,7 +271,6 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         self.frameIndex = FrameRenderer.maxFramesInFlight
         event.signaledValue = UInt64(FrameRenderer.maxFramesInFlight - 1)
 
-        super.init()
         queue.addResidencySet(set)
         residencySet.addAllocations([uniforms])
         residencySet.commit()
@@ -263,16 +317,25 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     }
 
     /// Builds a display link that drives this renderer. The caller owns it and must invalidate it.
-    public func makeDisplayLink(for layer: CAMetalLayer) -> CAMetalDisplayLink {
+    ///
+    /// - Parameter frameRateRange: what to ask the display for. The default, 30 to 120 preferring 120,
+    ///   suits a game that wants every frame a ProMotion display offers; a game holding a steady 60
+    ///   asks for that instead. The simulation's rate is not this — see ``FixedTimestep``.
+    public func makeDisplayLink(
+        for layer: CAMetalLayer,
+        frameRateRange: CAFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+    ) -> CAMetalDisplayLink {
         let link = CAMetalDisplayLink(metalLayer: layer)
-        link.delegate = self
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+        let target = displayLinkTarget ?? DisplayLinkTarget(renderer: self)
+        displayLinkTarget = target
+        link.delegate = target
+        link.preferredFrameRateRange = frameRateRange
         return link
     }
 
     // MARK: - Frame
 
-    public func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
+    private func frame(_ update: CAMetalDisplayLink.Update) {
         let drawable = update.drawable
         let presentationTime = update.targetPresentationTimestamp
 
@@ -284,10 +347,10 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
 
         let steps = timestep.advance(by: frameTime)
         for _ in 0..<steps {
-            game?.step(deltaTime: Float(timestep.step))
+            game?.step(deltaTime: Float(timestep.stepDuration))
         }
 
-        render(to: drawable, interpolation: timestep.interpolationAlpha)
+        render(to: drawable, interpolation: timestep.interpolation)
     }
 
     private func updateRenderTargets(width: Int, height: Int) {
@@ -322,7 +385,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         if let sceneTexture { residencySet.addAllocations([sceneTexture]) }
         residencySet.commit()
 
-        game?.viewportChanged(width: width, height: height)
+        game?.viewportSizeChanged(width: width, height: height)
     }
 
     /// Pass two: the scene fitted to the display, then the interface on top of it.
@@ -334,6 +397,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     private func encodeToneMapAndInterface(to target: MTLTexture,
                                            scene: MTLTexture,
                                            frameSlot: Int,
+                                           interpolation: Float,
                                            game: GameLoop) {
         let descriptor = MTL4RenderPassDescriptor()
         descriptor.colorAttachments[0].texture = target
@@ -360,7 +424,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
             encoder.drawPrimitives(primitiveType: .triangle, vertexStart: 0, vertexCount: 3)
         }
 
-        game.encodeHUD(into: encoder, frameSlot: frameSlot)
+        game.encodeHUD(into: encoder, frameSlot: frameSlot, interpolation: interpolation)
         encoder.endEncoding()
     }
 
@@ -408,7 +472,8 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         game.encode(into: encoder, frameSlot: frameSlot, interpolation: interpolation)
         encoder.endEncoding()
 
-        encodeToneMapAndInterface(to: texture, scene: sceneTexture, frameSlot: frameSlot, game: game)
+        encodeToneMapAndInterface(to: texture, scene: sceneTexture, frameSlot: frameSlot,
+                                  interpolation: interpolation, game: game)
         commandBuffer.endCommandBuffer()
         commandQueue.commit([commandBuffer])
         commandQueue.signalEvent(endFrameEvent, value: UInt64(frameIndex))
@@ -470,7 +535,8 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
         game.encode(into: encoder, frameSlot: frameSlot, interpolation: alpha)
         encoder.endEncoding()
 
-        encodeToneMapAndInterface(to: drawable.texture, scene: sceneTexture, frameSlot: frameSlot, game: game)
+        encodeToneMapAndInterface(to: drawable.texture, scene: sceneTexture, frameSlot: frameSlot,
+                                  interpolation: alpha, game: game)
 
         if let layerResidencySet = (drawable.layer as CAMetalLayer?)?.residencySet {
             commandBuffer.useResidencySet(layerResidencySet)

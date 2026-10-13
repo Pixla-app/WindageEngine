@@ -87,7 +87,7 @@ struct AssetOrientationTests {
         for index in 0..<asset.count { descend(asset.object(at: index)) }
         #expect(abs(height - 176) < 1e-3, "the asset is in its own units, unconverted")
 
-        let orientation = AssetOrientation.read(from: asset, unitsPerMeter: height / 1.76)
+        let orientation = AssetOrientation(asset: asset, unitsPerMeter: height / 1.76)
         #expect(orientation.upAxis == .z)
         let top = place(SIMD3(0, 0, height), orientation)
         #expect(abs(top.y - 1.76) < 1e-3)
@@ -98,5 +98,13 @@ struct AssetOrientationTests {
     @Test("A nearly-unit up vector is still an up vector")
     func dominantAxisRatherThanExact() {
         #expect(AssetOrientation.UpAxis.y == AssetOrientation.upAxis(of: MDLAsset()))
+    }
+}
+
+/// **Zero units to the meter is a mistake, said at once.** It used to be read as 1 — an asset whose
+/// scale had been forgotten came in at whatever size it happened to be, with nothing to say so.
+@Test func aZeroUnitScaleIsRefused() async {
+    await #expect(processExitsWith: .failure) {
+        _ = AssetOrientation(upAxis: .z, unitsPerMeter: 0)
     }
 }

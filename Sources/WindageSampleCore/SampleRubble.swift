@@ -55,8 +55,8 @@ public enum SampleRubble {
                     && z + size >= box.minimum.z && z - size <= box.maximum.z
             }
             if sits { continue }
-            pieces.append(matrix4x4_translation(x, 0, z)
-                          * matrix4x4_rotation(radians: yaw, axis: SIMD3(0, 1, 0))
+            pieces.append(simd_float4x4(translation: SIMD3(x, 0, z))
+                          * simd_float4x4(rotationAngle: yaw, axis: SIMD3(0, 1, 0))
                           // **Evenly sized**, so the shader can turn normals with the transform itself:
                           // a squashed piece would need its inverse transpose, per copy.
                           * simd_float4x4(diagonal: SIMD4(size, size, size, 1)))

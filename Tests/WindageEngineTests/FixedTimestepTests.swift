@@ -66,7 +66,7 @@ struct FixedTimestepTests {
     func simulatedTimeIsQuantised() {
         var clock = FixedTimestep(stepsPerSecond: rate)
         for _ in 0..<97 { clock.advance(by: 0.0071) }
-        #expect(abs(clock.simulatedTime - Double(clock.totalSteps) * clock.step) < 1e-12)
+        #expect(abs(clock.simulatedTime - Double(clock.totalSteps) * clock.stepDuration) < 1e-12)
     }
 
     /// A long stall must not become a burst of steps that takes longer than a frame, making the
@@ -90,8 +90,8 @@ struct FixedTimestepTests {
         var clock = FixedTimestep(stepsPerSecond: rate)
         for frameTime in stride(from: 0.001, through: 0.05, by: 0.0013) {
             clock.advance(by: frameTime)
-            #expect(clock.interpolationAlpha >= 0)
-            #expect(clock.interpolationAlpha < 1)
+            #expect(clock.interpolation >= 0)
+            #expect(clock.interpolation < 1)
         }
     }
 }

@@ -35,30 +35,30 @@
 <h2 id="why-cull-an-open-scene">Why cull an open scene</h2>
 <p>A 70° field of view is under a fifth of the circle. In a scene of a few hundred objects, most of them sit behind the player's shoulders whether or not anything blocks them, so testing each against the view is cheap and saves a draw call per object. It matters more for shadows, where the same scene is recorded several times from a light's point of view.</p>
 <h2 id="frustum">Frustum</h2>
-<pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> Frustum {
+<pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> Frustum: Sendable, Equatable {
     <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> planes: [SIMD4&lt;Float&gt;]
-    <span class="k">public</span> <span class="k">init</span>(viewProjection m: matrix_float4x4)
-    <span class="k">public</span> <span class="k">func</span> canSee(_ box: BoundingBox) -&gt; Bool
+    <span class="k">public</span> <span class="k">init</span>(viewProjection m: simd_float4x4)
+    <span class="k">public</span> <span class="k">func</span> mayIntersect(_ box: BoundingBox) -&gt; Bool
 }</pre>
 <p>Build it from the same world-to-clip matrix you draw with, and test world-space boxes against it:</p>
 <pre class="code-swift"><span class="c">// Your game</span>
 <span class="k">let</span> viewProjection = simd_mul(projection, camera.viewMatrix)
 <span class="k">let</span> frustum = Frustum(viewProjection: viewProjection)
 
-<span class="k">for</span> object <span class="k">in</span> objects <span class="k">where</span> frustum.canSee(object.worldBounds) {
+<span class="k">for</span> object <span class="k">in</span> objects <span class="k">where</span> frustum.mayIntersect(object.worldBounds) {
     draw(object)
 }</pre>
 <p>Each plane is a <code>(normal, distance)</code> pair, unit-normalized and pointing inward: a point is inside when <code>dot(normal, point) + distance &gt;= 0</code> for every plane.</p>
 <h3 id="five-planes-not-six">Five planes, not six</h3>
-<p>The engine's projection, <code>matrix_perspective_right_hand_reverse_z</code>, has an <strong>infinite far plane</strong> (see <a href="camera.html">camera</a>). Extract the far plane from it and you get a zero normal, because there is no far plane to extract. <code>Frustum</code> drops it, so a Windage Engine frustum has <strong>five</strong> planes: left, right, bottom, top and near.</p>
+<p>The engine's projection, <code>simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)</code>, has an <strong>infinite far plane</strong> (see <a href="camera.html">camera</a>). Extract the far plane from it and you get a zero normal, because there is no far plane to extract. <code>Frustum</code> drops it, so a Windage Engine frustum has <strong>five</strong> planes: left, right, bottom, top and near.</p>
 <p>Code written expecting six is written for a different projection. It would either carry a plane that always passes or divide by zero normalizing it. The tests check for exactly five unit-length planes, and that a box 100 km down the view is still visible.</p>
 <h3 id="reversed-z-the-right-way-round">Reversed-Z, the right way round</h3>
 <p>The planes are extracted from the matrix rows (Gribb–Hartmann). The textbook form assumes near maps to depth 0 and far to <code>w</code>; under reversed-Z near maps to 1 and far to 0, so the near and far rows swap. <code>Frustum</code> does this for you. Extracted the textbook way, the near plane would cull everything close to the camera — which reads as geometry failing to load, not as a culling bug.</p>
 <h2 id="the-asymmetry-behind-every-detail">The asymmetry behind every detail</h2>
-<p><strong>A false positive costs a draw call. A false negative deletes something the player can see.</strong> Those are not comparable, so <code>canSee</code> leans toward keeping:</p>
+<p><strong>A false positive costs a draw call. A false negative deletes something the player can see.</strong> Those are not comparable, so <code>mayIntersect</code> leans toward keeping:</p>
 <ul><li>It is the standard conservative box test. For each plane it takes the box corner furthest along the plane's normal and rejects only if even that corner is outside.</li><li>A box straddling a plane is kept, even when most of it is outside. That costs a draw, never a missing object.</li></ul>
 <h2 id="boundingbox-in-world-space">BoundingBox, in world space</h2>
-<p><code>canSee</code> takes a <code>BoundingBox</code> in <strong>world</strong> space. A <code>LoadedMesh</code>'s <code>bounds</code> are in the mesh's own space, so transform them first. <code>BoundingBox.transformed(by:)</code> re-derives the box from all eight corners, which stays correct under rotation. A <code>Volume</code> does this for you:</p>
+<p><code>mayIntersect</code> takes a <code>BoundingBox</code> in <strong>world</strong> space. A <code>LoadedMesh</code>'s <code>bounds</code> are in the mesh's own space, so transform them first. <code>BoundingBox.transformed(by:)</code> re-derives the box from all eight corners, which stays correct under rotation. A <code>Volume</code> does this for you:</p>
 <pre class="code-swift"><span class="k">let</span> volume = Volume(local: mesh.bounds, transform: transform)
 <span class="k">let</span> box = volume.worldBounds</pre>
 <p>Remember the mesh's <code>nodeTransform</code> belongs inside the transform — see <a href="meshes.html">meshes</a>.</p>
@@ -80,18 +80,18 @@
 <p>A batch built with <code>ShadowMap.Batch(pipeline:encode:)</code> — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:</p>
 <pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> Pass {
     <span class="k">public</span> <span class="k">let</span> index: Int                       <span class="c">// cascade, atlas tile, or cube face (slice × 6 + face)</span>
-    <span class="k">public</span> <span class="k">let</span> viewProjection: matrix_float4x4  <span class="c">// world to this pass's light clip space</span>
+    <span class="k">public</span> <span class="k">let</span> viewProjection: simd_float4x4  <span class="c">// world to this pass's light clip space</span>
 }</pre>
 <p>Build a <code>Frustum</code> from <code>pass.viewProjection</code> and draw only what it can see:</p>
 <pre class="code-swift"><span class="c">// Your game</span>
 ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span>
     <span class="k">let</span> frustum = Frustum(viewProjection: pass.viewProjection)
-    <span class="c">// keep the copies whose world bounds frustum.canSee(_:) accepts, then draw them</span>
+    <span class="c">// keep the copies whose world bounds frustum.mayIntersect(_:) accepts, then draw them</span>
 }</pre>
 <p>A sun cascade near the eye covers only a few meters. On a scattered wood of 1,000 heavy trees, drawing every copy into all four cascades was three quarters of the frame — 75 ms with shadows against 19 without — and culling each cascade to its own frustum brought it to 25 ms.</p>
 <p>The sample's debris is small enough to draw whole into every pass, so its batch ignores the pass (<code>{ encoder, table, _ in … }</code>). See <a href="instancing.html">instancing</a>.</p>
 <h2 id="what-it-does-not-do">What it does not do</h2>
-<ul><li><strong>No occlusion culling.</strong> Something hidden behind a wall but inside the frustum is drawn.</li><li><strong>No spatial structure.</strong> <code>canSee</code> is a test you call per box; a game with many thousands of objects groups them first.</li><li><strong>No automatic culling of the main view.</strong> The engine draws nothing of yours, so which objects reach a draw call is your game's loop.</li></ul>
+<ul><li><strong>No occlusion culling.</strong> Something hidden behind a wall but inside the frustum is drawn.</li><li><strong>No spatial structure.</strong> <code>mayIntersect</code> is a test you call per box; a game with many thousands of objects groups them first.</li><li><strong>No automatic culling of the main view.</strong> The engine draws nothing of yours, so which objects reach a draw call is your game's loop.</li></ul>
   </main>
 
   <aside class="docs-toc" aria-label="On this page">

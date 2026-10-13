@@ -78,7 +78,7 @@ struct ClusterGridTests {
 
     // MARK: - Cluster geometry
 
-    private let fovY = radians_from_degrees(Float(70))
+    private let fovY = Float.radians(fromDegrees: Float(70))
     private let aspect: Float = 16.0 / 9.0
 
     @Test("A cluster's box spans exactly its slice in depth")
@@ -130,7 +130,7 @@ struct ClusteredLightsAssignmentTests {
 
     private let grid = ClusterGrid(tilesX: 8, tilesY: 4, slices: 12,
                                    nearPlane: 0.1, lightRange: 60)
-    private let fovY = radians_from_degrees(Float(70))
+    private let fovY = Float.radians(fromDegrees: Float(70))
     private let aspect: Float = 16.0 / 9.0
 
     private func assign(_ lights: [PunctualLight],
@@ -200,7 +200,7 @@ struct ClusteredLightsAssignmentTests {
         #expect(!assign([light]).indices.isEmpty)
 
         // Walk the camera 100 m past it and the same light is behind.
-        let moved = matrix4x4_translation(0, 0, 100)
+        let moved = simd_float4x4(translation: SIMD3(0, 0, 100))
         #expect(assign([light], view: moved).indices.isEmpty)
     }
 

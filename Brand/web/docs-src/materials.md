@@ -17,7 +17,6 @@ public nonisolated struct Material: Sendable, Equatable {
     public var emissive: SIMD3<Float>      // linear
     public var textures: [TextureSlot: TextureSource]
     public var specularExponent: Float?
-    public subscript(slot: TextureSlot) -> TextureSource?
 }
 ```
 
@@ -35,7 +34,7 @@ Each scalar is **multiplied** with its map when there is one, so a textured mate
 2. **Model I/O invents a 0.18 gray base color** for files that never mentioned one. A slot with a map takes a white tint instead, so a texture is not dimmed to 18%.
 3. **A map's scalar is set to the identity.** A file that connects `metallic` to a texture supplies no scalar, and the default of 0 would multiply the map away. `metallic`, `roughness` and `emissive` become 1 when mapped.
 
-For OBJ, Model I/O always reports the same roughness whatever the file says. So when a material has a specular exponent (`Ns`), `specularExponent` is set and `roughness` comes from `Material.roughness(fromSpecularExponent:)`, the standard Blinn-Phong to GGX approximation.
+For OBJ, Model I/O always reports the same roughness whatever the file says. So when a material has a specular exponent (`Ns`), `specularExponent` is set and `roughness` is converted from it with the standard Blinn-Phong to GGX approximation, `sqrt(sqrt(2 / (Ns + 2)))`.
 
 ## TextureSlot and TextureSource
 
@@ -62,7 +61,7 @@ public nonisolated enum TextureSource: Sendable, Hashable {
 
 ```swift
 public final class TextureStore {
-    public init?(device: MTLDevice)
+    public init(device: MTLDevice) throws   // TextureStoreError.fallbackUnavailable
     public let white: MTLTexture        // 1×1 opaque white
     public let flatNormal: MTLTexture   // 1×1 (0.5, 0.5, 1)
     public func fallback(for slot: TextureSlot) -> MTLTexture
@@ -72,7 +71,7 @@ public final class TextureStore {
     public func textures(for material: Material, origin: TextureOrigin = .bottomLeft,
                          bundle: Bundle = .main,
                          reportingTo report: ((String) -> Void)? = nil) -> [TextureSlot: MTLTexture]
-    public var allocations: [MTLResource]
+    public var allocations: [any MTLAllocation]
 }
 ```
 
@@ -88,7 +87,7 @@ Metal puts texture coordinate (0, 0) at an image's top-left; USD and OBJ put it 
 
 ### Errors
 
-`TextureStoreError` has three cases: `notFound(String)` for a missing bundle resource, `loadFailed(String, underlying:)` when the file would not decode, and `fallbackUnavailable`.
+`TextureStoreError` has three cases: `notFound(String)` for a missing bundle resource, `loadFailed(String, underlying:)` when the file would not decode, and `fallbackUnavailable`, which `init(device:)` throws when the device will not make the 1×1 fallbacks.
 
 ## In the sample
 
@@ -96,7 +95,7 @@ The sample resolves every map from the file's own material, per submesh:
 
 ```swift
 let material = mesh.material(forSubmesh: index)
-guard let source = material[slot] else { return textures.fallback(for: slot) }
+guard let source = material.textures[slot] else { return textures.fallback(for: slot) }
 do {
     return try textures.texture(source, isColor: slot.isColor, bundle: .module)
 } catch {

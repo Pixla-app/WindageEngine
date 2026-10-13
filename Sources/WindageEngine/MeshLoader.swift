@@ -8,13 +8,22 @@ import MetalKit
 import ModelIO
 
 public enum MeshLoaderError: Error, CustomStringConvertible, Sendable {
+    /// No file by that name in the bundle, or none at that URL.
     case assetNotFound(String)
+    /// The file was read and holds no meshes.
     case noMeshes(String)
+    /// The vertex descriptor could not be turned into Model I/O's, so nothing could be laid out by it.
+    case unusableVertexDescriptor(String)
+    /// Model I/O or Metal failed turning the file's meshes into buffers; the underlying error says why.
+    case conversionFailed(String, underlying: any Error)
 
     public var description: String {
         switch self {
-        case .assetNotFound(let name): "No mesh named \(name) in the app bundle"
+        case .assetNotFound(let name): "no mesh file \(name)"
         case .noMeshes(let name): "\(name) loaded but contains no meshes"
+        case .unusableVertexDescriptor(let name):
+            "\(name): the vertex descriptor has no attributes Model I/O can lay a mesh out by"
+        case .conversionFailed(let name, let underlying): "\(name) could not be made into meshes — \(underlying)"
         }
     }
 }
@@ -36,9 +45,11 @@ public nonisolated enum MeshLoader {
     ///   `[0: MDLVertexAttributePosition, 1: MDLVertexAttributeTextureCoordinate]`. The game owns
     ///   these indices, because they are a contract between its shaders and its vertex descriptor —
     ///   the engine has no business guessing them.
+    /// - Parameter fileExtension: the file's extension, without the dot — `"usda"`, `"usdz"`, `"obj"`.
+    ///   No default: the extension is the format, and USD is preferred over OBJ, so it is named.
     public static func load(
         named name: String,
-        withExtension fileExtension: String = "obj",
+        withExtension fileExtension: String,
         device: MTLDevice,
         vertexDescriptor: MTLVertexDescriptor,
         semantics: [Int: String],
@@ -74,10 +85,16 @@ public nonisolated enum MeshLoader {
         // silently produces zeroes — which renders as an unlit black scene, with nothing thrown and
         // nothing logged. Naming every attribute the descriptor declares is not optional.
         guard let attributes = modelDescriptor.attributes as? [MDLVertexAttribute] else {
-            throw MeshLoaderError.noMeshes(name)
+            throw MeshLoaderError.unusableVertexDescriptor(name)
         }
         for (index, semantic) in semantics {
             attributes[index].name = semantic
+        }
+
+        // **Said here, rather than as "no meshes".** Model I/O opens a file that is not there as an empty
+        // asset, and an empty asset is indistinguishable from a file with nothing in it.
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw MeshLoaderError.assetNotFound(url.path)
         }
 
         let allocator = MTKMeshBufferAllocator(device: device)
@@ -96,7 +113,12 @@ public nonisolated enum MeshLoader {
             mesh.vertexDescriptor = modelDescriptor
         }
 
-        let (modelMeshes, metalMeshes) = try MTKMesh.newMeshes(asset: asset, device: device)
+        let modelMeshes: [MDLMesh], metalMeshes: [MTKMesh]
+        do {
+            (modelMeshes, metalMeshes) = try MTKMesh.newMeshes(asset: asset, device: device)
+        } catch {
+            throw MeshLoaderError.conversionFailed(name, underlying: error)
+        }
         guard !metalMeshes.isEmpty else { throw MeshLoaderError.noMeshes(name) }
 
         let transforms = nodeTransforms(in: asset)
@@ -182,9 +204,9 @@ public nonisolated enum MeshLoader {
     /// **Keyed by object identity rather than by traversal order.** `MTKMesh.newMeshes` walks the
     /// asset the same way this does, so zipping would work today — and would break silently the day
     /// it does not, by putting one mesh's transform on another's geometry.
-    static func nodeTransforms(in asset: MDLAsset) -> [ObjectIdentifier: matrix_float4x4] {
-        var result: [ObjectIdentifier: matrix_float4x4] = [:]
-        func descend(_ object: MDLObject, _ parent: matrix_float4x4) {
+    static func nodeTransforms(in asset: MDLAsset) -> [ObjectIdentifier: simd_float4x4] {
+        var result: [ObjectIdentifier: simd_float4x4] = [:]
+        func descend(_ object: MDLObject, _ parent: simd_float4x4) {
             let world = object.transform.map { parent * $0.matrix } ?? parent
             if let mesh = object as? MDLMesh { result[ObjectIdentifier(mesh)] = world }
             for child in object.children.objects { descend(child, world) }
@@ -209,7 +231,12 @@ public nonisolated enum MeshLoader {
 }
 
 /// A mesh, the box that contains it in its own space, and what its surfaces are made of.
-public nonisolated struct LoadedMesh {
+///
+/// **`Sendable`, unchecked, so a mesh loaded on a worker can be handed to the main actor.** Every field
+/// is a `let`, and the one that is not a value — the `MTKMesh` — is made by ``MeshLoader`` and never
+/// changed by the engine afterwards; its buffers are `MTLBuffer`s, which Metal makes safe to share.
+/// What a game must not do is change the `MTKMesh` (its name, its vertex descriptor) from two threads.
+public nonisolated struct LoadedMesh: @unchecked Sendable {
     public let mesh: MTKMesh
     public let bounds: BoundingBox
 
@@ -226,12 +253,12 @@ public nonisolated struct LoadedMesh {
     /// for a hand-written mesh and almost never for an exported one — a character out of an FBX
     /// pipeline has its geometry in centimeters under a parent scaled by 0.01. ``bounds`` is in the
     /// mesh's own space, so it needs the same treatment before it means anything in the world.
-    public let nodeTransform: matrix_float4x4
+    public let nodeTransform: simd_float4x4
 
     public init(mesh: MTKMesh,
                 bounds: BoundingBox,
                 materials: [Material] = [],
-                nodeTransform: matrix_float4x4 = matrix_identity_float4x4) {
+                nodeTransform: simd_float4x4 = matrix_identity_float4x4) {
         self.mesh = mesh
         self.bounds = bounds
         self.materials = materials
@@ -249,7 +276,9 @@ public nonisolated struct LoadedMesh {
 /// Deliberately a flat list rather than a scene graph. A hierarchy earns its place when something
 /// actually needs to be parented — a scope to a rifle, a rifle to a pair of hands — and inventing
 /// one before then is an engine feature with no game behind it.
-public nonisolated struct SceneObject {
+///
+/// `Sendable` for the reason ``LoadedMesh`` is.
+public nonisolated struct SceneObject: @unchecked Sendable {
     public let mesh: MTKMesh
 
     /// Where it is and how big it is — the half of this that a round cares about.
@@ -259,13 +288,13 @@ public nonisolated struct SceneObject {
     /// through volumes, and a thing with no GPU mesh is as hittable as a thing with one.
     public let volume: Volume
 
-    public var transform: matrix_float4x4 { volume.transform }
+    public var transform: simd_float4x4 { volume.transform }
     public var worldBounds: BoundingBox { volume.worldBounds }
 
     /// **The mesh's node transform is composed in**, so a placement means the same thing whether the
     /// geometry came from a hand-written OBJ at the origin or from an exported character in
     /// centimeters under a scaled parent.
-    public init(loaded: LoadedMesh, transform: matrix_float4x4) {
+    public init(loaded: LoadedMesh, transform: simd_float4x4) {
         self.mesh = loaded.mesh
         self.volume = Volume(local: loaded.bounds, transform: transform * loaded.nodeTransform)
     }

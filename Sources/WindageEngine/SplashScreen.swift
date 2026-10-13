@@ -54,15 +54,15 @@ public nonisolated struct SplashScreen: Sendable {
     /// Seconds fading away.
     public var fadeOut: Float = 0.5
 
-    /// How long a press is ignored for.
+    /// Seconds from going up before a press can skip it.
     ///
     /// **A splash that can be skipped on the frame it appears is one nobody ever sees**: the key or
     /// the click that launched the game is often still down when the first frame goes up, and the
     /// splash is gone before it has drawn once.
-    public var ignoresSkipsFor: Float = 0.25
+    public var skipDelay: Float = 0.25
 
     /// What is behind the lockup. Near-black rather than black, so it reads as a surface.
-    public var background = UIColor(hex: 0x0B0D10)
+    public var background = InterfaceColor(hex: 0x0B0D10)
 
     /// The mark and the lettering. ``EngineMark/display``, because the ground is dark.
     public var foreground = EngineMark.display
@@ -71,9 +71,9 @@ public nonisolated struct SplashScreen: Sendable {
     /// lead. Nil draws none, and the mark and name center on their own.
     public var lead: String?
 
-    /// How tall the mark is drawn, as a share of the viewport's width. Everything else in the lockup
-    /// is sized from the mark.
-    public var markWidthFraction: Float = 0.12
+    /// The mark's size — it is square — as a share of the viewport's width. Everything else in the
+    /// lockup is sized from the mark.
+    public var markScale: Float = 0.12
 
     /// Whether ``Engine/version`` is drawn under the name. **Off**: no shipped game shows its engine's
     /// version, and a recorded frame that could see it would fail on every release.
@@ -113,26 +113,28 @@ public nonisolated struct SplashScreen: Sendable {
     /// Cut it short — **by running it to the start of its fade, not by ending it.**
     ///
     /// A splash that vanishes on the frame a key goes down looks like a dropped frame; one that fades
-    /// out over its own fade looks like it was always going to. Ignored while ``ignoresSkipsFor`` has
-    /// not passed, and ignored again once it is already fading, so leaning on a key does not shorten
+    /// out over its own fade looks like it was always going to. Ignored until ``skipDelay`` has
+    /// passed, and ignored again once it is already fading, so leaning on a key does not shorten
     /// the fade twice.
     public mutating func skip() {
-        guard elapsed >= ignoresSkipsFor, elapsed < fadeIn + hold else { return }
+        guard elapsed >= skipDelay, elapsed < fadeIn + hold else { return }
         elapsed = fadeIn + hold
         isSkipped = true
     }
 
     /// Draws it over the whole viewport. Call from `encodeHUD`, after everything else.
+    ///
+    /// - Parameter viewportSize: the size the HUD was begun with, in the same units.
     @MainActor
-    public func draw(into hud: HUDRenderer, viewport: SIMD2<Float>) {
+    public func draw(into hud: HUDRenderer, viewportSize viewport: SIMD2<Float>) {
         let alpha = opacity
         guard alpha > 0, viewport.x > 0, viewport.y > 0 else { return }
 
-        hud.rect(x: 0, y: 0, width: viewport.x, height: viewport.y,
-                 color: background.withAlpha(background.srgb.w * alpha))
+        hud.fillRect(origin: .zero, size: viewport,
+                     color: background.withAlpha(background.srgb.w * alpha))
 
         let ink = foreground.withAlpha(foreground.srgb.w * alpha)
-        let mark = viewport.x * markWidthFraction
+        let mark = viewport.x * markScale
         let center = viewport * 0.5
         let gap = mark * 0.3
 
@@ -162,20 +164,20 @@ public nonisolated struct SplashScreen: Sendable {
             x += leadWidth + gap
         }
 
-        EngineMark.draw(into: hud, x: x, y: center.y - mark / 2, height: mark, color: ink)
+        EngineMark.draw(into: hud, origin: SIMD2(x, center.y - mark / 2), height: mark, color: ink)
         x += mark + gap
 
         // Capitals stand about seven tenths of their point size above the baseline; the two lines are
         // centred together on the mark.
         let block = large * 0.72 + small * 0.55 + small * 0.72
         let firstBaseline = center.y - block / 2 + large * 0.72
-        _ = hud.text(first, x: x, y: firstBaseline, pointSize: large, color: ink)
+        _ = hud.text(first, atBaseline: SIMD2(x, firstBaseline), pointSize: large, color: ink)
         let secondBaseline = firstBaseline + small * 0.55 + small * 0.72
         SplashScreen.set(second, into: hud, x: x + mark * 0.02, y: secondBaseline,
                          pointSize: small, tracking: small * 0.6, color: ink.withAlpha(ink.srgb.w * 0.7))
 
         if showsVersion {
-            _ = hud.text(Engine.version, x: x, y: secondBaseline + small * 1.9, pointSize: small,
+            _ = hud.text(Engine.version, atBaseline: SIMD2(x, secondBaseline + small * 1.9), pointSize: small,
                          color: ink.withAlpha(ink.srgb.w * 0.45))
         }
     }
@@ -184,10 +186,11 @@ public nonisolated struct SplashScreen: Sendable {
     /// set solid run together.
     @MainActor
     static func set(_ string: String, into hud: HUDRenderer, x: Float, y: Float, pointSize: Float,
-                    tracking: Float, color: UIColor) {
+                    tracking: Float, color: InterfaceColor) {
         var pen = x
         for character in string {
-            pen += hud.text(String(character), x: pen, y: y, pointSize: pointSize, color: color) + tracking
+            pen += hud.text(String(character), atBaseline: SIMD2(pen, y),
+                            pointSize: pointSize, color: color) + tracking
         }
     }
 

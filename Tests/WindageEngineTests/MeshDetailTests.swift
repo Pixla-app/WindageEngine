@@ -75,7 +75,7 @@ private func reductions(_ mesh: (positions: [SIMD3<Float>], indices: [UInt32])) 
     let errors: [Float] = [0.01, 0.04, 0.2]
     let pixelsPerRadian: Float = 1000 / (40 * .pi / 180)    // a 1000-pixel-high view, 40°
     func at(_ distance: Float, scale: Float = 1) -> Int {
-        MeshDetail.choose(errors: errors, distance: distance, scale: scale, pixelsPerRadian: pixelsPerRadian)
+        MeshDetail.coarsestTier(errors: errors, distance: distance, scale: scale, pixelsPerRadian: pixelsPerRadian)
     }
     #expect(at(5) == 0, "close up, the full mesh")
     #expect(at(30) == 1)
@@ -98,7 +98,7 @@ private func reductions(_ mesh: (positions: [SIMD3<Float>], indices: [UInt32])) 
         let reduced = MeshDetail.reductions(indices: mesh.indices, positions: bytes.baseAddress!,
                                      vertexCount: mesh.positions.count, stride: 32)
         return MeshDetail.tiers([reduced], full: [mesh.indices], vertices: bytes.baseAddress!, stride: 32,
-                                   normalOffset: 12)
+                                   positionOffset: 0, normalOffset: 12)
     }
     #expect(made.count >= 2)
     var previous = vertices.count * 4
@@ -139,7 +139,8 @@ private func reductions(_ mesh: (positions: [SIMD3<Float>], indices: [UInt32])) 
     layout.layouts[0].stride = 24
     let loaded = try MeshLoader.load(url: url, device: device, vertexDescriptor: layout,
                                      semantics: [0: MDLVertexAttributePosition, 1: MDLVertexAttributeNormal])
-    let tiers = MeshDetail.tiers(for: try #require(loaded.first), vertexDescriptor: layout, normalAttribute: 1)
+    let tiers = MeshDetail.tiers(for: try #require(loaded.first), vertexDescriptor: layout,
+                                 positionAttribute: 0, normalAttribute: 1)
     #expect(tiers.count >= 3, "\(tiers.count) tiers")
     #expect(tiers.map(\.error) == tiers.map(\.error).sorted(), "coarser tiers stray further")
     let floats = try #require(tiers.last).vertices.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
@@ -148,4 +149,63 @@ private func reductions(_ mesh: (positions: [SIMD3<Float>], indices: [UInt32])) 
                  SIMD3(floats[v + 3], floats[v + 4], floats[v + 5])) < -0.1
     }
     #expect(away.isEmpty, "\(away.count) normals point into the sphere")
+}
+
+/// **The position need not be first.** Tiers used to read it from the start of buffer 0, so a layout with
+/// the normal first simplified the normals as if they were the shape. The same sphere, laid out both ways,
+/// must give the same tiers.
+@Test func thePositionIsReadWhereTheLayoutPutsIt() throws {
+    let device = try #require(MTLCreateSystemDefaultDevice())
+    let mesh = sphere(rings: 24, sides: 32, faceted: false)
+    var obj = mesh.positions.map { "v \($0.x) \($0.y) \($0.z)\nvn \($0.x) \($0.y) \($0.z)" }.joined(separator: "\n")
+    for t in Swift.stride(from: 0, to: mesh.indices.count, by: 3) {
+        let (a, b, c) = (mesh.indices[t] + 1, mesh.indices[t + 1] + 1, mesh.indices[t + 2] + 1)
+        obj += "\nf \(a)//\(a) \(b)//\(b) \(c)//\(c)"
+    }
+    let url = FileManager.default.temporaryDirectory.appending(path: "mesh-detail-\(UUID().uuidString).obj")
+    try obj.write(to: url, atomically: true, encoding: .utf8)
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    func tiers(positionFirst: Bool) throws -> [MeshDetail.Tier] {
+        let (position, normal) = positionFirst ? (0, 1) : (1, 0)
+        let layout = MTLVertexDescriptor()
+        layout.attributes[position].format = .float3; layout.attributes[position].offset = positionFirst ? 0 : 12
+        layout.attributes[normal].format = .float3; layout.attributes[normal].offset = positionFirst ? 12 : 0
+        layout.layouts[0].stride = 24
+        let loaded = try MeshLoader.load(url: url, device: device, vertexDescriptor: layout,
+                                         semantics: [position: MDLVertexAttributePosition,
+                                                     normal: MDLVertexAttributeNormal])
+        return MeshDetail.tiers(for: try #require(loaded.first), vertexDescriptor: layout,
+                                positionAttribute: position, normalAttribute: normal)
+    }
+    let first = try tiers(positionFirst: true), second = try tiers(positionFirst: false)
+    #expect(first.count >= 3)
+    #expect(first.map(\.error) == second.map(\.error))
+    #expect(first.map(\.submeshes) == second.map(\.submeshes))
+}
+
+@Test func optionsChangeHowManyTiersAreMade() {
+    let mesh = sphere(rings: 24, sides: 32, faceted: false)
+    let few = mesh.positions.withUnsafeBytes { bytes in
+        MeshDetail.reductions(indices: mesh.indices, positions: bytes.baseAddress!, vertexCount: mesh.positions.count,
+                              stride: MemoryLayout<SIMD3<Float>>.stride, options: MeshDetail.Options(maximumTiers: 2))
+    }
+    #expect(few.count == 2)
+}
+
+/// **A file that is not there says so**, rather than "loaded but contains no meshes" — Model I/O opens a
+/// missing file as an empty asset, and the two used to be one error.
+@Test func aMissingMeshFileIsNotFound() throws {
+    let device = try #require(MTLCreateSystemDefaultDevice())
+    let layout = MTLVertexDescriptor()
+    layout.attributes[0].format = .float3; layout.attributes[0].offset = 0; layout.attributes[0].bufferIndex = 0
+    layout.layouts[0].stride = 12
+    let url = FileManager.default.temporaryDirectory.appending(path: "no-such-mesh-\(UUID().uuidString).usda")
+    #expect {
+        _ = try MeshLoader.load(url: url, device: device, vertexDescriptor: layout,
+                                semantics: [0: MDLVertexAttributePosition])
+    } throws: { error in
+        guard case MeshLoaderError.assetNotFound = error else { return false }
+        return true
+    }
 }

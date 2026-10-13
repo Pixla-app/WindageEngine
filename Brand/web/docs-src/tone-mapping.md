@@ -13,7 +13,7 @@ A sunlit surface with a specular highlight is genuinely brighter than white pape
 `FrameRenderer` runs the frame as two passes:
 
 1. **The scene** draws into `FrameRenderer.sceneColorPixelFormat`, which is `rgba16Float`. Half float holds far more range than a frame needs, at half the bandwidth of full float. It can't be memoryless, because the second pass reads it after the scene pass ends.
-2. **The tone map** draws one full-screen triangle, generated from `vertex_id` with no vertex buffer. It reads the scene, applies exposure and the curve, and writes the drawable in `FrameRenderer.colorPixelFormat` (`bgra8Unorm_srgb`). `GameLoop.encodeHUD(into:frameSlot:)` runs in this same pass.
+2. **The tone map** draws one full-screen triangle, generated from `vertex_id` with no vertex buffer. It reads the scene, applies exposure and the curve, and writes the drawable in `FrameRenderer.colorPixelFormat` (`bgra8Unorm_srgb`). `GameLoop.encodeHUD(into:frameSlot:interpolation:)` runs in this same pass.
 
 `FrameRenderer.clearColor` is in radiance, because it is cleared into the HDR target and tone-mapped along with everything else.
 
@@ -62,7 +62,7 @@ engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
 
 This ordering is built into the engine, not left as a convention. Scene color is *radiance*: unbounded, linear and tone-mapped. Interface color is a *specification*: it must land on screen as exactly the value it was authored as. A HUD drawn inside the scene goes through exposure and a filmic curve like everything else, and a brand color comes out desaturated and shifted with nothing to explain why.
 
-So `GameLoop` has a separate hook. `encode(into:frameSlot:interpolation:)` draws the scene, and `encodeHUD(into:frameSlot:)` draws the interface after the curve. `UIColor` is the interface's color type. It takes an sRGB value, such as `UIColor(hex: 0x00C2FF)` or `UIColor(srgb:)`, and converts it once to linear. The `_srgb` drawable encodes it back on write, so the round trip is exact: `#00C2FF` authored is `#00C2FF` on screen, verified by reading pixels back. See [HUD](hud.html).
+So `GameLoop` has a separate hook. `encode(into:frameSlot:interpolation:)` draws the scene, and `encodeHUD(into:frameSlot:interpolation:)` draws the interface after the curve. `InterfaceColor` is the interface's color type. It takes an sRGB value, such as `InterfaceColor(hex: 0x00C2FF)` or `InterfaceColor(srgb:)`, and converts it once to linear. The `_srgb` drawable encodes it back on write, so the round trip is exact: `#00C2FF` authored is `#00C2FF` on screen, verified by reading pixels back. See [HUD](hud.html).
 
 Particles are the reverse case. A spark belongs to the scene, so it goes through the curve like the lamp it came from. See [particles](particles.html).
 

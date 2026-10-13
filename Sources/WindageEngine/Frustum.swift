@@ -32,14 +32,14 @@ import simd
 /// near plane maps to *w* and the far to *-w*. Under reversed-Z near maps to **1** and far to **0**,
 /// so the near and far rows are the other way round — extract them the textbook way and the near
 /// plane culls everything close to the camera, which in a trench is everything that matters.
-public struct Frustum {
+public nonisolated struct Frustum: Sendable, Equatable {
 
     /// Each plane as `(normal, distance)`, pointing **inward**: a point is inside when
     /// `dot(normal, point) + distance >= 0` for all five.
     public private(set) var planes: [SIMD4<Float>] = []
 
     /// Builds the frustum from a world-to-clip matrix.
-    public init(viewProjection m: matrix_float4x4) {
+    public init(viewProjection m: simd_float4x4) {
         // Rows of the matrix, since simd stores columns.
         let r0 = SIMD4<Float>(m.columns.0.x, m.columns.1.x, m.columns.2.x, m.columns.3.x)
         let r1 = SIMD4<Float>(m.columns.0.y, m.columns.1.y, m.columns.2.y, m.columns.3.y)
@@ -66,12 +66,13 @@ public struct Frustum {
         }
     }
 
-    /// Whether any part of the box could be visible.
+    /// Whether any part of the box could be visible — **may**, because the answer is conservative: a
+    /// box near a corner of the frustum, outside it but not wholly beyond any one plane, is kept.
     ///
     /// The standard conservative test: for each plane, take the box corner furthest along the
     /// plane's normal — the *positive vertex* — and reject only if even that corner is outside. That
     /// keeps anything straddling a plane, which is the side of the asymmetry to be wrong on.
-    public func canSee(_ box: BoundingBox) -> Bool {
+    public func mayIntersect(_ box: BoundingBox) -> Bool {
         for plane in planes {
             let normal = SIMD3(plane.x, plane.y, plane.z)
             let positive = SIMD3(normal.x >= 0 ? box.maximum.x : box.minimum.x,

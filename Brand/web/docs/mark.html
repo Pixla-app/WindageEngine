@@ -33,23 +33,21 @@
     <h1>The mark</h1>
 <p><code>EngineMark</code> is the engine's mark, the Drift W, as geometry. Draw it into your <a href="hud.html">HUD</a> at any size to credit the engine in a corner, a credits screen or an about box; the <a href="splash.html">splash</a> uses it the same way. The SVG files in <code>Brand/</code> are written from the same geometry, so there is one drawing of the mark, not several that drift apart.</p>
 <h2 id="drawing">What it is a picture of</h2>
-<p><em>Windage</em> is the sideways carry of a shot, and the correction dialed against it. The mark is a W drawn as one continuous stroke whose <strong>right half is carried up by 16% of its own height</strong> (<code>EngineMark.offset</code>). The middle apex sits well below both shoulders, which is what makes it read as a W rather than two Vs; the lift is the windage.</p>
-<p>The mark is square: <code>EngineMark.aspect</code> is <code>1</code>, and <code>EngineMark.width(forHeight:)</code> returns the height.</p>
+<p><em>Windage</em> is the sideways carry of a shot, and the correction dialed against it. The mark is a W drawn as one continuous stroke whose <strong>right half is carried up by 16% of its own height</strong>. The middle apex sits well below both shoulders, which is what makes it read as a W rather than two Vs; the lift is the windage.</p>
+<p>The mark is square: <code>EngineMark.width(forHeight:)</code> returns the height.</p>
 <h2 id="draw">Drawing it</h2>
 <pre class="code-swift"><span class="c">// Your game, inside encodeHUD, between hud.begin(viewportSize:) and hud.draw(into:frameSlot:).</span>
 <span class="k">let</span> height: Float = 48
-EngineMark.draw(into: hud,
-                x: viewportSize.x - height - 24, y: viewportSize.y - height - 24,
-                height: height, color: EngineMark.display)</pre>
-<p><code>draw(into:x:y:height:color:)</code> fills the mark with its top-left corner at <code>x, y</code> in the HUD's coordinates. It needs no texture, no resource and no pipeline of its own: it is a call to <code>HUDRenderer.fill(polygon:color:feather:)</code>, with the HUD's default one-unit feather so its diagonals are not stair-stepped. A height of 0, or a color with zero alpha, draws nothing.</p>
+EngineMark.draw(into: hud, origin: viewportSize - height - 24, height: height, color: EngineMark.display)</pre>
+<p><code>draw(into:origin:height:color:)</code> fills the mark with its top-left corner at <code>origin</code> in the HUD's coordinates. It needs no texture, no resource and no pipeline of its own: it is a call to <code>HUDRenderer.fillPolygon(_:color:feather:)</code>, with the HUD's default one-unit feather so its diagonals are not stair-stepped. A height of 0, or a color with zero alpha, draws nothing.</p>
 <h3 id="the-outline">The outline</h3>
 <p><code>EngineMark.outline</code> is the shape itself: thirteen points in a unit square, <strong>origin at the top left, y downward</strong>, the same as <code>HUDRenderer</code>, in order around the letter starting at the left shoulder. Scale and offset it yourself if you want the mark in something other than the HUD:</p>
 <pre class="code-swift"><span class="k">let</span> points = EngineMark.outline.map { SIMD2(x, y) + $0 * height }</pre>
 <p>It is constructed, not traced: five points on the stroke's center line (left shoulder, left valley, middle apex, right valley, right shoulder) and a stroke width measured across, as type is. Each arm's edges are its center line moved half the width either way, every corner is where two of those edges meet, and every end is cut flat. The tests check that it stays inside its square, never crosses itself, has its apex cut flat and well below the shoulders, and that only its right half is lifted.</p>
 <h2 id="tones">Two tones, no hue</h2>
 <div class="table"><table><thead><tr><th>Tone</th><th>Value</th><th>For</th></tr></thead><tbody><tr><td><code>EngineMark.display</code></td><td><code>#F2F4F7</code></td><td>dark grounds: a game, a splash, a store capsule</td></tr><tr><td><code>EngineMark.deep</code></td><td><code>#1B2027</code></td><td>light grounds: a page, print, anything that must meet a contrast ratio</td></tr></tbody></table></div>
-<p>Both are <code>UIColor</code>s, drawn exactly as authored because the HUD draws after tone mapping.</p>
-<p><strong>The mark has no hue on purpose.</strong> It appears inside somebody else's game, where the game's own colors should lead. A hue of its own would be a second brand competing with the one the player came for. You may pass any <code>UIColor</code> to <code>draw</code>, but the two tones are the mark as intended.</p>
+<p>Both are <code>InterfaceColor</code>s, drawn exactly as authored because the HUD draws after tone mapping.</p>
+<p><strong>The mark has no hue on purpose.</strong> It appears inside somebody else's game, where the game's own colors should lead. A hue of its own would be a second brand competing with the one the player came for. You may pass any <code>InterfaceColor</code> to <code>draw</code>, but the two tones are the mark as intended.</p>
 <h2 id="files">The files in Brand/</h2>
 <p><code>EngineMarkTests</code> writes every SVG of the mark from <code>EngineMark.outline</code>, and fails if a file on disk and the outline disagree:</p>
 <div class="table"><table><thead><tr><th>File</th><th>What it is</th></tr></thead><tbody><tr><td><code>windage-engine.svg</code></td><td>the mark in <code>deep</code>, for light grounds</td></tr><tr><td><code>windage-engine-display.svg</code></td><td>the mark in <code>display</code>, for dark grounds</td></tr><tr><td><code>windage-engine-icon.svg</code></td><td>an app icon on a 1024 canvas: an 824 tile inset 100, the mark at 56%</td></tr><tr><td><code>favicon.svg</code></td><td>a full-bleed tile with the mark at 76%, for a browser tab</td></tr></tbody></table></div>

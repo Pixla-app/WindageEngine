@@ -32,11 +32,11 @@ public nonisolated struct Rig: Sendable {
     /// **The same matrix the mesh under it carries**, and for the same reason: an exported character
     /// has its geometry *and* its skeleton in centimeters under a parent scaled by 0.01. Apply it in
     /// front of the model matrix and the mesh, the rig and the clips are all corrected at once.
-    public let nodeTransform: matrix_float4x4
+    public let nodeTransform: simd_float4x4
 
     public init(skeleton: Skeleton,
                 clips: [AnimationClip],
-                nodeTransform: matrix_float4x4 = matrix_identity_float4x4) {
+                nodeTransform: simd_float4x4 = matrix_identity_float4x4) {
         self.skeleton = skeleton
         self.clips = clips
         self.nodeTransform = nodeTransform
@@ -224,7 +224,7 @@ public nonisolated enum RigLoader {
         // space the skeleton's bind transforms are measured in. Every export met so far has had it
         // identity; folding it into the inverse bind matrices costs one multiply at load and means
         // the shader never has to know it exists.
-        var geometryBind: matrix_float4x4?
+        var geometryBind: simd_float4x4?
         for mesh in meshes(in: asset) {
             guard let component = mesh.componentConforming(to: MDLComponent.self) as? MDLAnimationBindComponent,
                   component.skeleton === mdlSkeleton else { continue }
@@ -266,10 +266,10 @@ public nonisolated enum RigLoader {
     /// **Not decoration — see ``LoadedMesh/nodeTransform``.** An exported character's rig is in
     /// centimeters under a parent scaled by 0.01, and a loader that reads the joints and ignores the
     /// node chain produces a skeleton a hundred times too big for the world it is placed in.
-    private static func nodeTransform(of skeleton: MDLSkeleton, in asset: MDLAsset) -> matrix_float4x4 {
+    private static func nodeTransform(of skeleton: MDLSkeleton, in asset: MDLAsset) -> simd_float4x4 {
         var found = matrix_identity_float4x4
         var matched = false
-        func descend(_ object: MDLObject, _ parent: matrix_float4x4) {
+        func descend(_ object: MDLObject, _ parent: simd_float4x4) {
             let world = object.transform.map { parent * $0.matrix } ?? parent
             if object === skeleton { found = world; matched = true }
             for child in object.children.objects where !matched { descend(child, world) }
@@ -310,8 +310,8 @@ public nonisolated enum RigLoader {
 
 /// Narrows Model I/O's doubles to the floats everything downstream uses. USD stores matrices as
 /// doubles; a GPU has no use for them.
-private nonisolated func float4x4(_ m: matrix_double4x4) -> matrix_float4x4 {
-    matrix_float4x4(columns: (SIMD4<Float>(m.columns.0), SIMD4<Float>(m.columns.1),
+private nonisolated func float4x4(_ m: matrix_double4x4) -> simd_float4x4 {
+    simd_float4x4(columns: (SIMD4<Float>(m.columns.0), SIMD4<Float>(m.columns.1),
                               SIMD4<Float>(m.columns.2), SIMD4<Float>(m.columns.3)))
 }
 
@@ -323,7 +323,7 @@ nonisolated extension Skeleton {
     ///   on the right of each inverse bind matrix. Identity in every export measured so far, which
     ///   is exactly why it is folded in here rather than left for a game to remember.
     public init(_ skeleton: MDLSkeleton,
-                geometryBindTransform: matrix_float4x4 = matrix_identity_float4x4) throws {
+                geometryBindTransform: simd_float4x4 = matrix_identity_float4x4) throws {
         let rest = skeleton.jointRestTransforms.float4x4Array
         let bind = skeleton.jointBindTransforms.float4x4Array
         try self.init(jointPaths: skeleton.jointPaths,

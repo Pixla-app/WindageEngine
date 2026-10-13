@@ -12,9 +12,9 @@ Windage Engine splits this in two, the way it splits particles: `InstanceBatches
 public nonisolated struct InstanceBatches<Key: Hashable & Sendable>: Sendable {
     public struct Batch: Sendable, Equatable {
         public let key: Key
-        public let first: Int          // index of this kind's first transform
+        public let start: Int          // index of this kind's first transform
         public let count: Int
-        public var byteOffset: Int     // first * MemoryLayout<simd_float4x4>.stride
+        public var byteOffset: Int     // start * MemoryLayout<simd_float4x4>.stride
     }
     public private(set) var transforms: [simd_float4x4]
     public private(set) var batches: [Batch]
@@ -34,9 +34,7 @@ Hand it `(key, transform)` pairs. The **key** is whatever names a kind in your g
 
 ```swift
 public final class InstanceBuffer {
-    public nonisolated static let minimumCapacity = 1024
     public init(renderer: FrameRenderer)
-    public nonisolated static func capacity(for needed: Int, current: Int) -> Int
     public func write<Key>(_ batches: InstanceBatches<Key>, frameSlot: Int) -> MTLBuffer?
 }
 ```
@@ -44,7 +42,7 @@ public final class InstanceBuffer {
 `write(_:frameSlot:)` copies a frame's transforms into a buffer and returns it, or `nil` when there are none.
 
 - **One buffer per frame in flight.** A frame still being drawn is reading the previous one; rewriting it in place would draw a copy at the next frame's position for a frame.
-- **Grown, never shrunk**, with room to spare: half as much again as needed, never below 1,024 copies. A scene that keeps adding copies does not reallocate every frame. `capacity(for:current:)` is that rule, and it is tested.
+- **Grown, never shrunk**, with room to spare: half as much again as needed, never below 1,024 copies. A scene that keeps adding copies does not reallocate every frame. The rule is tested.
 - **Residency is handled.** A grown buffer is added to the renderer's residency set and committed, and the old one is removed.
 
 The engine draws nothing here. Your vertex function reads the copies, because the vertices are yours.

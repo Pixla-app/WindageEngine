@@ -40,8 +40,8 @@ struct JointTransformTests {
     @Test("Blending takes the shortest arc")
     func blendTakesShortestArc() {
         // 350° apart the short way is 10°; the long way is 350° and swings a head right round.
-        let a = simd_quatf(angle: radians_from_degrees(-5), axis: SIMD3(0, 1, 0))
-        let b = simd_quatf(angle: radians_from_degrees(5), axis: SIMD3(0, 1, 0))
+        let a = simd_quatf(angle: Float.radians(fromDegrees: -5), axis: SIMD3(0, 1, 0))
+        let b = simd_quatf(angle: Float.radians(fromDegrees: 5), axis: SIMD3(0, 1, 0))
         let mid = JointTransform(rotation: a).blended(toward: JointTransform(rotation: b), weight: 0.5)
         let forward = mid.rotation.act(SIMD3<Float>(0, 0, -1))
         #expect(abs(forward.x) < 1e-4, "the blend swung the long way round")

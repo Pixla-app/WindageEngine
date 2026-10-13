@@ -30,9 +30,9 @@ public nonisolated struct JointTransform: Sendable, Equatable {
     }
 
     /// Composed in the only order that means anything: scale, then rotate, then translate.
-    public var matrix: matrix_float4x4 {
-        let r = matrix_float4x4(rotation)
-        return matrix_float4x4(columns: (
+    public var matrix: simd_float4x4 {
+        let r = simd_float4x4(rotation)
+        return simd_float4x4(columns: (
             r.columns.0 * scale.x,
             r.columns.1 * scale.y,
             r.columns.2 * scale.z,
@@ -44,7 +44,7 @@ public nonisolated struct JointTransform: Sendable, Equatable {
     ///
     /// Used for the rest pose, which arrives as matrices and has to become blendable. Assumes no
     /// shear, which holds for anything a rig authoring tool produces.
-    public init(matrix m: matrix_float4x4) {
+    public init(matrix m: simd_float4x4) {
         let c0 = SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z)
         let c1 = SIMD3(m.columns.1.x, m.columns.1.y, m.columns.1.z)
         let c2 = SIMD3(m.columns.2.x, m.columns.2.y, m.columns.2.z)
@@ -53,7 +53,7 @@ public nonisolated struct JointTransform: Sendable, Equatable {
         // columns without noticing turns the flip into a rotation, which puts a left hand where a
         // right one belongs. Fold the flip into the x scale, which is where every rig format puts it.
         if simd_determinant(m) < 0 { s.x = -s.x }
-        let basis = matrix_float3x3(columns: (
+        let basis = simd_float3x3(columns: (
             s.x != 0 ? c0 / s.x : SIMD3(1, 0, 0),
             s.y != 0 ? c1 / s.y : SIMD3(0, 1, 0),
             s.z != 0 ? c2 / s.z : SIMD3(0, 0, 1)

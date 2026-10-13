@@ -45,21 +45,30 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
     public var upAxis: UpAxis
 
     /// How many of the asset's units make a meter — 1 for an asset already in meters, 100 for one in
-    /// centimeters.
-    public var unitsPerMeter: Float
+    /// centimeters. Positive and finite: zero would scale the asset to nothing, and is a mistake to say
+    /// at once rather than to correct quietly.
+    public var unitsPerMeter: Float {
+        didSet { AssetOrientation.check(unitsPerMeter) }
+    }
 
     /// An asset already in this engine's space: Y-up, meters.
     public static let identity = AssetOrientation()
 
     public init(upAxis: UpAxis = .y, unitsPerMeter: Float = 1) {
+        AssetOrientation.check(unitsPerMeter)
         self.upAxis = upAxis
         self.unitsPerMeter = unitsPerMeter
     }
 
+    private static func check(_ unitsPerMeter: Float) {
+        precondition(unitsPerMeter > 0 && unitsPerMeter.isFinite,
+                     "unitsPerMeter must be positive and finite, not \(unitsPerMeter)")
+    }
+
     /// The correction, to be applied **before** the model matrix that places the object:
     /// `model * orientation.transform`.
-    public var transform: matrix_float4x4 {
-        let scale = unitsPerMeter != 0 ? 1 / unitsPerMeter : 1
+    public var transform: simd_float4x4 {
+        let scale = 1 / unitsPerMeter
         var result = rotation
         // Uniform, so it commutes with the rotation and can simply scale the basis columns.
         result.columns.0 *= scale
@@ -69,7 +78,7 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
     }
 
     /// Just the axis change, without the scale.
-    public var rotation: matrix_float4x4 {
+    public var rotation: simd_float4x4 {
         switch upAxis {
         case .y:
             return matrix_identity_float4x4
@@ -77,10 +86,10 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
             // Z-up to Y-up, both right-handed: (x, y, z) becomes (x, z, -y), which is a quarter turn
             // of -90° about X. **Not +90°** — that flips the asset front to back as well as
             // standing it up, and the result looks plausible until something is meant to face you.
-            return matrix4x4_rotation(radians: -.pi / 2, axis: SIMD3(1, 0, 0))
+            return simd_float4x4(rotationAngle: -.pi / 2, axis: SIMD3(1, 0, 0))
         case .x:
             // X-up to Y-up: (x, y, z) becomes (-y, x, z).
-            return matrix4x4_rotation(radians: .pi / 2, axis: SIMD3(0, 0, 1))
+            return simd_float4x4(rotationAngle: .pi / 2, axis: SIMD3(0, 0, 1))
         }
     }
 
@@ -88,8 +97,8 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
     ///
     /// - Parameter unitsPerMeter: measure it once — load the asset, read the height of its bounding
     ///   box, and divide by how tall the thing actually is. A person is about 1.75 m.
-    public static func read(from asset: MDLAsset, unitsPerMeter: Float = 1) -> AssetOrientation {
-        AssetOrientation(upAxis: upAxis(of: asset), unitsPerMeter: unitsPerMeter)
+    public init(asset: MDLAsset, unitsPerMeter: Float = 1) {
+        self.init(upAxis: AssetOrientation.upAxis(of: asset), unitsPerMeter: unitsPerMeter)
     }
 
     /// The dominant axis of the asset's up vector.

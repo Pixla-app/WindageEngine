@@ -142,16 +142,16 @@ public final class ShadowCubes {
     /// get the same number wrong.
     public nonisolated static func viewProjection(face: Int,
                                                   position: SIMD3<Float>,
-                                                  nearPlane: Float) -> matrix_float4x4 {
+                                                  nearPlane: Float) -> simd_float4x4 {
         let (right, up, forward) = faceBasis(face)
-        let view = matrix_float4x4(columns: (
+        let view = simd_float4x4(columns: (
             SIMD4(right.x, up.x, -forward.x, 0),
             SIMD4(right.y, up.y, -forward.y, 0),
             SIMD4(right.z, up.z, -forward.z, 0),
             SIMD4(-simd_dot(right, position), -simd_dot(up, position), simd_dot(forward, position), 1)
         ))
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: .pi / 2, aspectRatio: 1, nearZ: max(nearPlane, 1e-4))
+        let projection = simd_float4x4(
+            perspectiveFovY: .pi / 2, aspectRatio: 1, nearZ: max(nearPlane, 1e-4))
         return simd_mul(projection, view)
     }
 
@@ -272,7 +272,7 @@ public final class ShadowCubes {
                 let offset = base
                     + (caster.slice * ShadowCubes.faceCount + face) * ShadowCubes.matrixStride
                 matrixBuffer.contents().advanced(by: offset)
-                    .copyMemory(from: &value, byteCount: MemoryLayout<matrix_float4x4>.size)
+                    .copyMemory(from: &value, byteCount: MemoryLayout<simd_float4x4>.size)
                 argumentTable.setAddress(matrixBuffer.gpuAddress + UInt64(offset),
                                          index: ShadowMap.BufferIndex.lightViewProjection)
 
@@ -290,7 +290,7 @@ public final class ShadowCubes {
                     for index in reachable[batchIndex] {
                         // A face sees a sixth of the sphere. **Skipping the other five sixths is what
                         // stops six passes costing six times one.**
-                        if let bounds = batch.bounds, !frustum.canSee(bounds(index)) { continue }
+                        if let bounds = batch.bounds, !frustum.mayIntersect(bounds(index)) { continue }
                         if !bound { encoder.setRenderPipelineState(batch.pipeline); bound = true }
                         draws += 1
 

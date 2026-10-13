@@ -105,6 +105,8 @@ public nonisolated struct Material: Sendable, Equatable {
     /// Light the surface emits regardless of what is shining on it. Linear.
     public var emissive: SIMD3<Float>
 
+    /// The maps, by slot. A slot with no entry has no map, and draws with the fallback
+    /// `TextureStore.fallback(for:)` binds.
     public var textures: [TextureSlot: TextureSource]
 
     /// The Blinn-Phong exponent, where the file gave one. **Present means the material came from a
@@ -128,11 +130,6 @@ public nonisolated struct Material: Sendable, Equatable {
         self.emissive = emissive
         self.textures = textures
         self.specularExponent = specularExponent
-    }
-
-    public subscript(slot: TextureSlot) -> TextureSource? {
-        get { textures[slot] }
-        set { textures[slot] = newValue }
     }
 }
 
@@ -234,7 +231,7 @@ nonisolated extension Material {
     /// 0.90. **An approximation between two things that are not the same shape**, but every renderer
     /// that reads OBJ makes some version of it, and the alternative is treating every OBJ surface as
     /// equally rough.
-    public static func roughness(fromSpecularExponent exponent: Float) -> Float {
+    static func roughness(fromSpecularExponent exponent: Float) -> Float {
         min(max(pow(2 / (max(exponent, 0) + 2), 0.25), 0), 1)
     }
 }

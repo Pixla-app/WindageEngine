@@ -52,13 +52,13 @@ struct EngineMarkTests {
             + "  <desc>\(description) Generated from EngineMark.outline — see Brand/README.md.</desc>\n"
     }
 
-    static func hex(_ color: UIColor) -> String {
+    static func hex(_ color: InterfaceColor) -> String {
         let c = SIMD3(color.srgb.x, color.srgb.y, color.srgb.z) * 255
         return String(format: "#%02X%02X%02X", Int(c.x.rounded()), Int(c.y.rounded()), Int(c.z.rounded()))
     }
 
     /// The mark alone, in one tone, filling its square.
-    static func mark(_ tone: UIColor) -> String {
+    static func mark(_ tone: InterfaceColor) -> String {
         header(100, "The Drift W.") + "  <polygon fill=\"\(hex(tone))\" points=\"\(points(side: 100))\"/>\n</svg>\n"
     }
 

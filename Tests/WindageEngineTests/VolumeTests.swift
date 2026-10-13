@@ -14,7 +14,7 @@ struct VolumeTests {
 
     private func placed(_ volume: Volume, at position: SIMD3<Float>) -> Volume {
         var moved = volume
-        moved.transform = matrix4x4_translation(position.x, position.y, position.z)
+        moved.transform = simd_float4x4(translation: position)
         return moved
     }
 
@@ -34,7 +34,7 @@ struct VolumeTests {
         var wide = Volume(local: BoundingBox(minimum: SIMD3(-3, 0, -0.5),
                                              maximum: SIMD3(3, 1, 0.5)))
         let alongX = wide.worldBounds
-        wide.transform = matrix4x4_rotation(radians: .pi / 2, axis: SIMD3(0, 1, 0))
+        wide.transform = simd_float4x4(rotationAngle: .pi / 2, axis: SIMD3(0, 1, 0))
         let alongZ = wide.worldBounds
 
         #expect(alongX.size.x > 5 && alongX.size.z < 1.1)

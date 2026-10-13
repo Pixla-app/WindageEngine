@@ -93,9 +93,9 @@ public nonisolated struct Camera: Sendable {
 
     /// World space to view space. Right-handed: the camera looks down **-Z**, so anything in front
     /// of it has a negative view-space Z.
-    public var viewMatrix: matrix_float4x4 {
+    public var viewMatrix: simd_float4x4 {
         let f = forward, r = right, u = up
-        return matrix_float4x4(columns: (
+        return simd_float4x4(columns: (
             SIMD4<Float>(r.x, u.x, -f.x, 0),
             SIMD4<Float>(r.y, u.y, -f.y, 0),
             SIMD4<Float>(r.z, u.z, -f.z, 0),

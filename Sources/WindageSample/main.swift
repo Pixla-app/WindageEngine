@@ -88,9 +88,11 @@ window.title = "\(Engine.name) \(Engine.version) — sample"
 window.center()
 window.acceptsMouseMovedEvents = true
 
-guard let engine = FrameRenderer(device: device,
-                                 simulationStepsPerSecond: SampleGame.stepsPerSecond) else {
-    print("WindageSample: this GPU does not support Metal 4")
+let engine: FrameRenderer
+do {
+    engine = try FrameRenderer(device: device, simulationStepsPerSecond: SampleGame.stepsPerSecond)
+} catch {
+    print("WindageSample: \(error)")
     exit(1)
 }
 
@@ -119,7 +121,7 @@ guard let metalLayer = view.layer as? CAMetalLayer else {
 let displayLink = engine.makeDisplayLink(for: metalLayer)
 displayLink.add(to: .main, forMode: .common)
 
-game.viewportChanged(width: Int(view.drawableSize.width), height: Int(view.drawableSize.height))
+game.viewportSizeChanged(width: Int(view.drawableSize.width), height: Int(view.drawableSize.height))
 
 // **A frame into a file, and nothing else** — `Tools/frames.py`. Before any step, so the picture is the
 // same every time, and before the window is ever shown.

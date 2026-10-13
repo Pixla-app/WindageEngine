@@ -514,7 +514,7 @@ nonisolated extension Level {
     public func carriedLights(on ground: Ground) -> [(placement: Int, light: PunctualLight)] {
         let carriers = placements.indices.filter { placements[$0].light != nil }
         guard !carriers.isEmpty else { return [] }
-        let offsets = carriers.map { index -> matrix_float4x4 in
+        let offsets = carriers.map { index -> simd_float4x4 in
             var m = matrix_identity_float4x4
             m.columns.3 = SIMD4(placements[index].light!.position, 1)
             return m
@@ -530,7 +530,7 @@ nonisolated extension Level {
             let world = hierarchy.worldTransform(of: slot)
             light.position = SIMD3(world.columns.3.x, world.columns.3.y, world.columns.3.z)
             if var cone = light.cone {
-                let turn = matrix_without_scale(frames[slot])
+                let turn = frames[slot].withoutScale
                 let d = turn * SIMD4(cone.direction, 0)
                 cone.direction = simd_normalize(SIMD3(d.x, d.y, d.z))
                 light.cone = cone
@@ -546,16 +546,16 @@ nonisolated extension Level {
     /// sample, a game's scatter, a game's renderer — and the engine's own bedding turned the other
     /// way from all of them. A light carried by a placement needed a transform to be carried by, which
     /// is what finally made the engine say what one is.
-    public func transform(of placement: Placement, on ground: Ground) -> matrix_float4x4 {
+    public func transform(of placement: Placement, on ground: Ground) -> simd_float4x4 {
         Level.transform(yaw: placement.yaw, scale: placement.scale,
                         at: worldPosition(of: placement, on: ground))
     }
 
     /// The matrix for a yaw, a uniform scale and a position. **Right-handed about +Y**: positive yaw
     /// turns +X towards −Z, which is the turn `Camera.yaw` makes and every renderer here draws.
-    public nonisolated static func transform(yaw: Float, scale: Float, at position: SIMD3<Float>) -> matrix_float4x4 {
+    public nonisolated static func transform(yaw: Float, scale: Float, at position: SIMD3<Float>) -> simd_float4x4 {
         let c = cos(yaw), s = sin(yaw)
-        return matrix_float4x4(columns: (SIMD4(c * scale, 0, -s * scale, 0),
+        return simd_float4x4(columns: (SIMD4(c * scale, 0, -s * scale, 0),
                                          SIMD4(0, scale, 0, 0),
                                          SIMD4(s * scale, 0, c * scale, 0),
                                          SIMD4(position, 1)))

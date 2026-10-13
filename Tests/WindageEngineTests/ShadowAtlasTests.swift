@@ -23,8 +23,8 @@ struct ShadowAtlasTests {
                       range: Float = 20) -> PunctualLight {
         PunctualLight(position: position, color: SIMD3(repeating: 10), range: range,
                       cone: PunctualLight.Cone(direction: direction,
-                                               innerAngle: radians_from_degrees(outer * 0.6),
-                                               outerAngle: radians_from_degrees(outer)))
+                                               innerAngle: Float.radians(fromDegrees: outer * 0.6),
+                                               outerAngle: Float.radians(fromDegrees: outer)))
     }
 
     /// **A shadow map is only a shadow map if a point light cannot be given one by accident.** Six
@@ -68,7 +68,7 @@ struct ShadowAtlasTests {
         #expect(abs(center.x) < 1e-4 && abs(center.y) < 1e-4, "the axis is not in the middle")
 
         // At the cone's outer edge, which must still be inside the map.
-        let edgeAngle = radians_from_degrees(Float(30))
+        let edgeAngle = Float.radians(fromDegrees: Float(30))
         let edge = project(SIMD3(5 * tan(edgeAngle), 1, 0))
         #expect(abs(edge.x) < 1 && abs(edge.y) < 1, "the cone's edge fell outside its own shadow map")
     }

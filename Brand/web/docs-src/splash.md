@@ -30,11 +30,11 @@ func keyPressed(_ code: UInt16, command: Bool) {
     // … and the key goes on to do what it was pressed for
 }
 
-func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
     guard let hud else { return }
     hud.begin(viewportSize: viewportSize)
     // … the game's own interface
-    splash?.draw(into: hud, viewport: viewportSize)   // last, over everything
+    splash?.draw(into: hud, viewportSize: viewportSize)   // last, over everything
     hud.draw(into: encoder, frameSlot: frameSlot)
 }
 ```
@@ -54,11 +54,11 @@ Draw it last in `encodeHUD`, so it covers the game's own interface.
 | `fadeIn` | 0.4 s | fading up from nothing |
 | `hold` | 1.6 s | at full strength |
 | `fadeOut` | 0.5 s | fading away |
-| `ignoresSkipsFor` | 0.25 s | presses ignored after it appears |
+| `skipDelay` | 0.25 s | presses ignored after it appears |
 
 `duration` is the three together. `elapsed`, `opacity` (0 to 1), `isSkipped` and `isFinished` report where it is.
 
-**A skip runs it to the start of its fade, not to its end.** A splash that vanishes on the frame a key goes down looks like a dropped frame; one that fades out looks intended. A skip is ignored for the first `ignoresSkipsFor` seconds, because the key or click that launched the game is often still down when the first frame appears, and ignored again once it is fading, so holding a key does not cut the fade short twice.
+**A skip runs it to the start of its fade, not to its end.** A splash that vanishes on the frame a key goes down looks like a dropped frame; one that fades out looks intended. A skip is ignored for the first `skipDelay` seconds, because the key or click that launched the game is often still down when the first frame appears, and ignored again once it is fading, so holding a key does not cut the fade short twice.
 
 **The fades are linear ramps** in `elapsed`, which is a sum of step lengths, so the picture at a given moment is the same at 30 steps a second and at 240. The tests check exactly that.
 
@@ -66,10 +66,10 @@ Draw it last in `encodeHUD`, so it covers the game's own interface.
 
 | Property | Default |
 | --- | --- |
-| `background` | `UIColor(hex: 0x0B0D10)`, near-black so it reads as a surface |
+| `background` | `InterfaceColor(hex: 0x0B0D10)`, near-black so it reads as a surface |
 | `foreground` | `EngineMark.display`, the light tone for dark grounds |
 | `lead` | `nil`, no lead; the mark and name center on their own |
-| `markWidthFraction` | `0.12` of the viewport's width; everything else is sized from the mark |
+| `markScale` | `0.12` of the viewport's width; everything else is sized from the mark |
 | `showsVersion` | `false` |
 
 All are `var`s, set after `SplashScreen(lead:)`. If you set `showsVersion`, the text drawn is `Engine.version`.
@@ -80,7 +80,7 @@ The splash says the engine's name, not yours. It reads `Engine.name`, which is `
 
 Your game's own title card, logo or studio card is yours to draw, with the same tools. The [HUD](hud.html) draws text, rectangles and polygons in exact colors, so a title screen needs nothing from the engine beyond that. Show it before or after the engine's splash as you like; `SplashScreen` does not install itself in the frame loop or take control of what comes next.
 
-Where the engine's name appears without a splash — a credits screen, an about box, a corner — draw the mark with `EngineMark.draw(into:x:y:height:color:)` and set `Engine.name` beside it. The sample also puts the engine's name and version in its window title:
+Where the engine's name appears without a splash — a credits screen, an about box, a corner — draw the mark with `EngineMark.draw(into:origin:height:color:)` and set `Engine.name` beside it. The sample also puts the engine's name and version in its window title:
 
 ```swift
 window.title = "\(Engine.name) \(Engine.version) — sample"

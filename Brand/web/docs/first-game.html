@@ -63,9 +63,8 @@
     <span class="k">private</span> <span class="k">var</span> viewportSize = SIMD2&lt;Float&gt;(1, 1)
     <span class="k">private</span> <span class="k">var</span> seconds: Double = 0
 
-    <span class="k">init</span>?(engine: FrameRenderer) {
-        <span class="k">guard</span> <span class="k">let</span> hud = HUDRenderer(device: engine.device) <span class="k">else</span> { <span class="k">return</span> <span class="k">nil</span> }
-        <span class="k">self</span>.hud = hud
+    <span class="k">init</span>(engine: FrameRenderer) <span class="k">throws</span> {
+        hud = <span class="k">try</span> HUDRenderer(device: engine.device)
         engine.residencySet.addAllocations(hud.allocations)
         engine.commitResidency()
     }
@@ -76,19 +75,19 @@
         seconds += Double(deltaTime)
     }
 
-    <span class="k">func</span> viewportChanged(width: Int, height: Int) {
+    <span class="k">func</span> viewportSizeChanged(width: Int, height: Int) {
         viewportSize = SIMD2(Float(width), Float(height))
     }
 
     <span class="k">func</span> encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {}
 
-    <span class="k">func</span> encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+    <span class="k">func</span> encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
         hud.begin(viewportSize: viewportSize)
-        _ = hud.text(String(format: <span <span class="k">class</span>="p">"%.1f s"</span>, seconds), x: 40, y: 80, pointSize: 48, color: .white)
+        hud.text(String(format: <span <span class="k">class</span>="p">"%.1f s"</span>, seconds), atBaseline: SIMD2(40, 80), pointSize: 48, color: .white)
         hud.draw(into: encoder, frameSlot: frameSlot)
     }
 }</pre>
-<p><code>encodePrePasses</code> is left out because it has a default that does nothing; <code>encodeHUD</code> has one too. Everything the GPU touches has to be in the renderer's <code>residencySet</code>, which is why the HUD's allocations are added and committed. The viewport is in pixels, and HUD coordinates are points from the top left, with <code>y</code> as the text's baseline.</p>
+<p><code>encodePrePasses</code> is left out because it has a default that does nothing; <code>encodeHUD</code> has one too. Everything the GPU touches has to be in the renderer's <code>residencySet</code>, which is why the HUD's allocations are added and committed. The viewport is in pixels, and since that is what the HUD is begun with, HUD coordinates are pixels from the top left too — the text's position is its baseline.</p>
 <h2 id="getting-it-on-screen">Getting it on screen</h2>
 <p>The engine owns no window. A window, a view and a responder chain are your app's decisions, so <code>main.swift</code> makes them, exactly as the sample's does:</p>
 <pre class="code-swift"><span class="k">import</span> AppKit
@@ -106,8 +105,11 @@ application.setActivationPolicy(.regular)
 window.title = <span <span class="k">class</span>="p">"My Game"</span>
 window.center()
 
-<span class="k">guard</span> <span class="k">let</span> engine = FrameRenderer(device: device) <span class="k">else</span> {
-    print(<span <span class="k">class</span>="p">"This GPU does not support Metal 4"</span>)
+<span class="k">let</span> engine: FrameRenderer
+<span class="k">do</span> {
+    engine = <span class="k">try</span> FrameRenderer(device: device)
+} <span class="k">catch</span> {
+    print(error)   <span class="c">// FrameRendererError: no Metal 4, or something a frame needs</span>
     exit(1)
 }
 
@@ -118,7 +120,7 @@ view.isPaused = <span class="k">true</span>
 view.enableSetNeedsDisplay = <span class="k">false</span>
 window.contentView = view
 
-<span class="k">guard</span> <span class="k">let</span> game = Game(engine: engine) <span class="k">else</span> { exit(1) }
+<span class="k">guard</span> <span class="k">let</span> game = <span class="k">try</span>? Game(engine: engine) <span class="k">else</span> { exit(1) }
 engine.game = game
 engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
 

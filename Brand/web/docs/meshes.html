@@ -37,7 +37,7 @@
 <h2 id="the-two-load-functions">The two load functions</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">static</span> <span class="k">func</span> load(
     named name: String,
-    withExtension fileExtension: String = <span <span class="k">class</span>="p">"obj"</span>,
+    withExtension fileExtension: String,
     device: MTLDevice,
     vertexDescriptor: MTLVertexDescriptor,
     semantics: [Int: String],
@@ -52,12 +52,14 @@
     semantics: [Int: String],
     reportingTo report: ((String) -&gt; Void)? = <span class="k">nil</span>
 ) <span class="k">throws</span> -&gt; [LoadedMesh]</pre>
-<p>The bundle form is a convenience that finds the file and calls the URL form. Use the URL form for anything a person chose — a file opened in an editor, a mod, an asset in a pipeline's output folder.</p>
+<p>The bundle form is a convenience that finds the file and calls the URL form. Its extension has no default: the extension is the format, and USD is the one to prefer. Use the URL form for anything a person chose — a file opened in an editor, a mod, an asset in a pipeline's output folder.</p>
 <p>Both return one <code>LoadedMesh</code> per mesh in the file. <code>report</code> receives warnings that are not failures, such as a mesh that cannot have tangents.</p>
 <h3 id="errors">Errors</h3>
 <pre class="code-swift"><span class="k">public</span> <span class="k">enum</span> MeshLoaderError: Error, CustomStringConvertible, Sendable {
-    <span class="k">case</span> assetNotFound(String)   <span class="c">// no such file in the bundle</span>
-    <span class="k">case</span> noMeshes(String)        <span class="c">// it loaded, but holds no meshes</span>
+    <span class="k">case</span> assetNotFound(String)              <span class="c">// no such file in the bundle, or at the URL</span>
+    <span class="k">case</span> noMeshes(String)                   <span class="c">// it loaded, but holds no meshes</span>
+    <span class="k">case</span> unusableVertexDescriptor(String)   <span class="c">// Model I/O could not lay a mesh out by it</span>
+    <span class="k">case</span> conversionFailed(String, underlying: <span class="k">any</span> Error)   <span class="c">// Model I/O or Metal failed making buffers</span>
 }</pre>
 <h2 id="the-vertex-descriptor-and-semantics">The vertex descriptor and semantics</h2>
 <p>The descriptor you pass must be <strong>identical</strong> to the one your pipeline was compiled against. Model I/O will convert a file's layout to whatever it is handed, so a mismatch does not fail loudly — it draws garbage. Build it in one place and use it for both.</p>
@@ -76,32 +78,33 @@
 <ul><li>Generation needs <strong>normals and texture coordinates</strong>. Without either, the mesh gets no tangents, and the loader says which one was missing through <code>report</code>.</li><li>The tangent's <code>w</code> is <strong>handedness, ±1</strong>. Mirrored UV islands have their bitangent reversed; drop the sign and every mirrored surface is lit from the wrong side. That is why the tangent attribute is a <code>float4</code>.</li><li>The loader builds the basis <strong>before</strong> applying your descriptor. Applied at load, the descriptor would fill a missing tangent with zeroes — degenerate rather than absent.</li></ul>
 <p>How the shader uses it is covered in <a href="materials.html">materials</a>.</p>
 <h2 id="loadedmesh">LoadedMesh</h2>
-<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> LoadedMesh {
+<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> LoadedMesh: @unchecked Sendable {
     <span class="k">public</span> <span class="k">let</span> mesh: MTKMesh
     <span class="k">public</span> <span class="k">let</span> bounds: BoundingBox          <span class="c">// in the mesh's own space</span>
     <span class="k">public</span> <span class="k">let</span> materials: [Material]        <span class="c">// one per submesh, same order</span>
-    <span class="k">public</span> <span class="k">let</span> nodeTransform: matrix_float4x4
+    <span class="k">public</span> <span class="k">let</span> nodeTransform: simd_float4x4
     <span class="k">public</span> <span class="k">func</span> material(forSubmesh index: Int) -&gt; Material
 }</pre>
+<p><strong><code>Sendable</code>, so a mesh loaded on a worker can be handed to the main actor.</strong> Unchecked because <code>MTKMesh</code> is a class: every field is a <code>let</code>, the engine never changes the mesh after loading it, and its buffers are <code>MTLBuffer</code>s, which Metal makes safe to share. Do not change the <code>MTKMesh</code> from two threads yourself. <code>SceneObject</code> is <code>Sendable</code> for the same reason.</p>
 <p><code>materials</code> is always padded to the submesh count, so <code>material(forSubmesh:)</code> never runs off the end; a submesh the file left unbound gets a default <code>Material</code>.</p>
 <p><strong><code>nodeTransform</code> is where the mesh sits in the file's hierarchy, composed from the root.</strong> Apply it in front of the model matrix: <code>model * nodeTransform</code>. It is usually the identity for a hand-written mesh and almost never for an exported one — a character out of an FBX pipeline often has geometry in centimeters under a parent scaled by 0.01. <code>bounds</code> is in the mesh's own space and needs the same treatment. <code>SceneObject(loaded:transform:)</code> composes it for you.</p>
 <h2 id="boundingbox">BoundingBox</h2>
-<p><code>BoundingBox</code> is an axis-aligned box with <code>minimum</code>, <code>maximum</code>, <code>center</code> and <code>size</code>. <code>transformed(by:)</code> re-derives the box from all eight corners, so it stays correct under rotation. It also offers <code>contains(_:)</code>, <code>closestPoint(to:)</code>, <code>expanded(by:)</code>, a ray test <code>intersection(origin:direction:maxDistance:)</code>, and <code>intersects(segmentFrom:to:)</code>. A box is wrong in the corners by design; it is the crudest useful shape, and it is what <a href="culling.html">culling</a> tests against.</p>
+<p><code>BoundingBox</code> is an axis-aligned box with <code>minimum</code>, <code>maximum</code>, <code>center</code> and <code>size</code>. <code>transformed(by:)</code> re-derives the box from all eight corners, so it stays correct under rotation. It also offers <code>contains(_:)</code>, <code>closestPoint(to:)</code>, <code>expanded(by:)</code>, a ray test <code>hitDistance(ofRayFrom:direction:maxDistance:)</code>, and <code>hitDistance(ofSegmentFrom:to:)</code>. A box is wrong in the corners by design; it is the crudest useful shape, and it is what <a href="culling.html">culling</a> tests against.</p>
 <h2 id="assetorientation">AssetOrientation</h2>
 <p>The engine is <strong>Y-up and works in meters</strong>. Many assets are not: an export that passed through a game-engine toolchain and Blender can arrive Z-up and in centimeters. <code>AssetOrientation</code> is the one matrix that corrects it.</p>
 <pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> AssetOrientation: Sendable, Equatable {
     <span class="k">public</span> <span class="k">enum</span> UpAxis: Sendable, Equatable { <span class="k">case</span> x, y, z }
     <span class="k">public</span> <span class="k">var</span> upAxis: UpAxis
-    <span class="k">public</span> <span class="k">var</span> unitsPerMeter: Float          <span class="c">// 1 for meters, 100 for centimeters</span>
+    <span class="k">public</span> <span class="k">var</span> unitsPerMeter: Float          <span class="c">// 1 for meters, 100 for centimeters; positive</span>
     <span class="k">public</span> <span class="k">static</span> <span class="k">let</span> identity: AssetOrientation
-    <span class="k">public</span> <span class="k">var</span> transform: matrix_float4x4    <span class="c">// rotation and scale</span>
-    <span class="k">public</span> <span class="k">var</span> rotation: matrix_float4x4     <span class="c">// the axis change alone</span>
-    <span class="k">public</span> <span class="k">static</span> <span class="k">func</span> read(from asset: MDLAsset, unitsPerMeter: Float = 1) -&gt; AssetOrientation
+    <span class="k">public</span> <span class="k">var</span> transform: simd_float4x4    <span class="c">// rotation and scale</span>
+    <span class="k">public</span> <span class="k">var</span> rotation: simd_float4x4     <span class="c">// the axis change alone</span>
+    <span class="k">public</span> <span class="k">init</span>(asset: MDLAsset, unitsPerMeter: Float = 1)
 }</pre>
 <p>Apply it before the placement: <code>model * orientation.transform</code>. Because skinning happens in model space, one matrix corrects the mesh, the rig and the animation together. The sample places its figure like this:</p>
-<pre class="code-swift">figureOrientation = AssetOrientation.read(from: MDLAsset(url: rigURL))
+<pre class="code-swift">figureOrientation = AssetOrientation(asset: MDLAsset(url: rigURL))
 <span class="k">let</span> transform = placement * figureOrientation.transform * node</pre>
-<p><code>read(from:)</code> takes the up axis from the file. <strong>The scale it cannot read</strong>: Model I/O does not expose USD's <code>metersPerUnit</code>, so measure the asset once and pass <code>unitsPerMeter</code> yourself. Facing is deliberately not here — which way is forward varies per tool and per rig, so apply that as a yaw where you place the thing.</p>
+<p><code>init(asset:unitsPerMeter:)</code> takes the up axis from the file. <strong>The scale it cannot read</strong>: Model I/O does not expose USD's <code>metersPerUnit</code>, so measure the asset once and pass <code>unitsPerMeter</code> yourself. Facing is deliberately not here — which way is forward varies per tool and per rig, so apply that as a yaw where you place the thing.</p>
 <h2 id="after-loading">After loading</h2>
 <p>Add each mesh's vertex and index buffers to the renderer's residency set and commit it, as the sample does after every load. A buffer the GPU cannot reach draws garbage, not nothing.</p>
   </main>

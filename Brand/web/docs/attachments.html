@@ -56,7 +56,7 @@ lanterns = <span class="k">try</span>? TransformHierarchy(
     externalCount: figures.count)</pre>
 <p>Each frame, <strong>after posing the figures</strong>, it hands over each hand's world transform and places the lanterns:</p>
 <pre class="code-swift">rig.refresh(attachedTo: figures.map {
-    matrix_without_scale($0.transform * $0.pose.modelTransform(ofJoint: joint))
+    ($0.transform * $0.pose.modelTransform(ofJoint: joint)).withoutScale
 })
 <span class="k">for</span> (slot, index) <span class="k">in</span> lanternDrawables.enumerated() {
     <span class="k">let</span> world = rig.worldTransform(of: slot)
@@ -65,7 +65,7 @@ lanterns = <span class="k">try</span>? TransformHierarchy(
 }</pre>
 <p>The same matrix moves the drawable, its volume and its light. Placed from last step's pose, hand and lantern would be a frame apart.</p>
 <h3 id="strip-the-scale">Strip the scale</h3>
-<p>A child inherits its parent's scale. That is right for a limb and wrong for a held object: a rig authored in centimeters carries a hundredfold scale down to the wrist, and a lantern hung off that matrix is drawn at one percent of its size, in a place that is otherwise correct. <code>matrix_without_scale(_:)</code> removes the scale and keeps rotation and position. It is a function you call, not a flag on the hierarchy, because whether to inherit scale is a decision about what is being attached, and only your game can see that. A mirrored basis stays mirrored.</p>
+<p>A child inherits its parent's scale. That is right for a limb and wrong for a held object: a rig authored in centimeters carries a hundredfold scale down to the wrist, and a lantern hung off that matrix is drawn at one percent of its size, in a place that is otherwise correct. <code>(_:).withoutScale</code> removes the scale and keeps rotation and position. It is a function you call, not a flag on the hierarchy, because whether to inherit scale is a decision about what is being attached, and only your game can see that. A mirrored basis stays mirrored.</p>
 <h3 id="a-grip-is-a-number-you-set-by-looking">A grip is a number you set by looking</h3>
 <p>A joint's frame is not a promise about where the mesh was drawn. In the sample's figure, a grip worked out from the bind pose sits in the hand with the arm down, and floats above the head with the arm raised, because the drawn limb stops short of where the arithmetic says. Set the grip by looking at the character in the poses it will be in.</p>
 <h2 id="volume-an-extent-with-no-mesh">Volume: an extent with no mesh</h2>

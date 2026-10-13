@@ -70,14 +70,14 @@ public nonisolated struct Skeleton: Sendable {
     ///
     /// This is what a joint falls back to when a clip has no channel for it, which is how a clip
     /// that animates an upper body leaves the legs alone.
-    public let restTransforms: [matrix_float4x4]
+    public let restTransforms: [simd_float4x4]
 
     /// For each joint, the inverse of its **skeleton-space** bind transform.
     ///
     /// Stored inverted because that is the only form skinning ever uses: the skinning matrix for a
     /// joint is its posed model-space transform times this, and the pair is what takes a vertex from
     /// the space it was modeled in to the space it is posed in.
-    public let inverseBindTransforms: [matrix_float4x4]
+    public let inverseBindTransforms: [simd_float4x4]
 
     public var jointCount: Int { jointPaths.count }
 
@@ -88,9 +88,9 @@ public nonisolated struct Skeleton: Sendable {
     ///     space the bind transforms are measured in. Applied *before* skinning, so it multiplies in
     ///     on the right of each inverse bind matrix and the shader never learns it exists.
     public init(jointPaths: [String],
-                restTransforms: [matrix_float4x4],
-                bindTransforms: [matrix_float4x4],
-                geometryBindTransform: matrix_float4x4 = matrix_identity_float4x4) throws {
+                restTransforms: [simd_float4x4],
+                bindTransforms: [simd_float4x4],
+                geometryBindTransform: simd_float4x4 = matrix_identity_float4x4) throws {
         guard !jointPaths.isEmpty else { throw SkeletonError.emptySkeleton }
         guard jointPaths.count == restTransforms.count, jointPaths.count == bindTransforms.count else {
             throw SkeletonError.transformCountMismatch(joints: jointPaths.count,
@@ -123,7 +123,7 @@ public nonisolated struct Skeleton: Sendable {
             parents.append(parent)
         }
 
-        var inverses: [matrix_float4x4] = []
+        var inverses: [simd_float4x4] = []
         inverses.reserveCapacity(bindTransforms.count)
         for (index, bind) in bindTransforms.enumerated() {
             // `simd_inverse` of a singular matrix returns NaN rather than failing, and a NaN

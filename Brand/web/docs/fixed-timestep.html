@@ -36,26 +36,29 @@
 <p>A thrown object or a falling player is integrated step by step, and each step's result feeds the next. Integrate with each frame's own delta and the same throw lands somewhere different at 60 Hz than at 120 Hz, and somewhere different again on a frame that happened to stall. A miss caused by the machine being busy is not a game. With a fixed step, the simulation is a function of the inputs and the step count, and nothing else.</p>
 <h2 id="the-type">The type</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> FixedTimestep: Sendable {
-    <span class="k">public</span> <span class="k">let</span> step: Double
+    <span class="k">public</span> <span class="k">let</span> stepDuration: Double
     <span class="k">public</span> <span class="k">let</span> maxFrameTime: Double
+    <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> simulatedTime: Double
+    <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> totalSteps: Int
     <span class="k">public</span> <span class="k">init</span>(stepsPerSecond: Double, maxFrameTime: Double = 0.25)
     <span class="k">public</span> <span class="k">mutating</span> <span class="k">func</span> advance(by frameTime: Double) -&gt; Int
-    <span class="k">public</span> <span class="k">var</span> interpolationAlpha: Float { get }
+    <span class="k">public</span> <span class="k">var</span> interpolation: Float { get }
 }</pre>
-<ul><li><code>advance(by:)</code> adds one frame's elapsed time and returns how many whole steps are now due. Unspent time carries over to the next frame. A negative delta counts as zero; the clock never runs backwards.</li><li><code>maxFrameTime</code> caps what one frame may add. Without it, a long stall (a breakpoint, a window drag) becomes a burst of steps that takes longer than a frame, which makes the next delta larger still. Time is deliberately lost instead: the game runs slow for an instant rather than spiraling.</li><li><code>interpolationAlpha</code> is how far the display sits between the last completed step and the next, in <code>0..&lt;1</code>.</li></ul>
+<p>Seconds are <code>Double</code> here because this is a clock that adds frame times up for as long as the game runs; what a step hands the simulation, <code>step(deltaTime:)</code>, is one short span and is <code>Float</code>, like the rest of the engine's per-step arithmetic.</p>
+<ul><li><code>advance(by:)</code> adds one frame's elapsed time and returns how many whole steps are now due. Unspent time carries over to the next frame. A negative delta counts as zero; the clock never runs backwards.</li><li><code>maxFrameTime</code> caps what one frame may add. Without it, a long stall (a breakpoint, a window drag) becomes a burst of steps that takes longer than a frame, which makes the next delta larger still. Time is deliberately lost instead: the game runs slow for an instant rather than spiraling.</li><li><code>interpolation</code> is how far the display sits between the last completed step and the next, in <code>0..&lt;1</code>. It is the value every <code>encode</code> hook is handed.</li><li><code>simulatedTime</code> and <code>totalSteps</code> count whole steps since the clock started, so they are exactly reproducible.</li></ul>
 <p>It is <code>nonisolated</code> pure arithmetic, so you can use it on its own and test with it:</p>
 <pre class="code-swift"><span class="k">var</span> clock = FixedTimestep(stepsPerSecond: 120)
 <span class="k">let</span> steps = clock.advance(by: 1.0 / 60.0)   <span class="c">// 2</span></pre>
 <h2 id="in-framerenderer">In FrameRenderer</h2>
 <p>You rarely touch it directly. <code>FrameRenderer</code> owns one, and you choose its rate when you create the renderer:</p>
-<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>?(device: MTLDevice, simulationStepsPerSecond: Double = 120)</pre>
-<p>Each frame it credits the time since the previous frame's presentation, calls <code>beginFrame()</code>, calls <code>step(deltaTime:)</code> once per due step with <code>Float(timestep.step)</code>, then renders with <code>timestep.interpolationAlpha</code>. The display link asks for 30 to 120 frames a second, preferring 120. <code>engine.timestep</code> is readable if you want the step length.</p>
+<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>(device: MTLDevice, simulationStepsPerSecond: Double = 120) <span class="k">throws</span></pre>
+<p>It throws a <code>FrameRendererError</code> when the GPU is not Metal 4 or will not make what a frame needs.</p>
+<p>Each frame it credits the time since the previous frame's presentation, calls <code>beginFrame()</code>, calls <code>step(deltaTime:)</code> once per due step with <code>Float(timestep.stepDuration)</code>, then renders with <code>timestep.interpolation</code>. The display link asks for 30 to 120 frames a second, preferring 120, unless you pass <code>makeDisplayLink(for:frameRateRange:)</code> another range. <code>engine.timestep</code> is readable if you want the step length or the simulated time.</p>
 <p>The sample picks its rate from the environment, which is how it shows the choice does not change the game:</p>
 <pre class="code-swift"><span class="k">static</span> <span class="k">let</span> stepsPerSecond = ProcessInfo.processInfo.environment[<span <span class="k">class</span>="p">"WINDAGE_SAMPLE_RATE"</span>]
     .flatMap(Double.<span class="k">init</span>) ?? 120
 
-<span class="k">guard</span> <span class="k">let</span> engine = FrameRenderer(device: device,
-                                 simulationStepsPerSecond: SampleGame.stepsPerSecond) <span class="k">else</span> { exit(1) }</pre>
+<span class="k">let</span> engine = <span class="k">try</span> FrameRenderer(device: device, simulationStepsPerSecond: SampleGame.stepsPerSecond)</pre>
 <h2 id="interpolation">Drawing between steps</h2>
 <p>Without interpolation, a 120 Hz display showing a 60 Hz simulation shows every position twice, which reads as judder. So keep the state from before the latest step, and draw a blend:</p>
 <pre class="code-swift"><span class="k">func</span> step(deltaTime: Float) {

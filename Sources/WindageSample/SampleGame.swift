@@ -147,7 +147,7 @@ final class SampleGame: GameLoop {
                 // `yaw:` and `pitch:` take degrees and no time: they turn the view, which is the
                 // one thing a replayed walk otherwise cannot do, since it ignores the mouse.
                 if parts[0] == "yaw" || parts[0] == "pitch" {
-                    let radians = radians_from_degrees(number)
+                    let radians = Float.radians(fromDegrees: number)
                     parsed.append(parts[0] == "yaw"
                         ? Segment(label: String(token), keys: [], seconds: 0, yaw: radians)
                         : Segment(label: String(token), keys: [], seconds: 0, pitch: radians))
@@ -779,8 +779,8 @@ final class SampleGame: GameLoop {
             return nil
         }
         return Camera(position: SIMD3(parts[0], parts[1], parts[2]),
-                      yaw: radians_from_degrees(parts[3]),
-                      pitch: radians_from_degrees(parts[4]))
+                      yaw: Float.radians(fromDegrees: parts[3]),
+                      pitch: Float.radians(fromDegrees: parts[4]))
     }
     private var levelURL: URL { SampleLevel.writableURL(levelIndex) }
     private var levelPath: String
@@ -1038,7 +1038,7 @@ final class SampleGame: GameLoop {
         let spawn = loaded.level.markers(ofKind: "spawn").first
         var camera = Camera(position: (spawn?.position ?? SIMD3(0, 0, 12)) + SIMD3(0, 1.7, 0))
         camera.yaw = spawn?.yaw ?? 0
-        camera.pitch = radians_from_degrees(Float(spawn?.values["pitch"] ?? 0))
+        camera.pitch = Float.radians(fromDegrees: Float(spawn?.values["pitch"] ?? 0))
         // **A viewpoint the environment can override**, so a screenshot is reproducible. See
         // `startingCamera`.
         if let placed = SampleGame.startingCamera { camera = placed }
@@ -1201,8 +1201,12 @@ final class SampleGame: GameLoop {
         }
         shadowFrameBuffer = shadowFrames
 
-        textures = TextureStore(device: device)
-        if textures == nil { print("WindageSample: no texture store — surfaces will be flat colours") }
+        do {
+            textures = try TextureStore(device: device)
+        } catch {
+            textures = nil
+            print("WindageSample: no texture store — surfaces will be flat colours (\(error))")
+        }
 
         shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
         shadowAtlas = ShadowAtlas(device: device, size: 2048, tilesPerSide: 4)
@@ -1268,7 +1272,12 @@ final class SampleGame: GameLoop {
         // **The hint lines use keyboard symbols, so the atlas has to carry them.** It is ASCII by
         // default, and a character it does not carry draws nothing at all — which is how these
         // hints spent several sessions reading "S save  Z undo" with the ⌘ silently missing.
-        hud = HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•", "—"])
+        do {
+            hud = try HUDRenderer(device: device, additionalCharacters: ["⌘", "⌫", "·", "°", "•", "—"])
+        } catch {
+            hud = nil
+            print("WindageSample: no HUD — \(error)")
+        }
 
         // **`WINDAGE_SAMPLE_SILENT=1` runs with no audio engine at all** — not muted, absent. macOS
         // exempts an app playing sound from App Nap, and a running `AVAudioEngine` is playing sound
@@ -1375,7 +1384,7 @@ final class SampleGame: GameLoop {
             return false
         }
         figureMesh = mesh
-        figureOrientation = AssetOrientation.read(from: MDLAsset(url: rigURL))
+        figureOrientation = AssetOrientation(asset: MDLAsset(url: rigURL))
 
         // **The material names no texture, and that is normal.** The tool builds the colour map in
         // memory, so there is no file for the exporter to reference; it is written beside the model
@@ -1448,7 +1457,7 @@ final class SampleGame: GameLoop {
         // studio's own exporter says Z, and a consumer that never asks lays that character on its
         // side. Asking costs a matrix multiply at load.
         if let url = Bundle.module.url(forResource: "figure", withExtension: "usda") {
-            figureOrientation = AssetOrientation.read(from: MDLAsset(url: url))
+            figureOrientation = AssetOrientation(asset: MDLAsset(url: url))
             print("WindageSample: figure asset is \(figureOrientation.upAxis)-up")
         }
 
@@ -1573,12 +1582,12 @@ final class SampleGame: GameLoop {
     /// lantern comes out at one percent of its size, in a position that is otherwise correct, which
     /// reads as the wrong mesh rather than as the wrong space.
     ///
-    /// `matrix_without_scale` at the call site rather than a flag inside the hierarchy, because this
+    /// `withoutScale` at the call site rather than a flag inside the hierarchy, because this
     /// is a decision about *what is being attached*, and only the caller can see that.
     private func placeLanterns() {
         guard var rig = lanterns, let joint = lanternJoint, !lanternDrawables.isEmpty else { return }
         rig.refresh(attachedTo: figures.map {
-            matrix_without_scale($0.transform * $0.pose.modelTransform(ofJoint: joint))
+            ($0.transform * $0.pose.modelTransform(ofJoint: joint)).withoutScale
         })
         for (slot, index) in lanternDrawables.enumerated() {
             let world = rig.worldTransform(of: slot)
@@ -1865,7 +1874,7 @@ final class SampleGame: GameLoop {
         body = CharacterController(feet: spawn?.position ?? SIMD3(0, 0, 12))
         camera.position = body.eye
         camera.yaw = spawn?.yaw ?? 0
-        camera.pitch = radians_from_degrees(Float(spawn?.values["pitch"] ?? 0))
+        camera.pitch = Float.radians(fromDegrees: Float(spawn?.values["pitch"] ?? 0))
         previousCamera = camera
 
         // A fresh run, sized from this level's objectives — and keeping the progress, which is the
@@ -1930,7 +1939,7 @@ final class SampleGame: GameLoop {
         guard let textures else { return [] }
         return (0..<mesh.mesh.submeshes.count).map { index in
             let material = mesh.material(forSubmesh: index)
-            guard let source = material[slot] else { return textures.fallback(for: slot) }
+            guard let source = material.textures[slot] else { return textures.fallback(for: slot) }
             do {
                 // **`isColor` from the slot, never from the call site.** A normal map decoded as sRGB
                 // has every value bent, and the result looks like bad lighting rather than like a
@@ -1969,7 +1978,7 @@ final class SampleGame: GameLoop {
         guard let texture = engine.device.makeTexture(descriptor: descriptor) else { return false }
         engine.residencySet.addAllocation(texture)
         engine.commitResidency()
-        viewportChanged(width: width, height: height)
+        viewportSizeChanged(width: width, height: height)
         // **A frame of the splash is taken at its fullest.** It is drawn before any step, so its clock
         // reads zero and its fade has not begun — a picture of a ramp at an arbitrary point is a picture
         // of a number nobody chose. Run it to the middle of its hold instead.
@@ -2213,13 +2222,15 @@ final class SampleGame: GameLoop {
         let width = 700 * scale
         let height = line * Float(menu.rows.count + 5)
         let left = (viewportSize.x - width) / 2, top = (viewportSize.y - height) / 2
-        let white = UIColor(srgb: SIMD4(1, 1, 1, 0.95))
-        let dim = UIColor(srgb: SIMD4(1, 1, 1, 0.55))
-        let gold = UIColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
+        let white = InterfaceColor(srgb: SIMD4(1, 1, 1, 0.95))
+        let dim = InterfaceColor(srgb: SIMD4(1, 1, 1, 0.55))
+        let gold = InterfaceColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
 
-        hud.rect(x: left, y: top, width: width, height: height, color: UIColor(srgb: SIMD4(0.05, 0.06, 0.08, 0.86)))
+        hud.fillRect(origin: SIMD2(left,
+                                   top), size: SIMD2(width,
+                                                     height), color: InterfaceColor(srgb: SIMD4(0.05, 0.06, 0.08, 0.86)))
         var y = top + line * 1.2
-        _ = hud.text("SETTINGS", x: left + size, y: y, pointSize: size * 1.3, color: white)
+        _ = hud.text("SETTINGS", atBaseline: SIMD2(left + size, y), pointSize: size * 1.3, color: white)
         y += line * 1.3
 
         for (index, row) in menu.rows.enumerated() {
@@ -2243,25 +2254,27 @@ final class SampleGame: GameLoop {
             case .reset: ("Reset to defaults", "")
             }
             let color = selected ? gold : white
-            _ = hud.text((selected ? "> " : "  ") + label, x: left + size, y: y, pointSize: size, color: color)
-            _ = hud.text(value, x: left + width * 0.58, y: y, pointSize: size, color: color)
+            _ = hud.text((selected ? "> " : "  ") + label, atBaseline: SIMD2(left + size, y),
+                         pointSize: size, color: color)
+            _ = hud.text(value, atBaseline: SIMD2(left + width * 0.58, y), pointSize: size, color: color)
             y += line
         }
 
         y += line * 0.4
         if case .pad = menu.capturing {
             _ = hud.text("press the button you want · menu button or esc cancels",
-                         x: left + size, y: y, pointSize: size * 0.8, color: gold)
+                         atBaseline: SIMD2(left + size, y), pointSize: size * 0.8, color: gold)
         } else if menu.capturing != nil {
-            _ = hud.text("press the key you want · esc cancels", x: left + size, y: y, pointSize: size * 0.8, color: gold)
+            _ = hud.text("press the key you want · esc cancels", atBaseline: SIMD2(left + size, y),
+                         pointSize: size * 0.8, color: gold)
         } else if let message = menu.message {
-            _ = hud.text(message, x: left + size, y: y, pointSize: size * 0.8, color: gold)
+            _ = hud.text(message, atBaseline: SIMD2(left + size, y), pointSize: size * 0.8, color: gold)
         }
         y += line
         _ = hud.text(input.isGamepadConnected
-                        ? "d-pad choose · cross change · d-pad left/right adjust · circle close"
-                        : "up/down choose · return change · left/right adjust · o close",
-                     x: left + size, y: y, pointSize: size * 0.75, color: dim)
+                     ? "d-pad choose · cross change · d-pad left/right adjust · circle close"
+                     : "up/down choose · return change · left/right adjust · o close",
+                     atBaseline: SIMD2(left + size, y), pointSize: size * 0.75, color: dim)
     }
 
     private func openMenu() {
@@ -2680,11 +2693,11 @@ final class SampleGame: GameLoop {
                         SIMD2(volumes[slider.drawable].worldBounds.center.x, volumes[slider.drawable].worldBounds.center.z),
                         SIMD2(body.feet.x, body.feet.z)) < 3 {
                         let box = volumes[slider.drawable].worldBounds
-                        let speed = (body.feet.x - previousFeet.x) / Float(engine.timestep.step)
+                        let speed = (body.feet.x - previousFeet.x) / Float(engine.timestep.stepDuration)
                         print(String(format: "WindageSample:     slider's face at x %.3f, feet %.3f m ahead of it, going %.3f m/s, the slider %.3f%@",
                                      box.maximum.x, body.feet.x - box.maximum.x, speed,
                                      surroundings.motion.indices.contains(slider.solid ?? -1)
-                                        ? surroundings.motion[slider.solid!].x / Float(engine.timestep.step) : 0,
+                                        ? surroundings.motion[slider.solid!].x / Float(engine.timestep.stepDuration) : 0,
                                      body.pinnedBy != nil ? ", PINNED" : ""))
                     }
                     if let near = nearestTurnedSolid() {
@@ -2995,7 +3008,7 @@ final class SampleGame: GameLoop {
         placeLanterns()
     }
 
-    func viewportChanged(width: Int, height: Int) {
+    func viewportSizeChanged(width: Int, height: Int) {
         aspectRatio = Float(width) / Float(max(height, 1))
         viewportSize = SIMD2(Float(width), Float(height))
     }
@@ -3044,8 +3057,8 @@ final class SampleGame: GameLoop {
     private func writeUniforms(frameSlot: Int, interpolation: Float) {
         let view = displayCamera(interpolation)
         writeClusters(frameSlot: frameSlot, camera: view)
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+        let projection = simd_float4x4(
+            perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
         let viewProjection = simd_mul(projection, view.viewMatrix)
 
         for (index, drawable) in drawables.prefix(SampleGame.maxDrawables).enumerated() {
@@ -3146,7 +3159,7 @@ final class SampleGame: GameLoop {
     /// **Every frame, because the grid is in view space.** The lights have not moved but the camera
     /// has, and a cell is a piece of the frustum rather than a piece of the world.
     private func writeClusters(frameSlot: Int, camera: Camera) {
-        let projectionFovY = radians_from_degrees(70)
+        let projectionFovY = Float.radians(fromDegrees: 70)
         let clustered = ClusteredLights(lights: Array(lightSet.lights.prefix(SampleGame.maxSceneLights)),
                                         grid: SampleGame.clusterGrid,
                                         viewMatrix: camera.viewMatrix,
@@ -3264,8 +3277,8 @@ final class SampleGame: GameLoop {
                                                 sunDirection: sunDirection)
 
         let cascades = SampleGame.cascades
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+        let projection = simd_float4x4(
+            perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
         var frame = FrameUniforms(
             cascadeViewProjection: (matrices[0], matrices[1], matrices[2], matrices[3]),
             inverseViewProjection: simd_inverse(simd_mul(projection, view.viewMatrix)),
@@ -3428,8 +3441,8 @@ final class SampleGame: GameLoop {
         // like the lamp it came off. After everything opaque, so depth can hide the ones behind.
         if let particleRenderer {
             let view = displayCamera(interpolation)
-            let projection = matrix_perspective_right_hand_reverse_z(
-                fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+            let projection = simd_float4x4(
+                perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
             particleRenderer.draw(particles, into: encoder, frameSlot: frameSlot,
                                   viewProjection: simd_mul(projection, view.viewMatrix), camera: view,
                                   matterLight: matterLight)
@@ -3550,7 +3563,7 @@ final class SampleGame: GameLoop {
         }
     }
 
-    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
         guard let hud else { return }
         hud.begin(viewportSize: viewportSize)
 
@@ -3561,37 +3574,39 @@ final class SampleGame: GameLoop {
         let scale = max(viewportSize.y / 1080, 0.75)
         let title = 30 * scale, body = 21 * scale, hint = 17 * scale
         let margin = 22 * scale
-        let white = UIColor(srgb: SIMD4(1, 1, 1, 0.95))
-        let gold = UIColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
-        let green = UIColor(srgb: SIMD4(0.45, 0.95, 0.6, 1))
-        let red = UIColor(srgb: SIMD4(1.0, 0.45, 0.4, 1))
+        let white = InterfaceColor(srgb: SIMD4(1, 1, 1, 0.95))
+        let gold = InterfaceColor(srgb: SIMD4(1.0, 0.85, 0.25, 1))
+        let green = InterfaceColor(srgb: SIMD4(0.45, 0.95, 0.6, 1))
+        let red = InterfaceColor(srgb: SIMD4(1.0, 0.45, 0.4, 1))
 
         // **`y` is a baseline and glyphs draw upward from it**, so the first line starts a full
         // line-height down or its ascenders run off the top edge — which is what "COURTYARD touches
         // the top" was.
         var y = margin + title
         _ = hud.text("\(level.name)   \(levelIndex + 1)/\(SampleLevel.names.count)",
-                     x: margin, y: y, pointSize: title, color: white)
+                     atBaseline: SIMD2(margin, y), pointSize: title, color: white)
         y += title * 1.5
 
         let clock = String(format: "%02d:%02d", Int(run.remaining) / 60, Int(run.remaining) % 60)
         _ = hud.text("CRATES \(run.found)/\(run.objectives.count)     \(clock)",
-                     x: margin, y: y,
+                     atBaseline: SIMD2(margin, y),
                      pointSize: body, color: run.remaining < 15 ? red : white)
         y += body * 1.4
 
         if let best = run.best {
             _ = hud.text(String(format: "best %.1fs   ·   %d of %d runs won",
-                                best, run.progress.wins, run.progress.runs),
-                         x: margin, y: y, pointSize: hint, color: white)
+                         best, run.progress.wins, run.progress.runs),
+                         atBaseline: SIMD2(margin, y), pointSize: hint, color: white)
         } else {
-            _ = hud.text("no run finished yet", x: margin, y: y, pointSize: hint, color: white)
+            _ = hud.text("no run finished yet", atBaseline: SIMD2(margin, y), pointSize: hint, color: white)
         }
         // **Said, not left to be discovered.** Crouch let go under a beam does nothing you can see
         // except not standing; without a word, that reads as the key being broken.
         if self.body.isHeldDown && !isEditing {
-            _ = hud.text("NO ROOM TO STAND", x: (viewportSize.x - hud.width(of: "NO ROOM TO STAND", pointSize: body)) / 2,
-                         y: viewportSize.y * 0.62, pointSize: body, color: white)
+            _ = hud.text("NO ROOM TO STAND",
+                         atBaseline: SIMD2((viewportSize.x - hud.width(of: "NO ROOM TO STAND", pointSize: body)) / 2,
+                                           viewportSize.y * 0.62),
+                         pointSize: body, color: white)
         }
         y += hint * 1.6
 
@@ -3600,13 +3615,14 @@ final class SampleGame: GameLoop {
             // Not while the settings screen is open: it paused the run itself, it takes every key
             // including P, and "p to resume" would be an instruction that does nothing.
             if menu == nil {
-                _ = hud.text("PAUSED — p to resume", x: margin, y: y, pointSize: body, color: gold)
+                _ = hud.text("PAUSED — p to resume", atBaseline: SIMD2(margin, y), pointSize: body, color: gold)
             }
         case .won(let seconds):
             _ = hud.text(String(format: "ALL FOUND in %.1fs — r to run again", seconds),
-                         x: margin, y: y, pointSize: body, color: green)
+                         atBaseline: SIMD2(margin, y), pointSize: body, color: green)
         case .lost:
-            _ = hud.text("OUT OF TIME — r to run again", x: margin, y: y, pointSize: body, color: red)
+            _ = hud.text("OUT OF TIME — r to run again", atBaseline: SIMD2(margin, y),
+                         pointSize: body, color: red)
         case .playing:
             break
         }
@@ -3619,12 +3635,13 @@ final class SampleGame: GameLoop {
             let kinds = addableKinds
             let adding = kinds.isEmpty ? "" : "   i adds \(kindName(kinds[min(addKind, kinds.count - 1)]))"
             _ = hud.text("EDIT\(editor.isDirty ? " •" : "")   \(what ?? "aim and click to pick")\(adding)",
-                         x: margin, y: y + body * 1.4, pointSize: body, color: gold)
+                         atBaseline: SIMD2(margin, y + body * 1.4), pointSize: body, color: gold)
             _ = hud.text("click pick · arrows move · q/e up · a/d turn · -/= scale · b copy · ⌫ delete"
                          + " · l lamp · [ ] lamp height · , . lamp brightness · t kind · i add",
-                         x: margin, y: viewportSize.y - margin - hint * 1.4, pointSize: hint, color: white)
+                         atBaseline: SIMD2(margin, viewportSize.y - margin - hint * 1.4),
+                         pointSize: hint, color: white)
             _ = hud.text("⌘S save · ⌘Z undo · ⌘R redo · ⌘⌫ revert to shipped · tab back to walking",
-                         x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
+                         atBaseline: SIMD2(margin, viewportSize.y - margin), pointSize: hint, color: white)
         } else {
             // **The hints follow whichever device is actually plugged in.** Telling somebody holding
             // a controller to press WASD is a small lie the game is in a position to avoid, and the
@@ -3643,20 +3660,20 @@ final class SampleGame: GameLoop {
                 : "\(move) move · \(b[.sprint].name.lowercased()) sprint · "
                     + "\(b[.jump].name.lowercased()) jump · \(b[.crouch].name.lowercased()) crouch · "
                     + "click to capture"
-            _ = hud.text(moving, x: margin, y: viewportSize.y - margin - hint * 1.4,
+            _ = hud.text(moving, atBaseline: SIMD2(margin, viewportSize.y - margin - hint * 1.4),
                          pointSize: hint, color: white)
             _ = hud.text("o settings · p pause · r restart · n next level · m tone map · tab edit",
-                         x: margin, y: viewportSize.y - margin, pointSize: hint, color: white)
+                         atBaseline: SIMD2(margin, viewportSize.y - margin), pointSize: hint, color: white)
         }
 
         if let menu { drawSettings(menu, on: hud, scale: scale) }
 
         // A centre dot, so turning has something to turn about.
         let dot = 3 * scale
-        hud.rect(x: viewportSize.x / 2 - dot, y: viewportSize.y / 2 - dot,
-                 width: dot * 2, height: dot * 2, color: white)
+        hud.fillRect(origin: SIMD2(viewportSize.x / 2 - dot, viewportSize.y / 2 - dot),
+                     size: SIMD2(dot * 2, dot * 2), color: white)
         // **Last, over everything.** The engine's own name, for as long as it lasts.
-        splash?.draw(into: hud, viewport: viewportSize)
+        splash?.draw(into: hud, viewportSize: viewportSize)
         hud.draw(into: encoder, frameSlot: frameSlot)
     }
 }

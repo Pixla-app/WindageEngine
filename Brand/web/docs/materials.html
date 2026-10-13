@@ -42,7 +42,6 @@
     <span class="k">public</span> <span class="k">var</span> emissive: SIMD3&lt;Float&gt;      <span class="c">// linear</span>
     <span class="k">public</span> <span class="k">var</span> textures: [TextureSlot: TextureSource]
     <span class="k">public</span> <span class="k">var</span> specularExponent: Float?
-    <span class="k">public</span> subscript(slot: TextureSlot) -&gt; TextureSource?
 }</pre>
 <p>This is the <strong>metallic-roughness parameter set</strong>, because it is the one everything speaks: glTF, USD's <code>UsdPreviewSurface</code> and every common exporter agree on it. The defaults — white, dielectric, roughness 0.65 — are chosen so a material nobody filled in still draws as a plausible painted surface.</p>
 <p>Each scalar is <strong>multiplied</strong> with its map when there is one, so a textured material normally carries a white base color and a scalar of 1.</p>
@@ -50,7 +49,7 @@
 <h3 id="what-meshloader-does-for-you">What <code>MeshLoader</code> does for you</h3>
 <p><code>Material(_:name:)</code> reads a Model I/O material, and it handles three things Model I/O gets wrong quietly:</p>
 <ol><li><strong>Two properties can share a semantic.</strong> A textured <code>UsdPreviewSurface</code> diffuse arrives as both a float3 and a texture. Every property is read, and the first — the one the file authored — wins.</li><li><strong>Model I/O invents a 0.18 gray base color</strong> for files that never mentioned one. A slot with a map takes a white tint instead, so a texture is not dimmed to 18%.</li><li><strong>A map's scalar is set to the identity.</strong> A file that connects <code>metallic</code> to a texture supplies no scalar, and the default of 0 would multiply the map away. <code>metallic</code>, <code>roughness</code> and <code>emissive</code> become 1 when mapped.</li></ol>
-<p>For OBJ, Model I/O always reports the same roughness whatever the file says. So when a material has a specular exponent (<code>Ns</code>), <code>specularExponent</code> is set and <code>roughness</code> comes from <code>Material.roughness(fromSpecularExponent:)</code>, the standard Blinn-Phong to GGX approximation.</p>
+<p>For OBJ, Model I/O always reports the same roughness whatever the file says. So when a material has a specular exponent (<code>Ns</code>), <code>specularExponent</code> is set and <code>roughness</code> is converted from it with the standard Blinn-Phong to GGX approximation, <code>sqrt(sqrt(2 / (Ns + 2)))</code>.</p>
 <h2 id="textureslot-and-texturesource">TextureSlot and TextureSource</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">enum</span> TextureSlot: String, Sendable, Hashable, CaseIterable {
     <span class="k">case</span> baseColor, normal, metallic, roughness, ambientOcclusion, emissive
@@ -66,7 +65,7 @@
 <p><code>TextureSlot.packedChannel</code> says which channel a packed slot reads: <strong>R occlusion, G roughness, B metalness</strong> — glTF's packing, and what exporters write. Model I/O does not pass on which channel a USD input reads, so the convention is assumed here. It also works for an unpacked grayscale map, whose green channel is its value. The sample binds one ORM texture per submesh, taken from the roughness slot, since all three slots name the same file and <code>TextureStore</code> loads it once.</p>
 <h2 id="texturestore">TextureStore</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">final</span> <span class="k">class</span> TextureStore {
-    <span class="k">public</span> <span class="k">init</span>?(device: MTLDevice)
+    <span class="k">public</span> <span class="k">init</span>(device: MTLDevice) <span class="k">throws</span>   <span class="c">// TextureStoreError.fallbackUnavailable</span>
     <span class="k">public</span> <span class="k">let</span> white: MTLTexture        <span class="c">// 1×1 opaque white</span>
     <span class="k">public</span> <span class="k">let</span> flatNormal: MTLTexture   <span class="c">// 1×1 (0.5, 0.5, 1)</span>
     <span class="k">public</span> <span class="k">func</span> fallback(<span class="k">for</span> slot: TextureSlot) -&gt; MTLTexture
@@ -76,17 +75,17 @@
     <span class="k">public</span> <span class="k">func</span> textures(<span class="k">for</span> material: Material, origin: TextureOrigin = .bottomLeft,
                          bundle: Bundle = .main,
                          reportingTo report: ((String) -&gt; Void)? = <span class="k">nil</span>) -&gt; [TextureSlot: MTLTexture]
-    <span class="k">public</span> <span class="k">var</span> allocations: [MTLResource]
+    <span class="k">public</span> <span class="k">var</span> allocations: [<span class="k">any</span> MTLAllocation]
 }</pre>
 <ul><li><strong>It caches</strong> by file, by color-or-data and by origin. Every crate naming the same map shares one texture.</li><li><strong>Every texture gets mipmaps</strong>, because anything seen at an angle aliases without them.</li><li><strong>Fallbacks let a shader always sample.</strong> <code>white</code> multiplies to nothing; <code>flatNormal</code> means "no perturbation". They differ on purpose: a white pixel decoded as a normal tilts every surface diagonally.</li><li><code>textures(for:)</code> <strong>never throws</strong>. A missing map draws the object in its plain color and is reported once, rather than stopping a level from loading.</li><li>After loading, add <code>allocations</code> to the renderer's residency set and commit. A texture the GPU cannot reach is garbage that looks like a shader bug.</li></ul>
 <h3 id="the-v-axis">The v axis</h3>
 <p>Metal puts texture coordinate (0, 0) at an image's top-left; USD and OBJ put it at the bottom-left. <code>TextureStore</code> flips on load with <code>.bottomLeft</code>, the default and the convention of every format Model I/O reads. Use <code>.topLeft</code> for glTF-derived UVs or coordinates your game generates itself.</p>
 <h3 id="errors">Errors</h3>
-<p><code>TextureStoreError</code> has three cases: <code>notFound(String)</code> for a missing bundle resource, <code>loadFailed(String, underlying:)</code> when the file would not decode, and <code>fallbackUnavailable</code>.</p>
+<p><code>TextureStoreError</code> has three cases: <code>notFound(String)</code> for a missing bundle resource, <code>loadFailed(String, underlying:)</code> when the file would not decode, and <code>fallbackUnavailable</code>, which <code>init(device:)</code> throws when the device will not make the 1×1 fallbacks.</p>
 <h2 id="in-the-sample">In the sample</h2>
 <p>The sample resolves every map from the file's own material, per submesh:</p>
 <pre class="code-swift"><span class="k">let</span> material = mesh.material(forSubmesh: index)
-<span class="k">guard</span> <span class="k">let</span> source = material[slot] <span class="k">else</span> { <span class="k">return</span> textures.fallback(<span class="k">for</span>: slot) }
+<span class="k">guard</span> <span class="k">let</span> source = material.textures[slot] <span class="k">else</span> { <span class="k">return</span> textures.fallback(<span class="k">for</span>: slot) }
 <span class="k">do</span> {
     <span class="k">return</span> <span class="k">try</span> textures.texture(source, isColor: slot.isColor, bundle: .module)
 } <span class="k">catch</span> {

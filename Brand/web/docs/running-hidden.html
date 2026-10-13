@@ -59,7 +59,7 @@ descriptor.storageMode = .shared
 <span class="k">guard</span> <span class="k">let</span> texture = engine.device.makeTexture(descriptor: descriptor) <span class="k">else</span> { <span class="k">return</span> <span class="k">false</span> }
 engine.residencySet.addAllocation(texture)
 engine.commitResidency()
-viewportChanged(width: width, height: height)
+viewportSizeChanged(width: width, height: height)
 engine.render(into: texture)
 
 <span class="k">var</span> bgra = [UInt8](repeating: 0, count: width * height * 4)
@@ -67,7 +67,7 @@ bgra.withUnsafeMutableBytes {
     texture.getBytes($0.baseAddress!, bytesPerRow: width * 4,
                      from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
 }</pre>
-<p>The bytes are BGRA. Swap red and blue to write an RGBA image. <code>render(into:)</code> does nothing if <code>engine.game</code> is not set. It informs the game of a new size through <code>viewportChanged</code> the same way a displayed frame does; the sample also calls it directly so the aspect ratio is right before anything else.</p>
+<p>The bytes are BGRA. Swap red and blue to write an RGBA image. <code>render(into:)</code> does nothing if <code>engine.game</code> is not set. It informs the game of a new size through <code>viewportSizeChanged</code> the same way a displayed frame does; the sample also calls it directly so the aspect ratio is right before anything else.</p>
 <p>The sample draws its frame <strong>before any step</strong>, so the picture is identical on every run. Pass <code>interpolation</code> if you want a moment between steps.</p>
 <h2 id="headless">Headless</h2>
 <p><code>FrameRenderer(device:)</code> needs a Metal 4 device, not a window. Two patterns from the sample cover most headless needs.</p>

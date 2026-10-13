@@ -78,7 +78,7 @@ Most are one of these, repeated across files; the full lines follow below.
 [CONSIDER] CharacterController.swift:364 — no `teleport(to:)`; respawn resets tuning silently — add it — sample
 
 ### World, animation, audio, saving
-[MUST] TransformHierarchy.swift:166 — `matrix_without_scale(_:)` C-style name — member `withoutScale` — sample
+[MUST] TransformHierarchy.swift:166 — `matrix_without_scale(_:)` C-style name — member `withoutScale` — sample → DONE: `simd_float4x4.withoutScale`, a property, moved to Math.swift with the other renames (core pass).
 [MUST] TransformHierarchy.swift:88 — `localTransforms` settable to wrong count, then crashes — `private(set)` plus checked setter — engine
 [MUST] SkeletonPose.swift:79,101 — no check the playhead matches the skeleton; traps — precondition with message — sample
 [MUST] AnimationClip.swift:89,141 — inits accept malformed data; traps later — validate (throwing) — engine
@@ -151,39 +151,39 @@ Most are one of these, repeated across files; the full lines follow below.
 [CONSIDER] ToneMapping.swift:30-33 — not `Codable`; shader raw values public — add, hide — sample, Worldra
 
 ### Core, meshes, HUD, math
-[MUST] Math.swift:12-108 — C-style public math function names — Swift names — Coldkeel, sample, Worldra
-[MUST] UIColor.swift:20 — collides with UIKit's `UIColor` — rename — Coldkeel, sample
-[SHOULD] FrameRenderer.swift:71,275 — public `NSObject` and display-link delegate — private delegate — engine
-[SHOULD] FrameRenderer.swift:98-99 — command queue and buffer public — internal — engine
-[SHOULD] FrameRenderer/HUDRenderer/FontAtlas/TextureStore inits — `init?` hides why — throw a public error — Coldkeel, sample, Worldra
-[SHOULD] FrameRenderer.swift:23, FixedTimestep.swift:28, SplashScreen.swift:109 — time span: three names, two types; `step` noun vs verb — one label and type — all games
-[SHOULD] FrameRenderer.swift:26, HUDRenderer.swift:141, SplashScreen.swift:127 — viewport spelled three ways, pixels vs points unstated — one — Coldkeel, sample, Worldra
-[SHOULD] HUDRenderer.swift:25,414 — fixed 8192-vertex limit, silent truncation — init parameter, warn — engine
-[SHOULD] HUDRenderer.swift:225,266 — test-only helpers public — internal — engine
-[SHOULD] HUDRenderer.swift:146-379 — mixed scalar and SIMD drawing calls; `stroke` doesn't name its shape — one style, shape names — Coldkeel, sample
-[SHOULD] HUDRenderer.swift:132, TextureStore.swift:211 — `allocations` typed two ways — one — sample, Worldra, Coldkeel
-[SHOULD] FontAtlas.swift:31-158 — atlas internals public — internal — engine
-[SHOULD] MeshDetail.swift:47-56 — tuning constants public and implicit — `MeshDetail.Options` — engine
-[SHOULD] MeshDetail.swift:207-212 — assumes position at offset 0 of buffer 0 — `positionAttribute:` — Worldra
-[SHOULD] MeshLoader.swift:10,61-80 — errors can't describe real failures — proper cases, wrap — Coldkeel, sample, Worldra
-[SHOULD] ShaderLibrary.swift:25-45 — isolation, error name and Sendable inconsistent — align — sample, Worldra
-[SHOULD] Frustum.swift:35 — main-actor, not `Sendable`/`Equatable` — nonisolated, add — Coldkeel, Worldra, Brassgrave
-[SHOULD] BoundingBox.swift:66,83 — `intersection`/`intersects` names mislead — distance names — Worldra
-[SHOULD] Instancing.swift:83,92 — test-only growth policy public — internal — engine
-[SHOULD] MeshLoader.swift:212,252 — `LoadedMesh`/`SceneObject` not `Sendable`; Worldra wraps them itself — engine decides — Worldra, Coldkeel, sample
-[CONSIDER] FrameRenderer.swift:105, FixedTimestep.swift:36-45 — timestep config and clock not reachable — expose — sample
-[CONSIDER] FrameRenderer.swift:266 — frame-rate range fixed 30–120 — parameter — Coldkeel, sample, Worldra
-[CONSIDER] HUDRenderer.swift:414 — `frameSlot` unchecked, can write past the buffer — precondition — Coldkeel, sample
-[CONSIDER] Material/FrameRenderer/UIColor — three color representations — decide on a scene color type — Coldkeel, sample, Worldra
-[CONSIDER] Material.swift:108,133 — two public paths to the same textures — keep one — sample
-[CONSIDER] Material.swift:237, UIColor.swift:50 — unused public helpers — internal — engine
-[CONSIDER] TextureStore.swift:64 — `TextureStore.TextureOrigin` stutters — top-level — engine
-[CONSIDER] MeshLoader.swift:41,44 — `"obj"` default though USD is preferred; stringly semantics and warnings — drop default, type them — Coldkeel, sample, Worldra
-[CONSIDER] MeshDetail.swift:39-121 — `var` fields with no init; `choose` naming — `let`, clearer name — Worldra
-[CONSIDER] Instancing.swift:34,43 — `Batch.first` shadows `Collection.first`; two matrix spellings — rename, one spelling — sample, Worldra
-[CONSIDER] Frustum.swift:74 — `canSee` overstates a conservative test — `mayContain` — Coldkeel, Worldra
-[CONSIDER] AssetOrientation.swift:49,91 — factory where an init is idiomatic; 0 treated as 1 — init, precondition — sample
-[CONSIDER] SplashScreen.swift:62,76 — `ignoresSkipsFor`, `markWidthFraction` naming — `skipDelay`, fix — engine
-[CONSIDER] EngineMark.swift:52,55 — construction constants public — internal — engine
-[CONSIDER] Engine.swift:42 — `SemanticVersion` lacks `Hashable`, `LosslessStringConvertible` — add — engine
-[CONSIDER] FrameRenderer.swift:36,53 — `encodeHUD` gets no interpolation; label differs — pass it, one name — Coldkeel, sample, Worldra
+[MUST] Math.swift:12-108 — C-style public math function names — Swift names — Coldkeel, sample, Worldra → DONE: `simd_float4x4(translation:)`, `simd_float4x4(rotationAngle:axis:)` (angle-then-axis, as `simd_quatf(angle:axis:)`), one `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)` with `depthRange` defaulting to `0...1` (same matrix to the bit), `Float.radians(fromDegrees:)` / `Float.degrees(fromRadians:)`. Initializers rather than statics, per the guidelines; `fovY` matches `ClusteredLights`' label, radians in the doc.
+[MUST] UIColor.swift:20 — collides with UIKit's `UIColor` — rename — Coldkeel, sample → DONE: `InterfaceColor` (file and tests renamed).
+[SHOULD] FrameRenderer.swift:71,275 — public `NSObject` and display-link delegate — private delegate — engine → DONE: a private `DisplayLinkTarget` is the delegate; `FrameRenderer` is a plain class.
+[SHOULD] FrameRenderer.swift:98-99 — command queue and buffer public — internal — engine → DONE: internal.
+[SHOULD] FrameRenderer/HUDRenderer/FontAtlas/TextureStore inits — `init?` hides why — throw a public error — Coldkeel, sample, Worldra → DONE: all four throw — `FrameRendererError`, `HUDRendererError`, `FontAtlasError`, `TextureStoreError.fallbackUnavailable` (one error type per type, the engine's existing convention). The allocator `!` in `FrameRenderer.init` became a thrown error too.
+[SHOULD] FrameRenderer.swift:23, FixedTimestep.swift:28, SplashScreen.swift:109 — time span: three names, two types; `step` noun vs verb — one label and type — all games → DONE: `FixedTimestep.step` → `stepDuration`. The two types stay on purpose and are documented: `Double` for the clock that accumulates frame times, `Float` for the per-step span every system computes in. The labels follow the engine's existing split — a simulation `step(deltaTime:)`, a clock `advance(by:)` (`FixedTimestep`, `SkeletonPose`, `SplashScreen`) — so `SplashScreen.advance(by:)` keeps its name.
+[SHOULD] FrameRenderer.swift:26, HUDRenderer.swift:141, SplashScreen.swift:127 — viewport spelled three ways, pixels vs points unstated — one — Coldkeel, sample, Worldra → DONE: `viewportSize` throughout — `GameLoop.viewportSizeChanged(width:height:)` (pixels, said so), `HUDRenderer.begin(viewportSize:)` (the game's layout units, said so), `SplashScreen.draw(into:viewportSize:)`.
+[SHOULD] HUDRenderer.swift:25,414 — fixed 8192-vertex limit, silent truncation — init parameter, warn — engine → DONE: `init(…maxVerticesPerFrame: = 8192)`, an instance property; an overflowing frame logs once.
+[SHOULD] HUDRenderer.swift:225,266 — test-only helpers public — internal — engine → DONE: `triangulate` and `rim` internal (tests use `@testable`).
+[SHOULD] HUDRenderer.swift:146-379 — mixed scalar and SIMD drawing calls; `stroke` doesn't name its shape — one style, shape names — Coldkeel, sample → DONE: `SIMD2` positions and shape names — `fillRect(origin:size:color:)`, `strokeRect(origin:size:thickness:color:)`, `fillRing(…)`, `fillPolygon(_:color:feather:)`, `text(_:atBaseline:pointSize:color:)`; `line(from:to:…)` unchanged. `EngineMark.draw` takes `origin:` to match.
+[SHOULD] HUDRenderer.swift:132, TextureStore.swift:211 — `allocations` typed two ways — one — sample, Worldra, Coldkeel → DONE: both `[any MTLAllocation]`.
+[SHOULD] FontAtlas.swift:31-158 — atlas internals public — internal — engine → DONE: `Glyph`, `glyph(for:)`, `texture`, `whiteTexelUV` internal; `lineHeight` (raster pixels) → `lineHeight(pointSize:)`. `rasterHeight` stays public: it is the public init's default and a documented limit.
+[SHOULD] MeshDetail.swift:47-56 — tuning constants public and implicit — `MeshDetail.Options` — engine → DONE: `MeshDetail.Options` (immutable, checked at init, `.standard`), passed as `options:`.
+[SHOULD] MeshDetail.swift:207-212 — assumes position at offset 0 of buffer 0 — `positionAttribute:` — Worldra → DONE: `tiers(for:vertexDescriptor:positionAttribute:normalAttribute:options:)`, and `positionOffset:` on the lower-level `tiers`; position and normal must share a buffer (precondition). Tested with the normal laid out first.
+[SHOULD] MeshLoader.swift:10,61-80 — errors can't describe real failures — proper cases, wrap — Coldkeel, sample, Worldra → DONE: `unusableVertexDescriptor`, `conversionFailed(_:underlying:)` wrapping Model I/O / Metal errors, and `assetNotFound` for a missing URL.
+[SHOULD] ShaderLibrary.swift:25-45 — isolation, error name and Sendable inconsistent — align — sample, Worldra → DONE: `nonisolated`; `Failure` → top-level `ShaderLibraryError: Sendable`.
+[SHOULD] Frustum.swift:35 — main-actor, not `Sendable`/`Equatable` — nonisolated, add — Coldkeel, Worldra, Brassgrave → DONE: `nonisolated`, `Sendable`, `Equatable`.
+[SHOULD] BoundingBox.swift:66,83 — `intersection`/`intersects` names mislead — distance names — Worldra → DONE: `hitDistance(ofRayFrom:direction:maxDistance:)`, `hitDistance(ofSegmentFrom:to:)`.
+[SHOULD] Instancing.swift:83,92 — test-only growth policy public — internal — engine → DONE: internal.
+[SHOULD] MeshLoader.swift:212,252 — `LoadedMesh`/`SceneObject` not `Sendable`; Worldra wraps them itself — engine decides — Worldra, Coldkeel, sample → DONE: `@unchecked Sendable`, with the reason in the doc (every field `let`, the engine never mutates the `MTKMesh`); Worldra's own unchecked wrapper became a plain `Sendable` struct.
+[CONSIDER] FrameRenderer.swift:105, FixedTimestep.swift:36-45 — timestep config and clock not reachable — expose — sample → DONE: `accumulator`, `simulatedTime`, `totalSteps` are `public private(set)`; the rate is already the init's.
+[CONSIDER] FrameRenderer.swift:266 — frame-rate range fixed 30–120 — parameter — Coldkeel, sample, Worldra → DONE: `makeDisplayLink(for:frameRateRange:)`, defaulting to 30–120.
+[CONSIDER] HUDRenderer.swift:414 — `frameSlot` unchecked, can write past the buffer — precondition — Coldkeel, sample → DONE: precondition on the slot.
+[CONSIDER] Material/FrameRenderer/UIColor — three color representations — decide on a scene color type — Coldkeel, sample, Worldra → DECLINED: they are two ideas, not three spellings of one — radiance (linear `SIMD4`, and `clearColor` at Metal's own boundary type) and an interface specification (`InterfaceColor`). A shared type would blur the distinction `InterfaceColor` exists to make.
+[CONSIDER] Material.swift:108,133 — two public paths to the same textures — keep one — sample → DONE: subscript removed; `textures[slot]`.
+[CONSIDER] Material.swift:237, UIColor.swift:50 — unused public helpers — internal — engine → DONE: both internal.
+[CONSIDER] TextureStore.swift:64 — `TextureStore.TextureOrigin` stutters — top-level — engine → DONE: top-level `TextureOrigin`.
+[CONSIDER] MeshLoader.swift:41,44 — `"obj"` default though USD is preferred; stringly semantics and warnings — drop default, type them — Coldkeel, sample, Worldra → DONE: the `"obj"` default dropped. Typing the semantics and warnings declined: the semantics are Model I/O's own constants (`MDLVertexAttributePosition`…), so a wrapper would be a translation to keep in step, and the warnings are log text whose actionable cases are already errors.
+[CONSIDER] MeshDetail.swift:39-121 — `var` fields with no init; `choose` naming — `let`, clearer name — Worldra → DONE: `Reduction`/`Tier` fields `let`; `choose` → `coarsestTier(…maximumPixelError:)`.
+[CONSIDER] Instancing.swift:34,43 — `Batch.first` shadows `Collection.first`; two matrix spellings — rename, one spelling — sample, Worldra → DONE: `Batch.first` → `start`; `matrix_float4x4`/`3x3` → `simd_float4x4`/`3x3` across the engine (aliases, no caller changes).
+[CONSIDER] Frustum.swift:74 — `canSee` overstates a conservative test — `mayContain` — Coldkeel, Worldra → DONE: `mayIntersect(_:)` rather than `mayContain` — "contain" would say the whole box, and a box partly inside answers true.
+[CONSIDER] AssetOrientation.swift:49,91 — factory where an init is idiomatic; 0 treated as 1 — init, precondition — sample → DONE: `init(asset:unitsPerMeter:)`; `unitsPerMeter` must be positive and finite, at init and on set (an exit test).
+[CONSIDER] SplashScreen.swift:62,76 — `ignoresSkipsFor`, `markWidthFraction` naming — `skipDelay`, fix — engine → DONE: `skipDelay`; `markWidthFraction` (a height, as a share of width) → `markScale`.
+[CONSIDER] EngineMark.swift:52,55 — construction constants public — internal — engine → DONE: internal.
+[CONSIDER] Engine.swift:42 — `SemanticVersion` lacks `Hashable`, `LosslessStringConvertible` — add — engine → DONE: both added.
+[CONSIDER] FrameRenderer.swift:36,53 — `encodeHUD` gets no interpolation; label differs — pass it, one name — Coldkeel, sample, Worldra → DONE: `encodeHUD(into:frameSlot:interpolation:)`, and `FixedTimestep.interpolationAlpha` → `interpolation`, the name the hooks use.

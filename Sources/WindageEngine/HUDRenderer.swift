@@ -13,16 +13,45 @@ import simd
 /// through exposure and a filmic curve like everything else, and a brand color would arrive on
 /// screen desaturated and shifted — quietly, with nothing to indicate why. `FrameRenderer` calls
 /// `GameLoop.encodeHUD` after the scene, and this renderer's pipeline applies no curve, so a
-/// ``UIColor`` lands as the exact value it was authored as.
+/// ``InterfaceColor`` lands as the exact value it was authored as.
 ///
 /// **What this is not.** There is no layout, no widgets and no event handling. It draws colored
 /// rectangles, lines, rings, filled outlines and text in screen space, which is enough for a reticle,
-/// a bar, a panel, a marker or a label. Layout arrives when a title actually needs it and can show
+/// a bar, a panel, a marker or a label.
+///
+/// **Every position is a `SIMD2<Float>`**, in the units ``begin(viewportSize:)`` was given, and every
+/// call names the shape it draws: ``fillRect(origin:size:color:)``, ``strokeRect(origin:size:thickness:color:)``,
+/// ``line(from:to:thickness:color:)``, ``fillRing(center:innerRadius:outerRadius:segments:color:)``,
+/// ``fillPolygon(_:color:feather:)`` and ``text(_:atBaseline:pointSize:color:)``. Layout arrives when a title actually needs it and can show
 /// what shape it should be — the same extract-when-proven rule as everything else here.
+/// Why a ``HUDRenderer`` could not be made.
+public enum HUDRendererError: Error, CustomStringConvertible, Sendable {
+    /// The glyph sheet could not be built — see ``FontAtlasError``.
+    case fontAtlas(FontAtlasError)
+    /// The HUD's shaders would not compile or its pipeline would not build.
+    case pipeline(underlying: any Error)
+    /// The device would not create one of the HUD's objects — named here.
+    case couldNotCreate(String)
+
+    public var description: String {
+        switch self {
+        case .fontAtlas(let error): "the HUD's font atlas could not be built — \(error)"
+        case .pipeline(let error): "the HUD's pipeline could not be built — \(error)"
+        case .couldNotCreate(let what): "the device would not create the HUD's \(what)"
+        }
+    }
+}
+
 public final class HUDRenderer {
 
-    /// Vertices reserved per frame in flight. Two triangles per rectangle.
-    public static let maxVerticesPerFrame = 8192
+    /// Vertices reserved per frame in flight: six per rectangle, six per glyph.
+    ///
+    /// **Anything past this in one frame is not drawn**, and the log says so once. Set by the game at
+    /// init, because what fits depends on how much text it puts up.
+    public let maxVerticesPerFrame: Int
+
+    /// Whether the log has already been told this HUD ran out of vertices.
+    private var warnedAboutTruncation = false
 
     private let pipelineState: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
@@ -44,12 +73,22 @@ public final class HUDRenderer {
 
     private static let vertexStride = MemoryLayout<Vertex>.stride
 
-    /// - Parameter additionalCharacters: anything outside printable ASCII this HUD will draw.
-    ///   Ignored when `font` is supplied, since that atlas has already chosen its characters.
-    public init?(device: MTLDevice, font: FontAtlas? = nil, additionalCharacters: Set<Character> = []) {
-        guard let atlas = font ?? FontAtlas(device: device, additionalCharacters: additionalCharacters) else {
-            print("\(Engine.name): unable to build the font atlas")
-            return nil
+    /// - Parameters:
+    ///   - additionalCharacters: anything outside printable ASCII this HUD will draw. Ignored when
+    ///     `font` is supplied, since that atlas has already chosen its characters.
+    ///   - maxVerticesPerFrame: how much one frame's interface may hold — see ``maxVerticesPerFrame``.
+    ///     The default, 8,192, is about 1,300 glyphs.
+    /// - Throws: ``HUDRendererError``.
+    public init(device: MTLDevice, font: FontAtlas? = nil, additionalCharacters: Set<Character> = [],
+                maxVerticesPerFrame: Int = 8192) throws {
+        precondition(maxVerticesPerFrame > 0, "A HUD needs room for at least one vertex")
+        self.maxVerticesPerFrame = maxVerticesPerFrame
+        let atlas: FontAtlas
+        if let font {
+            atlas = font
+        } else {
+            do { atlas = try FontAtlas(device: device, additionalCharacters: additionalCharacters) }
+            catch let error as FontAtlasError { throw HUDRendererError.fontAtlas(error) }
         }
         self.font = atlas
         if !atlas.unavailableCharacters.isEmpty {
@@ -105,48 +144,56 @@ public final class HUDRenderer {
 
             pipelineState = try compiler.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            print("WindageEngine: unable to build HUD pipeline: \(error)")
-            return nil
+            throw HUDRendererError.pipeline(underlying: error)
         }
 
         // The interface sits in front of everything and occludes nothing.
         let depthDescriptor = MTLDepthStencilDescriptor()
         depthDescriptor.depthCompareFunction = .always
         depthDescriptor.isDepthWriteEnabled = false
-        guard let depthState = device.makeDepthStencilState(descriptor: depthDescriptor) else { return nil }
+        guard let depthState = device.makeDepthStencilState(descriptor: depthDescriptor) else {
+            throw HUDRendererError.couldNotCreate("depth state")
+        }
         self.depthState = depthState
 
         guard let buffer = device.makeBuffer(
-            length: HUDRenderer.vertexStride * HUDRenderer.maxVerticesPerFrame * FrameRenderer.maxFramesInFlight,
-            options: [.storageModeShared]) else { return nil }
+            length: HUDRenderer.vertexStride * maxVerticesPerFrame * FrameRenderer.maxFramesInFlight,
+            options: [.storageModeShared]) else { throw HUDRendererError.couldNotCreate("vertex buffer") }
         buffer.label = "HUDVertices"
         vertexBuffer = buffer
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         tableDescriptor.maxBufferBindCount = 2
         tableDescriptor.maxTextureBindCount = 1
-        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else { return nil }
+        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else {
+            throw HUDRendererError.couldNotCreate("argument table")
+        }
         argumentTable = table
     }
 
+    /// Everything the HUD's draws read, for the residency set.
     public var allocations: [any MTLAllocation] { [vertexBuffer, font.texture] }
 
     // MARK: - Building a frame
 
     /// Clears the frame and sets the coordinate space.
     ///
-    /// Coordinates are **points with the origin at the top left**, matching how interfaces are
-    /// normally described, and are converted to device coordinates here rather than at every call
-    /// site.
+    /// Coordinates have **the origin at the top left**, matching how interfaces are normally
+    /// described, and are converted to device coordinates here rather than at every call site.
+    ///
+    /// - Parameter viewportSize: the drawable's size **in the units the game lays out in** — its pixels,
+    ///   as `GameLoop.viewportSizeChanged(width:height:)` reports them, or points if the game divides
+    ///   by the backing scale first. Every position and size after this is in the same units.
     public func begin(viewportSize: SIMD2<Float>) {
         vertices.removeAll(keepingCapacity: true)
         self.viewportSize = SIMD2(max(viewportSize.x, 1), max(viewportSize.y, 1))
     }
 
-    public func rect(x: Float, y: Float, width: Float, height: Float, color: UIColor) {
-        guard color.srgb.w > 0, width > 0, height > 0 else { return }
-        let topLeft = toDevice(SIMD2(x, y))
-        let bottomRight = toDevice(SIMD2(x + width, y + height))
+    /// A filled rectangle, `origin` its top-left corner.
+    public func fillRect(origin: SIMD2<Float>, size: SIMD2<Float>, color: InterfaceColor) {
+        guard color.srgb.w > 0, size.x > 0, size.y > 0 else { return }
+        let topLeft = toDevice(origin)
+        let bottomRight = toDevice(origin + size)
 
         let a = SIMD2(topLeft.x, topLeft.y)
         let b = SIMD2(bottomRight.x, topLeft.y)
@@ -159,7 +206,7 @@ public final class HUDRenderer {
     }
 
     /// A line of a given thickness, as a rotated quad.
-    public func line(from start: SIMD2<Float>, to end: SIMD2<Float>, thickness: Float, color: UIColor) {
+    public func line(from start: SIMD2<Float>, to end: SIMD2<Float>, thickness: Float, color: InterfaceColor) {
         let delta = end - start
         let length = simd_length(delta)
         guard length > 0, color.srgb.w > 0 else { return }
@@ -173,12 +220,14 @@ public final class HUDRenderer {
         }
     }
 
-    /// An unfilled rectangle, drawn as four edges.
-    public func stroke(x: Float, y: Float, width: Float, height: Float, thickness: Float, color: UIColor) {
-        rect(x: x, y: y, width: width, height: thickness, color: color)
-        rect(x: x, y: y + height - thickness, width: width, height: thickness, color: color)
-        rect(x: x, y: y, width: thickness, height: height, color: color)
-        rect(x: x + width - thickness, y: y, width: thickness, height: height, color: color)
+    /// An unfilled rectangle, drawn as four edges `thickness` wide, inside `origin` and `size`.
+    public func strokeRect(origin: SIMD2<Float>, size: SIMD2<Float>, thickness: Float, color: InterfaceColor) {
+        fillRect(origin: origin, size: SIMD2(size.x, thickness), color: color)
+        fillRect(origin: SIMD2(origin.x, origin.y + size.y - thickness), size: SIMD2(size.x, thickness),
+                 color: color)
+        fillRect(origin: origin, size: SIMD2(thickness, size.y), color: color)
+        fillRect(origin: SIMD2(origin.x + size.x - thickness, origin.y), size: SIMD2(thickness, size.y),
+                 color: color)
     }
 
     /// A filled polygon, **concave or convex**, given as its outline in order, either way round.
@@ -199,7 +248,7 @@ public final class HUDRenderer {
     /// fading from the color to nothing runs round the outline instead (``rim(of:width:)``); the
     /// shader premultiplies, so the fade composites cleanly over whatever is beneath. Pass 0 for hard
     /// edges — a shape that must tile against its neighbor exactly wants those.
-    public func fill(polygon points: [SIMD2<Float>], color: UIColor, feather: Float = 1) {
+    public func fillPolygon(_ points: [SIMD2<Float>], color: InterfaceColor, feather: Float = 1) {
         guard color.srgb.w > 0, points.count >= 3 else { return }
         let placed = points.map(toDevice)
         let solid = color.linear
@@ -222,7 +271,7 @@ public final class HUDRenderer {
     /// Every point of a simple outline moved outward by `width` — along the bisector of its two edges,
     /// **mitred** so each edge moves out by the full width, and the mitre held to three widths so the
     /// sharp valleys of a letter do not throw a spike.
-    public nonisolated static func rim(of points: [SIMD2<Float>], width: Float) -> [SIMD2<Float>] {
+    nonisolated static func rim(of points: [SIMD2<Float>], width: Float) -> [SIMD2<Float>] {
         let count = points.count
         guard count >= 3 else { return points }
         var twiceArea: Float = 0
@@ -263,7 +312,7 @@ public final class HUDRenderer {
     /// Winding-agnostic: the outline's signed area says which way round it goes. **A polygon that is
     /// not simple has no ears at some point**; rather than loop for ever, a vertex is dropped and the
     /// shape drawn short of complete.
-    public nonisolated static func triangulate(_ points: [SIMD2<Float>]) -> [Int] {
+    nonisolated static func triangulate(_ points: [SIMD2<Float>]) -> [Int] {
         let count = points.count
         guard count >= 3 else { return [] }
         func turn(_ o: SIMD2<Float>, _ a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
@@ -307,18 +356,20 @@ public final class HUDRenderer {
     /// Characters already reported as missing, so the log says each one once rather than every frame.
     private nonisolated(unsafe) static var warnedAbout: Set<Character> = []
 
-    /// Draws a line of text with its **left edge and baseline** at `x, y`.
+    /// Draws a line of text with its **left edge and baseline** at `origin`, and returns its width.
     ///
     /// Baseline rather than top edge, because that is the line the eye reads along: two readouts at
     /// the same baseline look aligned even when one contains a comma or a lowercase descender, and
     /// two aligned by their top edges do not.
-    /// **`y` is the baseline, not the top.** Glyphs are drawn *upward* from it, which is the usual
+    /// **`origin.y` is the baseline, not the top** — hence the label. Glyphs are drawn *upward* from it, which is the usual
     /// convention for text rendering and is not what somebody laying out a HUD assumes — passing a
     /// top margin puts the first line's ascenders off the top edge of the screen, which is exactly
     /// what happened to the sample and was reported as the title touching the top. The first line's
-    /// `y` wants to be at least one `pointSize` below where you want the text to start.
+    /// `origin.y` wants to be at least one `pointSize` below where you want the text to start.
     @discardableResult
-    public func text(_ string: String, x: Float, y: Float, pointSize: Float, color: UIColor) -> Float {
+    public func text(_ string: String, atBaseline origin: SIMD2<Float>, pointSize: Float,
+                     color: InterfaceColor) -> Float {
+        let x = origin.x, y = origin.y
         guard color.srgb.w > 0 else { return width(of: string, pointSize: pointSize) }
         let scale = pointSize / Float(FontAtlas.rasterHeight)
         var penX = x
@@ -376,11 +427,11 @@ public final class HUDRenderer {
     /// With a large enough outer radius this is a circular vignette, which is how a scope's sight
     /// picture gets its surround. Drawn as a strip of quads rather than a triangle fan so it needs
     /// no index buffer and no separate primitive type: the whole interface stays one draw call.
-    public func ring(center: SIMD2<Float>,
+    public func fillRing(center: SIMD2<Float>,
                      innerRadius: Float,
                      outerRadius: Float,
                      segments: Int = 96,
-                     color: UIColor) {
+                     color: InterfaceColor) {
         guard outerRadius > innerRadius, segments >= 3, color.srgb.w > 0 else { return }
         let step = (2 * Float.pi) / Float(segments)
 
@@ -411,10 +462,20 @@ public final class HUDRenderer {
 
     // MARK: - Drawing
 
+    /// Writes this frame's interface into the slot's vertices and draws it.
+    ///
+    /// - Parameter frameSlot: the slot `GameLoop.encodeHUD` was given, `0..<FrameRenderer.maxFramesInFlight`.
     public func draw(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+        precondition((0..<FrameRenderer.maxFramesInFlight).contains(frameSlot),
+                     "frameSlot \(frameSlot) is not one of the renderer's \(FrameRenderer.maxFramesInFlight) slots")
         guard !vertices.isEmpty else { return }
-        let count = min(vertices.count, HUDRenderer.maxVerticesPerFrame)
-        let offset = HUDRenderer.vertexStride * HUDRenderer.maxVerticesPerFrame * frameSlot
+        if vertices.count > maxVerticesPerFrame, !warnedAboutTruncation {
+            warnedAboutTruncation = true
+            NSLog("\(Engine.name): the HUD drew \(vertices.count) vertices in one frame and has room for "
+                  + "\(maxVerticesPerFrame); the rest are not drawn. Pass a larger maxVerticesPerFrame.")
+        }
+        let count = min(vertices.count, maxVerticesPerFrame)
+        let offset = HUDRenderer.vertexStride * maxVerticesPerFrame * frameSlot
 
         vertexBuffer.contents().advanced(by: offset)
             .withMemoryRebound(to: Vertex.self, capacity: count) { destination in

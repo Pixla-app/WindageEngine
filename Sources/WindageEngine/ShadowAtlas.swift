@@ -115,7 +115,7 @@ public final class ShadowAtlas {
     ///
     /// Returns `nil` for a light with no cone: a point light needs six of these, not one.
     public static func viewProjection(for light: PunctualLight, nearPlane: Float = 0.05)
-        -> matrix_float4x4? {
+        -> simd_float4x4? {
         guard let cone = light.cone else { return nil }
 
         let forward = cone.direction
@@ -127,7 +127,7 @@ public final class ShadowAtlas {
         let up = simd_cross(forward, right)
 
         let eye = light.position
-        let view = matrix_float4x4(columns: (
+        let view = simd_float4x4(columns: (
             SIMD4(right.x, up.x, -forward.x, 0),
             SIMD4(right.y, up.y, -forward.y, 0),
             SIMD4(right.z, up.z, -forward.z, 0),
@@ -136,18 +136,18 @@ public final class ShadowAtlas {
 
         // Widened a little past the cone, so the softened edge of the lit circle is still inside the
         // map rather than sampling whatever is beyond it.
-        let fov = min(cone.outerAngle * 2.2, radians_from_degrees(175))
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: fov, aspectRatio: 1, nearZ: max(nearPlane, 1e-3))
+        let fov = min(cone.outerAngle * 2.2, Float.radians(fromDegrees: 175))
+        let projection = simd_float4x4(
+            perspectiveFovY: fov, aspectRatio: 1, nearZ: max(nearPlane, 1e-3))
         return simd_mul(projection, view)
     }
 
     /// One light's shadow pass: which tile, and where it looks from.
     public struct Caster {
         public let tile: Int
-        public let viewProjection: matrix_float4x4
+        public let viewProjection: simd_float4x4
 
-        public init(tile: Int, viewProjection: matrix_float4x4) {
+        public init(tile: Int, viewProjection: simd_float4x4) {
             self.tile = tile
             self.viewProjection = viewProjection
         }
@@ -199,7 +199,7 @@ public final class ShadowAtlas {
             var matrix = caster.viewProjection
             let offset = base + caster.tile * ShadowAtlas.matrixStride
             matrixBuffer.contents().advanced(by: offset)
-                .copyMemory(from: &matrix, byteCount: MemoryLayout<matrix_float4x4>.size)
+                .copyMemory(from: &matrix, byteCount: MemoryLayout<simd_float4x4>.size)
             argumentTable.setAddress(matrixBuffer.gpuAddress + UInt64(offset),
                                      index: ShadowMap.BufferIndex.lightViewProjection)
 

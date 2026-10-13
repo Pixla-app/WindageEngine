@@ -6,21 +6,19 @@ description: EngineMark is the engine's mark as geometry — drawn in your HUD a
 
 ## What it is a picture of {#drawing}
 
-*Windage* is the sideways carry of a shot, and the correction dialed against it. The mark is a W drawn as one continuous stroke whose **right half is carried up by 16% of its own height** (`EngineMark.offset`). The middle apex sits well below both shoulders, which is what makes it read as a W rather than two Vs; the lift is the windage.
+*Windage* is the sideways carry of a shot, and the correction dialed against it. The mark is a W drawn as one continuous stroke whose **right half is carried up by 16% of its own height**. The middle apex sits well below both shoulders, which is what makes it read as a W rather than two Vs; the lift is the windage.
 
-The mark is square: `EngineMark.aspect` is `1`, and `EngineMark.width(forHeight:)` returns the height.
+The mark is square: `EngineMark.width(forHeight:)` returns the height.
 
 ## Drawing it {#draw}
 
 ```swift
 // Your game, inside encodeHUD, between hud.begin(viewportSize:) and hud.draw(into:frameSlot:).
 let height: Float = 48
-EngineMark.draw(into: hud,
-                x: viewportSize.x - height - 24, y: viewportSize.y - height - 24,
-                height: height, color: EngineMark.display)
+EngineMark.draw(into: hud, origin: viewportSize - height - 24, height: height, color: EngineMark.display)
 ```
 
-`draw(into:x:y:height:color:)` fills the mark with its top-left corner at `x, y` in the HUD's coordinates. It needs no texture, no resource and no pipeline of its own: it is a call to `HUDRenderer.fill(polygon:color:feather:)`, with the HUD's default one-unit feather so its diagonals are not stair-stepped. A height of 0, or a color with zero alpha, draws nothing.
+`draw(into:origin:height:color:)` fills the mark with its top-left corner at `origin` in the HUD's coordinates. It needs no texture, no resource and no pipeline of its own: it is a call to `HUDRenderer.fillPolygon(_:color:feather:)`, with the HUD's default one-unit feather so its diagonals are not stair-stepped. A height of 0, or a color with zero alpha, draws nothing.
 
 ### The outline
 
@@ -39,9 +37,9 @@ It is constructed, not traced: five points on the stroke's center line (left sho
 | `EngineMark.display` | `#F2F4F7` | dark grounds: a game, a splash, a store capsule |
 | `EngineMark.deep` | `#1B2027` | light grounds: a page, print, anything that must meet a contrast ratio |
 
-Both are `UIColor`s, drawn exactly as authored because the HUD draws after tone mapping.
+Both are `InterfaceColor`s, drawn exactly as authored because the HUD draws after tone mapping.
 
-**The mark has no hue on purpose.** It appears inside somebody else's game, where the game's own colors should lead. A hue of its own would be a second brand competing with the one the player came for. You may pass any `UIColor` to `draw`, but the two tones are the mark as intended.
+**The mark has no hue on purpose.** It appears inside somebody else's game, where the game's own colors should lead. A hue of its own would be a second brand competing with the one the player came for. You may pass any `InterfaceColor` to `draw`, but the two tones are the mark as intended.
 
 ## The files in Brand/ {#files}
 

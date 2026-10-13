@@ -39,7 +39,7 @@ public nonisolated enum Engine {
 /// **The reversed-Z convention, the depth clear value and the vertex-descriptor contract count as
 /// API even though they are not signatures.** Changing any of them breaks a consumer in a way that
 /// compiles and then renders nothing, which is worse than a compile error, so they move the minor.
-public nonisolated struct SemanticVersion: Sendable, Comparable, CustomStringConvertible {
+public nonisolated struct SemanticVersion: Sendable, Hashable, Comparable, LosslessStringConvertible {
     public let major: Int
     public let minor: Int
     public let patch: Int

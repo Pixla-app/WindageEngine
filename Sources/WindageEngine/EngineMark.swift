@@ -31,7 +31,7 @@ import simd
 /// ``outline`` is built from five points on the stroke's center line and a stroke width measured
 /// across, as type is — each arm's edges are its center line moved half the width either way, every
 /// corner is where two of those edges meet, and every end is cut flat. **It is the only description of
-/// the mark**: ``draw(into:x:y:height:color:)`` fills it, every file in `Brand/` is written from it,
+/// the mark**: ``draw(into:origin:height:color:)`` fills it, every file in `Brand/` is written from it,
 /// and `EngineMarkTests` fails if a file and this disagree. Redrawing the mark means changing a number
 /// here and re-recording, never touching two places.
 ///
@@ -49,10 +49,10 @@ public nonisolated enum EngineMark {
     /// **16%, and about as far as it goes.** At 10% the lift passed for a lean or an italic; much past
     /// 20% the stroke down into the right-hand valley shortens to a stub and the valley reads as a
     /// notch, which is where the W stops being one letter.
-    public static let offset: Float = 0.16
+    static let offset: Float = 0.16
 
     /// The mark is square.
-    public static let aspect: Float = 1
+    static let aspect: Float = 1
 
     /// The mark's width at a given height.
     public static func width(forHeight height: Float) -> Float { height * aspect }
@@ -96,15 +96,15 @@ public nonisolated enum EngineMark {
     }
 
     /// The tone for dark grounds — a game, a store capsule, a splash.
-    public static let display = UIColor(hex: 0xF2F4F7)
+    public static let display = InterfaceColor(hex: 0xF2F4F7)
 
     /// The tone for light grounds — a page, a printed mark, anything that must meet a contrast ratio.
-    public static let deep = UIColor(hex: 0x1B2027)
+    public static let deep = InterfaceColor(hex: 0x1B2027)
 
-    /// Fills the mark with its top-left corner at `x, y` and the given height, in `color`.
+    /// Fills the mark with its top-left corner at `origin` and the given height, in `color`.
     @MainActor
-    public static func draw(into hud: HUDRenderer, x: Float, y: Float, height: Float, color: UIColor) {
+    public static func draw(into hud: HUDRenderer, origin: SIMD2<Float>, height: Float, color: InterfaceColor) {
         guard height > 0, color.srgb.w > 0 else { return }
-        hud.fill(polygon: outline.map { SIMD2(x, y) + $0 * height }, color: color)
+        hud.fillPolygon(outline.map { origin + $0 * height }, color: color)
     }
 }

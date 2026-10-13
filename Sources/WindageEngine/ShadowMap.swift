@@ -103,9 +103,9 @@ public final class ShadowMap {
         /// The cascade, atlas tile or cube face (`slice × 6 + face`) being recorded.
         public let index: Int
         /// World to this pass's light clip space — build a `Frustum` from it to cull.
-        public let viewProjection: matrix_float4x4
+        public let viewProjection: simd_float4x4
 
-        public init(index: Int, viewProjection: matrix_float4x4) {
+        public init(index: Int, viewProjection: simd_float4x4) {
             self.index = index
             self.viewProjection = viewProjection
         }
@@ -138,7 +138,7 @@ public final class ShadowMap {
     private let depthState: MTLDepthStencilState
     private let argumentTable: MTL4ArgumentTable
     private let matrixBuffer: MTLBuffer
-    private static let matrixStride = MemoryLayout<matrix_float4x4>.stride
+    private static let matrixStride = MemoryLayout<simd_float4x4>.stride
 
     /// - Parameter cascades: **the game's numbers.** A courtyard seventy meters across and a range
     ///   where the target is at 800 m want different splits and a different light depth range;
@@ -214,7 +214,7 @@ public final class ShadowMap {
     @discardableResult
     public func updateMatrices(frameSlot: Int,
                                camera: Camera,
-                               sunDirection: SIMD3<Float>) -> [matrix_float4x4] {
+                               sunDirection: SIMD3<Float>) -> [simd_float4x4] {
         updateMatrices(frameSlot: frameSlot, cameraPosition: camera.position, cameraForward: camera.forward,
                        sunDirection: sunDirection)
     }
@@ -225,7 +225,7 @@ public final class ShadowMap {
     public func updateMatrices(frameSlot: Int,
                                cameraPosition: SIMD3<Float>,
                                cameraForward: SIMD3<Float>,
-                               sunDirection: SIMD3<Float>) -> [matrix_float4x4] {
+                               sunDirection: SIMD3<Float>) -> [simd_float4x4] {
         let matrices = cascades.cascadeMatrices(cameraPosition: cameraPosition,
                                                 cameraForward: cameraForward,
                                                 sunDirection: sunDirection)
@@ -233,7 +233,7 @@ public final class ShadowMap {
         for (index, matrix) in matrices.enumerated() {
             var value = matrix
             matrixBuffer.contents().advanced(by: base + index * ShadowMap.matrixStride)
-                .copyMemory(from: &value, byteCount: MemoryLayout<matrix_float4x4>.size)
+                .copyMemory(from: &value, byteCount: MemoryLayout<simd_float4x4>.size)
         }
         return matrices
     }
@@ -285,7 +285,7 @@ public final class ShadowMap {
                 if let encode = batch.encode {
                     let matrix = matrixBuffer.contents()
                         .advanced(by: matrixBase + cascade * ShadowMap.matrixStride)
-                        .load(as: matrix_float4x4.self)
+                        .load(as: simd_float4x4.self)
                     encode(encoder, argumentTable, Pass(index: cascade, viewProjection: matrix))
                     continue
                 }

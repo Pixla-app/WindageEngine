@@ -47,9 +47,8 @@ final class Game: GameLoop {
     private var viewportSize = SIMD2<Float>(1, 1)
     private var seconds: Double = 0
 
-    init?(engine: FrameRenderer) {
-        guard let hud = HUDRenderer(device: engine.device) else { return nil }
-        self.hud = hud
+    init(engine: FrameRenderer) throws {
+        hud = try HUDRenderer(device: engine.device)
         engine.residencySet.addAllocations(hud.allocations)
         engine.commitResidency()
     }
@@ -60,21 +59,21 @@ final class Game: GameLoop {
         seconds += Double(deltaTime)
     }
 
-    func viewportChanged(width: Int, height: Int) {
+    func viewportSizeChanged(width: Int, height: Int) {
         viewportSize = SIMD2(Float(width), Float(height))
     }
 
     func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {}
 
-    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
         hud.begin(viewportSize: viewportSize)
-        _ = hud.text(String(format: "%.1f s", seconds), x: 40, y: 80, pointSize: 48, color: .white)
+        hud.text(String(format: "%.1f s", seconds), atBaseline: SIMD2(40, 80), pointSize: 48, color: .white)
         hud.draw(into: encoder, frameSlot: frameSlot)
     }
 }
 ```
 
-`encodePrePasses` is left out because it has a default that does nothing; `encodeHUD` has one too. Everything the GPU touches has to be in the renderer's `residencySet`, which is why the HUD's allocations are added and committed. The viewport is in pixels, and HUD coordinates are points from the top left, with `y` as the text's baseline.
+`encodePrePasses` is left out because it has a default that does nothing; `encodeHUD` has one too. Everything the GPU touches has to be in the renderer's `residencySet`, which is why the HUD's allocations are added and committed. The viewport is in pixels, and since that is what the HUD is begun with, HUD coordinates are pixels from the top left too — the text's position is its baseline.
 
 ## Getting it on screen
 
@@ -96,8 +95,11 @@ let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
 window.title = "My Game"
 window.center()
 
-guard let engine = FrameRenderer(device: device) else {
-    print("This GPU does not support Metal 4")
+let engine: FrameRenderer
+do {
+    engine = try FrameRenderer(device: device)
+} catch {
+    print(error)   // FrameRendererError: no Metal 4, or something a frame needs
     exit(1)
 }
 
@@ -108,7 +110,7 @@ view.isPaused = true
 view.enableSetNeedsDisplay = false
 window.contentView = view
 
-guard let game = Game(engine: engine) else { exit(1) }
+guard let game = try? Game(engine: engine) else { exit(1) }
 engine.game = game
 engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
 

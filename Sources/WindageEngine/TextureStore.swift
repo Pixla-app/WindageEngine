@@ -22,6 +22,35 @@ public enum TextureStoreError: Error, CustomStringConvertible, Sendable {
     }
 }
 
+/// Which corner of the image the mesh's `v = 0` is meant to land on.
+///
+/// ### The flip, and why the engine owns it
+///
+/// **Metal puts texture coordinate (0, 0) at an image's top-left. USD and OBJ put `st` (0, 0) at
+/// its bottom-left.** Something has to reconcile those, exactly once, and if it is not the engine
+/// then it is every game — and the failure is silent on any texture that happens to be roughly
+/// symmetrical, which is most of them.
+///
+/// **It was found on a character whose texture is a palette.** Its color map is a 32×32 grid of
+/// swatches with a magenta row along the bottom, so a vertical flip does not soften an edge — it
+/// hands a limb a completely different color. The sample's own crate, stone and ground textures
+/// had been flipped the whole time and looked fine, because noise and brickwork read the same
+/// upside down.
+///
+/// Every format Model I/O reads — USD, USDZ, OBJ, PLY, STL, Alembic — puts `v = 0` at the bottom,
+/// so ``bottomLeft`` is the default. ``topLeft`` is here for glTF-derived UVs, which are the other
+/// way round, and for anything a game generates itself.
+public nonisolated enum TextureOrigin: Sendable, Hashable {
+    /// `v = 0` is the bottom of the image: the convention of everything Model I/O imports.
+    case bottomLeft
+    /// `v = 0` is the top of the image: glTF's convention, and Metal's own.
+    case topLeft
+
+    var loaderOrigin: MTKTextureLoader.Origin {
+        self == .bottomLeft ? .bottomLeft : .topLeft
+    }
+}
+
 /// Loads textures once and hands the same one back after that.
 ///
 /// **The GPU half of ``Material``**, split off for the same reason `RigLoader` is split from
@@ -42,35 +71,6 @@ public enum TextureStoreError: Error, CustomStringConvertible, Sendable {
 /// thread. Making it `nonisolated` would buy background loading at the price of locking the cache,
 /// and nothing here has asked for that yet.
 public final class TextureStore {
-
-    /// Which corner of the image the mesh's `v = 0` is meant to land on.
-    ///
-    /// ### The flip, and why the engine owns it
-    ///
-    /// **Metal puts texture coordinate (0, 0) at an image's top-left. USD and OBJ put `st` (0, 0) at
-    /// its bottom-left.** Something has to reconcile those, exactly once, and if it is not the engine
-    /// then it is every game — and the failure is silent on any texture that happens to be roughly
-    /// symmetrical, which is most of them.
-    ///
-    /// **It was found on a character whose texture is a palette.** Its color map is a 32×32 grid of
-    /// swatches with a magenta row along the bottom, so a vertical flip does not soften an edge — it
-    /// hands a limb a completely different color. The sample's own crate, stone and ground textures
-    /// had been flipped the whole time and looked fine, because noise and brickwork read the same
-    /// upside down.
-    ///
-    /// Every format Model I/O reads — USD, USDZ, OBJ, PLY, STL, Alembic — puts `v = 0` at the bottom,
-    /// so ``bottomLeft`` is the default. ``topLeft`` is here for glTF-derived UVs, which are the other
-    /// way round, and for anything a game generates itself.
-    public enum TextureOrigin: Sendable, Hashable {
-        /// `v = 0` is the bottom of the image: the convention of everything Model I/O imports.
-        case bottomLeft
-        /// `v = 0` is the top of the image: glTF's convention, and Metal's own.
-        case topLeft
-
-        var loaderOrigin: MTKTextureLoader.Origin {
-            self == .bottomLeft ? .bottomLeft : .topLeft
-        }
-    }
 
     private struct Key: Hashable {
         let source: TextureSource
@@ -96,13 +96,17 @@ public final class TextureStore {
     /// tilts every surface diagonally and lights the whole scene wrongly.
     public let flatNormal: MTLTexture
 
-    public init?(device: MTLDevice) {
+    /// - Throws: ``TextureStoreError/fallbackUnavailable`` when the device will not make the 1×1
+    ///   fallbacks.
+    public init(device: MTLDevice) throws {
         self.device = device
         self.loader = MTKTextureLoader(device: device)
         guard let white = TextureStore.makePixel(device: device, color: SIMD4(255, 255, 255, 255),
                                                  label: "White 1×1"),
               let normal = TextureStore.makePixel(device: device, color: SIMD4(128, 128, 255, 255),
-                                                  label: "Flat Normal 1×1") else { return nil }
+                                                  label: "Flat Normal 1×1") else {
+            throw TextureStoreError.fallbackUnavailable
+        }
         self.white = white
         self.flatNormal = normal
     }
@@ -190,7 +194,7 @@ public final class TextureStore {
                          reportingTo report: ((String) -> Void)? = nil) -> [TextureSlot: MTLTexture] {
         var result: [TextureSlot: MTLTexture] = [:]
         for slot in TextureSlot.allCases {
-            guard let source = material[slot] else {
+            guard let source = material.textures[slot] else {
                 result[slot] = fallback(for: slot)
                 continue
             }
@@ -208,5 +212,5 @@ public final class TextureStore {
     ///
     /// **A texture the GPU cannot reach is not a black object — it is garbage that looks like a
     /// shader bug.** Call this after loading a level's materials and commit residency.
-    public var allocations: [MTLResource] { Array(cache.values) + [white, flatNormal] }
+    public var allocations: [any MTLAllocation] { Array(cache.values) + [white, flatNormal] }
 }

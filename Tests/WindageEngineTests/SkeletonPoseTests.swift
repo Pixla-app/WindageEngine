@@ -64,8 +64,8 @@ struct SkeletonPoseTests {
     func parentCarriesChild() throws {
         let skeleton = try Skeleton(
             jointPaths: ["root", "root/mid"],
-            restTransforms: [matrix_identity_float4x4, matrix4x4_translation(0, 1, 0)],
-            bindTransforms: [matrix_identity_float4x4, matrix4x4_translation(0, 1, 0)])
+            restTransforms: [matrix_identity_float4x4, simd_float4x4(translation: SIMD3(0, 1, 0))],
+            bindTransforms: [matrix_identity_float4x4, simd_float4x4(translation: SIMD3(0, 1, 0))])
         var pose = SkeletonPose(skeleton: skeleton)
         var locals = pose.localTransforms
         locals[0].rotation = simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1))

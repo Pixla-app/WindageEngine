@@ -179,8 +179,8 @@ struct SpotLightTests {
                       range: Float = 20) -> PunctualLight {
         PunctualLight(position: position, color: SIMD3(repeating: 10), range: range,
                       cone: PunctualLight.Cone(direction: direction,
-                                               innerAngle: radians_from_degrees(inner),
-                                               outerAngle: radians_from_degrees(outer)))
+                                               innerAngle: Float.radians(fromDegrees: inner),
+                                               outerAngle: Float.radians(fromDegrees: outer)))
     }
 
     /// **A point light is a spot with no cone, and the shader must not have to branch on it.** The
@@ -199,11 +199,11 @@ struct SpotLightTests {
         #expect(light.angularAttenuation(at: SIMD3(0, -5, 0)) == 1, "the axis is not fully lit")
 
         // 10° off axis: inside the inner cone, so still full.
-        let inner = SIMD3<Float>(sin(radians_from_degrees(10)), -cos(radians_from_degrees(10)), 0) * 5
+        let inner = SIMD3<Float>(sin(Float.radians(fromDegrees: 10)), -cos(Float.radians(fromDegrees: 10)), 0) * 5
         #expect(light.angularAttenuation(at: inner) == 1)
 
         // 40° off axis: beyond the outer cone.
-        let outside = SIMD3<Float>(sin(radians_from_degrees(40)), -cos(radians_from_degrees(40)), 0) * 5
+        let outside = SIMD3<Float>(sin(Float.radians(fromDegrees: 40)), -cos(Float.radians(fromDegrees: 40)), 0) * 5
         #expect(light.angularAttenuation(at: outside) == 0)
         // And behind it entirely.
         #expect(light.angularAttenuation(at: SIMD3(0, 5, 0)) == 0)
@@ -214,7 +214,7 @@ struct SpotLightTests {
     func edgeIsSoft() {
         let light = spot(pointing: SIMD3(0, -1, 0), inner: 10, outer: 40)
         func atAngle(_ degrees: Float) -> Float {
-            let a = radians_from_degrees(degrees)
+            let a = Float.radians(fromDegrees: degrees)
             return light.angularAttenuation(at: SIMD3(sin(a), -cos(a), 0) * 5)
         }
         let values = [atAngle(15), atAngle(25), atAngle(35)]
@@ -228,7 +228,7 @@ struct SpotLightTests {
     func reversedAnglesAreClamped() {
         let light = spot(pointing: SIMD3(0, -1, 0), inner: 60, outer: 20)
         #expect(light.angularAttenuation(at: SIMD3(0, -5, 0)) == 1)
-        let outside = SIMD3<Float>(sin(radians_from_degrees(50)), -cos(radians_from_degrees(50)), 0) * 5
+        let outside = SIMD3<Float>(sin(Float.radians(fromDegrees: 50)), -cos(Float.radians(fromDegrees: 50)), 0) * 5
         #expect(light.angularAttenuation(at: outside) == 0, "the cone lit its own outside")
     }
 
@@ -293,8 +293,8 @@ struct SpotLightTests {
         let data = try JSONEncoder().encode(light)
         let decoded = try JSONDecoder().decode(PunctualLight.self, from: data)
         let cone = try #require(decoded.cone)
-        #expect(abs(radians_to_degrees(cone.innerAngle) - 12) < 1e-3)
-        #expect(abs(radians_to_degrees(cone.outerAngle) - 28) < 1e-3)
+        #expect(abs(Float.degrees(fromRadians: cone.innerAngle) - 12) < 1e-3)
+        #expect(abs(Float.degrees(fromRadians: cone.outerAngle) - 28) < 1e-3)
         #expect(simd_distance(cone.direction, SIMD3(0, -1, 0)) < 1e-5)
         #expect(simd_distance(decoded.position, light.position) < 1e-5)
     }

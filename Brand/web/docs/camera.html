@@ -31,7 +31,7 @@
     <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html" aria-current="page">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
     <p class="crumb">Docs / The frame loop</p>
     <h1>Camera</h1>
-<p><code>Camera</code> is an eye in the world: a position in meters, a yaw and a pitch, and the view matrix that follows from them. Pair it with <code>matrix_perspective_right_hand_reverse_z</code> for the projection, and you have everything a frame needs to know about where it is looking from.</p>
+<p><code>Camera</code> is an eye in the world: a position in meters, a yaw and a pitch, and the view matrix that follows from them. Pair it with <code>simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)</code> for the projection, and you have everything a frame needs to know about where it is looking from.</p>
 <h2 id="the-camera-type">The Camera type</h2>
 <pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> Camera: Sendable {
     <span class="k">public</span> <span class="k">var</span> position: SIMD3&lt;Float&gt;   <span class="c">// meters, Y is up</span>
@@ -52,17 +52,20 @@
 <ul><li><code>look(mouseDelta:)</code> is <strong>not</strong> scaled by time. A mouse delta is a displacement the player already made; scaling it by frame duration would make the same hand movement turn further on a slow frame.</li><li><code>turn(rate:deltaTime:)</code> <strong>is</strong> scaled by time. A stick reports a held position, which is a rate: hold it twice as long and you turn twice as far.</li></ul>
 <p>Sensitivities are <code>Camera.lookSensitivity</code> (radians per unit of mouse movement) and <code>Camera.stickLookSpeed</code> (radians per second at full deflection). See <a href="input.html">input</a> for scaling them per device.</p>
 <h2 id="reversed-z">Reversed-Z, with an infinite far plane</h2>
-<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">func</span> matrix_perspective_right_hand_reverse_z(
-    fovyRadians fovy: Float, aspectRatio: Float, nearZ: Float) -&gt; matrix_float4x4</pre>
+<pre class="code-swift"><span class="k">public</span> <span class="k">extension</span> simd_float4x4 {
+    <span class="k">init</span>(perspectiveFovY fovY: Float, aspectRatio: Float, nearZ: Float,
+         depthRange: ClosedRange&lt;Float&gt; = 0...1)
+}</pre>
+<p><code>fovY</code> is the vertical field of view in radians; <code>Float.radians(fromDegrees:)</code> converts.</p>
 <p>This projection maps the near plane to depth <strong>1</strong> and infinite distance to depth <strong>0</strong> — the opposite of the conventional near-0, far-1. Depth is stored as floating point, and floats hold far more precision near zero, so the conventional mapping spends almost all of it in the first few meters and leaves the far field to z-fight. Reversed, the precision is where the distance is.</p>
 <p>The far plane is gone, not merely large: depth approaches 0 asymptotically, so there is no view distance to tune and nothing to clip against at range. One consequence shows up in <a href="culling.html">culling</a>: a Windage Engine frustum has five planes, not six.</p>
 <h3 id="three-things-must-agree-so-the-engine-owns-them">Three things must agree, so the engine owns them</h3>
 <p>Reversed-Z needs the projection, the depth compare function and the depth clear value to agree, and a mismatch renders <strong>nothing at all</strong> rather than rendering badly. So:</p>
-<div class="table"><table><thead><tr><th>Piece</th><th>Where it comes from</th></tr></thead><tbody><tr><td>The projection</td><td><code>matrix_perspective_right_hand_reverse_z</code></td></tr><tr><td>Compare <code>.greater</code> (nearer is now larger)</td><td><code>FrameRenderer.makeDepthStencilState()</code></td></tr><tr><td>Clear to 0</td><td><code>FrameRenderer.reversedZClearDepth</code></td></tr></tbody></table></div>
+<div class="table"><table><thead><tr><th>Piece</th><th>Where it comes from</th></tr></thead><tbody><tr><td>The projection</td><td><code>simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)</code></td></tr><tr><td>Compare <code>.greater</code> (nearer is now larger)</td><td><code>FrameRenderer.makeDepthStencilState()</code></td></tr><tr><td>Clear to 0</td><td><code>FrameRenderer.reversedZClearDepth</code></td></tr></tbody></table></div>
 <p>Use all three and they cannot disagree.</p>
 <div class="note"><p>Reversed-Z means <strong>larger is nearer</strong>. Any depth arithmetic you write yourself — a depth range, a bias, a comparison in a shader — has to read it that way round.</p></div>
 <h3 id="a-slice-of-the-depth-buffer">A slice of the depth buffer</h3>
-<p>A second form takes <code>depthRange: ClosedRange&lt;Float&gt;</code>. It confines the projection to part of the depth buffer, for drawing something held in the player's hands with its own field of view and in front of the world. <code>0...1</code> gives exactly the world projection; <code>0.9...1</code> is the front tenth. Because depth is reversed, <code>depthRange.upperBound</code> is the near end.</p>
+<p><code>depthRange</code> confines the projection to part of the depth buffer, for drawing something held in the player's hands with its own field of view and in front of the world. <code>0...1</code>, the default, is the whole buffer; <code>0.9...1</code> is the front tenth. Because depth is reversed, <code>depthRange.upperBound</code> is the near end.</p>
 <h2 id="how-the-sample-drives-it">How the sample drives it</h2>
 <p>The sample keeps two cameras — the last simulation step's and this one's — and blends between them for display, so motion stays smooth when the display and the simulation run at different rates (see <a href="fixed-timestep.html">fixed-timestep</a>). <code>Camera.interpolated(from:to:alpha:)</code> takes yaw the short way across the ±π seam, so turning from 179° to -179° is 2° of movement, not 358°.</p>
 <pre class="code-swift"><span class="c">// Each simulation step</span>
@@ -71,8 +74,8 @@ camera.turn(rate: input.lookRate * settings.stickLookScale, deltaTime: deltaTime
 
 <span class="c">// Each frame</span>
 <span class="k">let</span> view = Camera.interpolated(from: previousCamera, to: camera, alpha: interpolation)
-<span class="k">let</span> projection = matrix_perspective_right_hand_reverse_z(
-    fovyRadians: radians_from_degrees(70), aspectRatio: aspectRatio, nearZ: 0.1)
+<span class="k">let</span> projection = simd_float4x4(
+    perspectiveFovY: Float.radians(fromDegrees: 70), aspectRatio: aspectRatio, nearZ: 0.1)
 <span class="k">let</span> viewProjection = simd_mul(projection, view.viewMatrix)</pre>
 <p>Mouse look goes through <code>camera.look(mouseDelta:)</code> as events arrive. The sample's view also adds a head bob and a slide's dip to the <em>displayed</em> camera only, never to <code>camera</code> itself — the view moves, the aim does not.</p>
 <h2 id="gotchas">Gotchas</h2>

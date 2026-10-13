@@ -31,12 +31,12 @@ public nonisolated struct InstanceBatches<Key: Hashable & Sendable>: Sendable {
     public struct Batch: Sendable, Equatable {
         public let key: Key
         /// Index of this kind's first transform in ``InstanceBatches/transforms``.
-        public let first: Int
+        public let start: Int
         public let count: Int
 
         /// Where this kind's transforms start in a buffer written from ``InstanceBatches/transforms``:
         /// bind the buffer's address plus this, and index it with `[[instance_id]]`.
-        public var byteOffset: Int { first * MemoryLayout<simd_float4x4>.stride }
+        public var byteOffset: Int { start * MemoryLayout<simd_float4x4>.stride }
     }
 
     /// Every copy's transform, kind after kind, each kind's copies together.
@@ -55,7 +55,7 @@ public nonisolated struct InstanceBatches<Key: Hashable & Sendable>: Sendable {
         }
         for key in order {
             let run = grouped[key]!
-            batches.append(Batch(key: key, first: transforms.count, count: run.count))
+            batches.append(Batch(key: key, start: transforms.count, count: run.count))
             transforms.append(contentsOf: run)
         }
     }
@@ -80,7 +80,7 @@ public final class InstanceBuffer {
     private var buffers: [MTLBuffer?]
 
     /// The smallest buffer made, in copies — a few kilobytes, so a scene with a handful does not grow it.
-    public nonisolated static let minimumCapacity = 1024
+    nonisolated static let minimumCapacity = 1024
 
     public init(renderer: FrameRenderer) {
         self.renderer = renderer
@@ -89,7 +89,7 @@ public final class InstanceBuffer {
 
     /// How many copies a buffer should hold for `needed`, given it holds `current` now: unchanged when
     /// it fits, else half as much again as needed, and never below ``minimumCapacity``.
-    public nonisolated static func capacity(for needed: Int, current: Int) -> Int {
+    nonisolated static func capacity(for needed: Int, current: Int) -> Int {
         if needed <= current { return current }
         return max(needed + needed / 2, minimumCapacity)
     }

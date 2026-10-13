@@ -6,6 +6,20 @@
 import Foundation
 import Metal
 
+/// Why ``ShaderLibrary`` could not supply a library. A failure to *compile* the source is Metal's own
+/// error, thrown as it is.
+public enum ShaderLibraryError: Error, CustomStringConvertible, Sendable {
+    /// No compiled library in the bundle, and no `.metal` source to compile one from.
+    case noSource(named: String, bundle: String)
+
+    public var description: String {
+        switch self {
+        case .noSource(let name, let bundle):
+            "no compiled Metal library and no \(name).metal in \(bundle) to compile from"
+        }
+    }
+}
+
 /// Gets a Metal library, whether or not anything compiled one at build time.
 ///
 /// ### The problem this exists for, found by trying to be a consumer
@@ -22,18 +36,10 @@ import Metal
 ///
 /// So: try the compiled library, and fall back to **compiling the `.metal` source at runtime**. The
 /// source is shipped as a resource either way, so nothing new has to be packaged.
-public enum ShaderLibrary {
-
-    public enum Failure: Error, CustomStringConvertible {
-        case noSource(named: String, bundle: String)
-
-        public var description: String {
-            switch self {
-            case .noSource(let name, let bundle):
-                return "no compiled Metal library and no \(name).metal in \(bundle) to compile from"
-            }
-        }
-    }
+///
+/// **`nonisolated`**, like the other loaders: compiling a library is work a game may well do off the main
+/// thread, and nothing here touches shared state.
+public nonisolated enum ShaderLibrary {
 
     /// - Parameters:
     ///   - sourceNamed: the `.metal` file's name, without extension, shipped in `bundle` as a
@@ -47,7 +53,7 @@ public enum ShaderLibrary {
             return compiled
         }
         guard let url = bundle.url(forResource: sourceNamed, withExtension: "metal") else {
-            throw Failure.noSource(named: sourceNamed, bundle: bundle.bundlePath)
+            throw ShaderLibraryError.noSource(named: sourceNamed, bundle: bundle.bundlePath)
         }
         let source = try String(contentsOf: url, encoding: .utf8)
         return try device.makeLibrary(source: source, options: nil)

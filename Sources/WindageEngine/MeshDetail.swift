@@ -38,30 +38,50 @@ public nonisolated enum MeshDetail {
     /// One simplified version of one submesh.
     public struct Reduction: Sendable, Equatable {
         /// Triangles, as indices into the full mesh's vertices.
-        public var indices: [UInt32]
+        public let indices: [UInt32]
         /// How far, in the mesh's own units, this surface strays from the full mesh at most.
-        public var error: Float
+        public let error: Float
     }
 
-    /// Each tier aims for this share of the triangles of the one before it.
-    public static let step: Float = 0.5
-    /// At most this many tiers below the full mesh.
-    public static let maximumTiers = 10
-    /// Tiers stop when one keeps more than this share of the triangles before it — the simplifier has met
-    /// the mesh's limit, and another tier would cost memory to save nothing.
-    public static let stall: Float = 0.85
-    /// Faces meeting at more than this angle keep a hard edge between them in a tier's normals: cos 60°.
-    public static let creaseCosine: Float = 0.5
-    /// Fewer triangles than this are not worth simplifying further.
-    public static let smallest = 12
+    /// How tiers are made. The defaults are what the engine was measured with; a game changes one when
+    /// its own meshes ask for it.
+    public struct Options: Sendable, Equatable {
+        /// Each tier aims for this share of the triangles of the one before it.
+        public let reduction: Float
+        /// At most this many tiers below the full mesh.
+        public let maximumTiers: Int
+        /// Tiers stop when one keeps more than this share of the triangles before it — the simplifier has
+        /// met the mesh's limit, and another tier would cost memory to save nothing.
+        public let stall: Float
+        /// Faces meeting at more than this angle keep a hard edge between them in a tier's normals: cos 60°.
+        public let creaseCosine: Float
+        /// Fewer triangles than this are not worth simplifying further.
+        public let smallestTriangleCount: Int
+
+        public init(reduction: Float = 0.5, maximumTiers: Int = 10, stall: Float = 0.85,
+                    creaseCosine: Float = 0.5, smallestTriangleCount: Int = 12) {
+            precondition(reduction > 0 && reduction < 1, "Each tier must keep a share of the last, between 0 and 1")
+            precondition(maximumTiers >= 0, "A mesh cannot have fewer than no tiers")
+            precondition(stall > 0 && stall <= 1, "The stall share must be in 0…1")
+            precondition(smallestTriangleCount >= 1, "The smallest mesh worth simplifying has a triangle")
+            self.reduction = reduction
+            self.maximumTiers = maximumTiers
+            self.stall = stall
+            self.creaseCosine = creaseCosine
+            self.smallestTriangleCount = smallestTriangleCount
+        }
+
+        /// What the engine was measured with.
+        public static let standard = Options()
+    }
 
     /// Simplified versions of one submesh: coarser and coarser, each with its error. Empty when the submesh is
     /// already too small to simplify, or the simplifier could not reduce it.
     ///
     /// `positions` points at the first vertex's position — three floats — and vertices are `stride` bytes apart.
-    public static func reductions(indices: [UInt32], positions: UnsafeRawPointer, vertexCount: Int, stride: Int)
-        -> [Reduction] {
-        guard indices.count / 3 > smallest, vertexCount > 0 else { return [] }
+    public static func reductions(indices: [UInt32], positions: UnsafeRawPointer, vertexCount: Int, stride: Int,
+                                  options: Options = .standard) -> [Reduction] {
+        guard indices.count / 3 > options.smallestTriangleCount, vertexCount > 0 else { return [] }
         var reductions: [Reduction] = []
         var previous = indices.count
         var target = Float(indices.count)
@@ -69,10 +89,10 @@ public nonisolated enum MeshDetail {
         // so a careful simplifier finds nothing it may touch; the cost is softened shading on a far copy,
         // which the error rule keeps below half a pixel. **Sparse**, because a submesh is a subset of its mesh's
         // vertices. **Absolute**, so the error comes back in the mesh's units.
-        let options = UInt32(meshopt_SimplifyPermissive | meshopt_SimplifySparse | meshopt_SimplifyErrorAbsolute)
+        let flags = UInt32(meshopt_SimplifyPermissive | meshopt_SimplifySparse | meshopt_SimplifyErrorAbsolute)
         var destination = [UInt32](repeating: 0, count: indices.count)
-        for _ in 0..<maximumTiers {
-            target *= step
+        for _ in 0..<options.maximumTiers {
+            target *= options.reduction
             let wanted = max(Int(target) / 3 * 3, 3)
             var error: Float = 0
             // Always from the full mesh, never from the last one: errors do not add up from tier to tier.
@@ -80,26 +100,26 @@ public nonisolated enum MeshDetail {
                 destination.withUnsafeMutableBufferPointer { out in
                     meshopt_simplify(out.baseAddress, source.baseAddress, source.count,
                                      positions.assumingMemoryBound(to: Float.self), vertexCount, stride,
-                                     wanted, .greatestFiniteMagnitude, options, &error)
+                                     wanted, .greatestFiniteMagnitude, flags, &error)
                 }
             }
-            guard count >= 3, Float(count) < Float(previous) * stall else { break }
+            guard count >= 3, Float(count) < Float(previous) * options.stall else { break }
             reductions.append(Reduction(indices: Array(destination[0..<count]), error: error))
             previous = count
-            if count / 3 <= smallest { break }
+            if count / 3 <= options.smallestTriangleCount { break }
         }
         return reductions
     }
 
-    /// The coarsest tier whose error, at this distance, covers less than `pixels` on screen. 0 is the full
-    /// mesh; `errors[i]` is tier `i + 1`'s — its ``Tier/error``.
+    /// The coarsest tier whose error, at this distance, covers less than `maximumPixelError` on screen. 0 is
+    /// the full mesh; `errors[i]` is tier `i + 1`'s — its ``Tier/error``.
     ///
     /// - `distance`: from the eye to the nearest the copy can come — its box's center less its radius.
     /// - `scale`: the copy's size; a tree scaled up strays further.
     /// - `pixelsPerRadian`: the viewport's height in pixels over its vertical field of view, near enough for
     ///   the small angles a tier's error makes.
-    public static func choose(errors: [Float], distance: Float, scale: Float, pixelsPerRadian: Float,
-                              pixels: Float = 0.5) -> Int {
+    public static func coarsestTier(errors: [Float], distance: Float, scale: Float, pixelsPerRadian: Float,
+                                    maximumPixelError pixels: Float = 0.5) -> Int {
         guard distance > 0 else { return 0 }
         var chosen = 0
         for (index, error) in errors.enumerated() {
@@ -112,12 +132,12 @@ public nonisolated enum MeshDetail {
     /// One tier of a whole mesh, ready to draw: its own vertices and every submesh's triangles into them.
     public struct Tier: Sendable, Equatable {
         /// Vertices in the full mesh's layout, `stride` bytes each — three per triangle.
-        public var vertices: [UInt8]
+        public let vertices: [UInt8]
         /// Per submesh, indices into `vertices`.
-        public var submeshes: [[UInt32]]
+        public let submeshes: [[UInt32]]
         /// The worst of its submeshes' errors, in the mesh's units. Tier `i` of a mesh is reduction `i` of every
         /// submesh, so a copy changes all its parts at once; a submesh with fewer reductions repeats its coarsest.
-        public var error: Float
+        public let error: Float
     }
 
     /// A mesh's tiers, each with **its own vertices and normals made again from its own triangles.**
@@ -129,9 +149,12 @@ public nonisolated enum MeshDetail {
     /// about 1 MB for every tier of a 19,000-triangle tree together.
     ///
     /// - `full`: each submesh's own indices, for a submesh with no reductions of its own.
-    /// - `normalOffset`: bytes into a vertex where its normal's three floats are.
+    /// - `vertices`: the first vertex — its first byte, not its position.
+    /// - `positionOffset`, `normalOffset`: bytes into a vertex where its position's and its normal's three
+    ///   floats are.
     public static func tiers(_ reductions: [[Reduction]], full: [[UInt32]], vertices: UnsafeRawPointer,
-                             stride: Int, normalOffset: Int) -> [Tier] {
+                             stride: Int, positionOffset: Int, normalOffset: Int,
+                             options: Options = .standard) -> [Tier] {
         let count = reductions.map(\.count).max() ?? 0
         return (0..<count).map { tier in
             let chosen = reductions.indices.map { submesh -> (indices: [UInt32], error: Float) in
@@ -146,7 +169,7 @@ public nonisolated enum MeshDetail {
             // faces can be a single sliver standing edge-on — and its neighbours outvote it here. Hard edges
             // stay hard, because a face across a crease is not counted.
             func position(_ old: UInt32) -> SIMD3<Float> {
-                let p = (vertices + Int(old) * stride).assumingMemoryBound(to: Float.self)
+                let p = (vertices + Int(old) * stride + positionOffset).assumingMemoryBound(to: Float.self)
                 return SIMD3(p[0], p[1], p[2])
             }
             var faces: [(normal: SIMD3<Float>, area: SIMD3<Float>)] = []   // unit normal, area-weighted normal
@@ -176,7 +199,7 @@ public nonisolated enum MeshDetail {
                             let target = out.baseAddress! + corner * stride
                             target.copyMemory(from: vertices + Int(old) * stride, byteCount: stride)
                             var sum = SIMD3<Float>.zero
-                            for other in around where simd_dot(faces[other].normal, own) >= creaseCosine {
+                            for other in around where simd_dot(faces[other].normal, own) >= options.creaseCosine {
                                 sum += faces[other].area
                             }
                             let length = simd_length(sum)
@@ -201,16 +224,26 @@ public nonisolated enum MeshDetail {
     /// Tiers for a mesh ``MeshLoader`` loaded, read from its own buffers — which Model I/O's Metal allocator makes
     /// shared, so CPU-readable, on Apple silicon. Empty for a mesh with a submesh that is not triangles.
     ///
-    /// `vertexDescriptor` is the one the mesh was loaded with: its first layout's stride, and the offset of
-    /// attribute `normalAttribute`, which each tier rewrites. Safe off the main thread, and worth running there:
-    /// simplifying a 19,000-triangle mesh takes a few milliseconds.
-    public static func tiers(for mesh: LoadedMesh, vertexDescriptor: MTLVertexDescriptor, normalAttribute: Int)
-        -> [Tier] {
-        guard let vertices = mesh.mesh.vertexBuffers.first,
+    /// `vertexDescriptor` is the one the mesh was loaded with. Attributes `positionAttribute` and
+    /// `normalAttribute` say where each vertex's position is read from and where the normal each tier
+    /// rewrites goes; both must be in the same buffer, whose layout gives the stride. Safe off the main
+    /// thread, and worth running there: simplifying a 19,000-triangle mesh takes a few milliseconds.
+    public static func tiers(for mesh: LoadedMesh, vertexDescriptor: MTLVertexDescriptor,
+                             positionAttribute: Int, normalAttribute: Int,
+                             options: Options = .standard) -> [Tier] {
+        let position: MTLVertexAttributeDescriptor = vertexDescriptor.attributes[positionAttribute]
+        let normal: MTLVertexAttributeDescriptor = vertexDescriptor.attributes[normalAttribute]
+        precondition(position.format == .float3 && normal.format == .float3,
+                     "MeshDetail reads positions and normals as three floats")
+        precondition(position.bufferIndex == normal.bufferIndex,
+                     "MeshDetail needs a vertex's position and normal in the same buffer")
+        let bufferIndex = position.bufferIndex
+        guard mesh.mesh.vertexBuffers.indices.contains(bufferIndex),
               mesh.mesh.submeshes.allSatisfy({ $0.primitiveType == .triangle }) else { return [] }
-        let positions = UnsafeRawPointer(vertices.buffer.contents() + vertices.offset)
+        let vertices = mesh.mesh.vertexBuffers[bufferIndex]
+        let start = UnsafeRawPointer(vertices.buffer.contents() + vertices.offset)
         let vertexCount = mesh.mesh.vertexCount
-        let stride = vertexDescriptor.layouts[0].stride
+        let stride = vertexDescriptor.layouts[bufferIndex].stride
         let full = mesh.mesh.submeshes.map { submesh -> [UInt32] in
             let source = submesh.indexBuffer.buffer.contents() + submesh.indexBuffer.offset
             return submesh.indexType == .uint32
@@ -218,8 +251,11 @@ public nonisolated enum MeshDetail {
                 : UnsafeBufferPointer(start: source.assumingMemoryBound(to: UInt16.self), count: submesh.indexCount)
                     .map(UInt32.init)
         }
-        let reduced = full.map { reductions(indices: $0, positions: positions, vertexCount: vertexCount, stride: stride) }
-        return tiers(reduced, full: full, vertices: positions, stride: stride,
-                     normalOffset: vertexDescriptor.attributes[normalAttribute].offset)
+        let reduced = full.map {
+            reductions(indices: $0, positions: start + position.offset, vertexCount: vertexCount, stride: stride,
+                       options: options)
+        }
+        return tiers(reduced, full: full, vertices: start, stride: stride, positionOffset: position.offset,
+                     normalOffset: normal.offset, options: options)
     }
 }

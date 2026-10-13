@@ -28,7 +28,7 @@ import simd
 ///
 /// ### It needs a far distance, and this engine's projection does not have one
 ///
-/// ``matrix_perspective_right_hand_reverse_z`` has an **infinite** far plane on purpose — there is no
+/// ``simd_float4x4/init(perspectiveFovY:aspectRatio:nearZ:depthRange:)`` has an **infinite** far plane on purpose — there is no
 /// view distance to tune and nothing to clip at range. Clustering cannot work with that: the
 /// logarithm needs a finite end. So ``lightRange`` is its own, and it is honest rather than awkward —
 /// a punctual light has a finite range by definition, so there is a distance past which none of them
@@ -153,7 +153,7 @@ public nonisolated struct ClusteredLights: Sendable {
     /// costs a handful of tests rather than a sweep of the whole grid.
     public init(lights: [PunctualLight],
                 grid: ClusterGrid,
-                viewMatrix: matrix_float4x4,
+                viewMatrix: simd_float4x4,
                 fovY: Float,
                 aspectRatio: Float,
                 maximumIndices: Int = 1 << 16) {

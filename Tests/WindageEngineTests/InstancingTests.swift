@@ -10,7 +10,7 @@ import simd
 @MainActor
 struct InstancingTests {
 
-    private func move(_ x: Float) -> simd_float4x4 { matrix4x4_translation(x, 0, 0) }
+    private func move(_ x: Float) -> simd_float4x4 { simd_float4x4(translation: SIMD3(x, 0, 0)) }
 
     @Test func copiesOfAKindAreGroupedTogether() {
         let batches = InstanceBatches([("pine", move(1)), ("rock", move(2)), ("pine", move(3)), ("rock", move(4))])
@@ -22,14 +22,14 @@ struct InstancingTests {
     @Test func eachBatchPointsAtItsOwnTransforms() {
         let batches = InstanceBatches([("a", move(1)), ("b", move(2)), ("b", move(3)), ("c", move(4)), ("a", move(5))])
         for batch in batches.batches {
-            let run = batches.transforms[batch.first..<(batch.first + batch.count)]
+            let run = batches.transforms[batch.start..<(batch.start + batch.count)]
             let xs = run.map { $0.columns.3.x }
             switch batch.key {
             case "a": #expect(xs == [1, 5])
             case "b": #expect(xs == [2, 3])
             default: #expect(xs == [4])
             }
-            #expect(batch.byteOffset == batch.first * 64, "a float4x4 is 64 bytes")
+            #expect(batch.byteOffset == batch.start * 64, "a float4x4 is 64 bytes")
         }
     }
 

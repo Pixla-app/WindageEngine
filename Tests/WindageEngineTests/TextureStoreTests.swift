@@ -21,7 +21,7 @@ struct TextureStoreTests {
     /// report a red suite for hardware it does not have.
     private func makeStore() throws -> TextureStore? {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
-        return TextureStore(device: device)
+        return try TextureStore(device: device)
     }
 
     private var mapURL: URL {
@@ -72,7 +72,7 @@ struct TextureStoreTests {
     func missingTextureFallsBackAndReports() throws {
         guard let store = try makeStore() else { return }
         var material = Material(name: "broken")
-        material[.baseColor] = .named("no-such-file.png")
+        material.textures[.baseColor] = .named("no-such-file.png")
 
         var reports: [String] = []
         let resolved = store.textures(for: material, bundle: .module) { reports.append($0) }

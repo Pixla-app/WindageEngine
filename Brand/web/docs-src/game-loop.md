@@ -10,10 +10,10 @@ description: The protocol a game implements — its six requirements, what the e
 public protocol GameLoop: AnyObject {
     func beginFrame()
     func step(deltaTime: Float)
-    func viewportChanged(width: Int, height: Int)
+    func viewportSizeChanged(width: Int, height: Int)
     func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float)
     func encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float)
-    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int)
+    func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float)
 }
 ```
 
@@ -23,20 +23,20 @@ public protocol GameLoop: AnyObject {
 | --- | --- | --- |
 | `beginFrame()` | once per displayed frame, before any steps | poll input |
 | `step(deltaTime:)` | once per fixed simulation step, zero or more times a frame | move everything |
-| `viewportChanged(width:height:)` | when the drawable's size changes, before that frame is encoded | rebuild anything that depends on aspect ratio |
+| `viewportSizeChanged(width:height:)` | when the drawable's size, in pixels, changes, before that frame is encoded | rebuild anything that depends on aspect ratio |
 | `encodePrePasses(into:frameSlot:interpolation:)` | before the main pass | shadow maps, depth prepasses, offscreen targets |
 | `encode(into:frameSlot:interpolation:)` | in the scene pass | the scene's draws |
-| `encodeHUD(into:frameSlot:)` | after tone mapping, in the same pass | the interface |
+| `encodeHUD(into:frameSlot:interpolation:)` | after tone mapping, in the same pass, with the same `interpolation` | the interface |
 
 ## What the engine owns
 
-`FrameRenderer` holds the Metal 4 objects every renderer needs: `device`, `commandQueue`, `commandBuffer` and a `residencySet`. Everything the GPU touches must be in that set; add allocations as you create them, then call `commitResidency()`.
+`FrameRenderer` holds the Metal 4 objects every renderer needs: the `device` and a `residencySet`, and its own command queue and buffer, which it hands to your hooks rather than exposing. Everything the GPU touches must be in that set; add allocations as you create them, then call `commitResidency()`. `init(device:simulationStepsPerSecond:)` throws a `FrameRendererError` when the GPU is not Metal 4 or will not make what a frame needs.
 
 It also owns the targets. The scene is drawn into an HDR texture of `FrameRenderer.sceneColorPixelFormat` (`.rgba16Float`) with a depth attachment of `FrameRenderer.depthPixelFormat`, cleared to `reversedZClearDepth` (0, infinitely far). The engine then tone maps that into the drawable, of `FrameRenderer.colorPixelFormat` (`.bgra8Unorm_srgb`), and calls `encodeHUD` in that same pass. So:
 
 - **Scene pipelines** declare `sceneColorPixelFormat` and `depthPixelFormat`.
 - **Interface pipelines** declare `colorPixelFormat` and no depth.
-- **Depth state** comes from `makeDepthStencilState()`, which compares with `.greater` to match the engine's reversed-Z projection, `matrix_perspective_right_hand_reverse_z`. A mismatch draws nothing at all rather than drawing badly, which is why the engine hands you the matching set.
+- **Depth state** comes from `makeDepthStencilState()`, which compares with `.greater` to match the engine's reversed-Z projection, `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)`. A mismatch draws nothing at all rather than drawing badly, which is why the engine hands you the matching set.
 
 What untouched pixels show is `clearColor`, in radiance, and the exposure and curve between scene and screen are `toneMapping`. Both can change at any time. See [tone mapping](tone-mapping.html).
 
@@ -50,10 +50,10 @@ For each frame the display link delivers:
 4. The renderer waits until the GPU has finished with the oldest frame slot, then resets that slot's allocator.
 5. `encodePrePasses(into:frameSlot:interpolation:)`, given the command buffer itself.
 6. The scene pass: a barrier so it waits for what the pre-passes wrote, then `encode(into:frameSlot:interpolation:)`.
-7. The tone map pass, then `encodeHUD(into:frameSlot:)`.
+7. The tone map pass, then `encodeHUD(into:frameSlot:interpolation:)`.
 8. Commit and present.
 
-`viewportChanged` is called just before step 4 on any frame whose drawable is a new size, including the first. A pause is the game's to implement and costs the loop nothing: keep stepping, just don't advance. The frame loop keeps running, the scene still draws and the window still resizes.
+`viewportSizeChanged` is called just before step 4 on any frame whose drawable is a new size, including the first. A pause is the game's to implement and costs the loop nothing: keep stepping, just don't advance. The frame loop keeps running, the scene still draws and the window still resizes.
 
 ## Frame slots {#frame-slots}
 

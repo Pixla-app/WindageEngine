@@ -50,7 +50,7 @@ struct MaterialTests {
     @Test("A texture is found even though another property shares its semantic")
     func textureWinsOverTheSharedSemantic() throws {
         let material = try loadMaterial()
-        let source = try #require(material[.baseColor])
+        let source = try #require(material.textures[.baseColor])
         guard case .url(let url) = source else {
             Issue.record("base colour did not come through as a file")
             return
@@ -147,11 +147,11 @@ struct MaterialTests {
         for index in 0..<asset.count { descend(asset.object(at: index)) }
 
         let material = Material(try #require(found))
-        #expect(material[.metallic] != nil, "the metalness map did not come through")
-        #expect(material[.roughness] != nil)
+        #expect(material.textures[.metallic] != nil, "the metalness map did not come through")
+        #expect(material.textures[.roughness] != nil)
         #expect(material.metallic == 1, "a metalness map multiplied by 0 is not metal")
         #expect(material.roughness == 1, "a roughness map multiplied by 0.65 is not the map")
-        #expect(material[.emissive] != nil, "the emissive map did not come through")
+        #expect(material.textures[.emissive] != nil, "the emissive map did not come through")
         #expect(material.emissive == SIMD3(repeating: 1), "an emissive map multiplied by 0 is dark")
     }
 
@@ -159,7 +159,7 @@ struct MaterialTests {
     @Test("An unmapped slot keeps its scalar")
     func unmappedSlotsKeepScalars() throws {
         let material = try loadMaterial()
-        #expect(material[.metallic] == nil)
+        #expect(material.textures[.metallic] == nil)
         #expect(abs(material.metallic - 0.1) < 1e-5)
         #expect(abs(material.roughness - 0.65) < 1e-5)
     }

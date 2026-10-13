@@ -660,7 +660,7 @@ Reversed-Z needs the projection, the depth compare function and the clear value 
 mismatch renders **nothing at all** rather than rendering badly. Three constants that must match,
 spread across three files, in every game built on it, is a trap that will eventually be sprung. So
 `FrameRenderer` owns the clear value, `makeDepthStencilState()` hands back the matching compare, and
-`matrix_perspective_right_hand_reverse_z` is the projection. Use all three and they cannot disagree.
+`simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)` is the projection. Use all three and they cannot disagree.
 
 ## The interface is drawn after tone mapping, and that is structural
 
@@ -674,9 +674,9 @@ The engine enforces the ordering rather than documenting it because the failure 
 drawn inside the scene's shading goes through exposure and a filmic curve like everything else, and
 a brand colour arrives desaturated and shifted with nothing to say why.
 
-**`UIColor` makes the distinction a type.** Scene colour is *radiance* — unbounded, linear, tone
+**`InterfaceColor` makes the distinction a type.** Scene colour is *radiance* — unbounded, linear, tone
 mapped. Interface colour is a *specification* — it must land on screen as exactly the value it was
-authored as. `UIColor` takes an sRGB hex, converts once to linear, and the `_srgb` drawable encodes
+authored as. `InterfaceColor` takes an sRGB hex, converts once to linear, and the `_srgb` drawable encodes
 back on write, so the round trip is exact. Verified on-device by reading pixels back: `#00C2FF`
 authored arrives as `#00C2FF` on screen.
 
@@ -1095,7 +1095,7 @@ a stroke width measured across, each corner where two edges meet, each end cut f
 that construction; the SVGs, the app icon and the favicon in `Brand/` are written from it and a test fails if
 any of them drifts.
 
-**A letter needed a primitive a HUD had not.** `HUDRenderer.fill(polygon:)` triangulates by ear clipping —
+**A letter needed a primitive a HUD had not.** `HUDRenderer.fillPolygon(_:)` triangulates by ear clipping —
 fanned from a corner, the W covers the space between its own arms — and feathers the outline, because the HUD
 pipeline has no multisampling and the mark came out stair-stepped on its own splash. Switched off, each fails
 its check: unfeathered edges change 0.12% of the splash frame, which the splash's zero-pixel tolerance catches;
@@ -1884,7 +1884,7 @@ rather than as a structural fault.
 something merely *hung* there: the lantern is drawn at one percent of its size, in a position that is
 otherwise correct, which reads as the wrong mesh rather than as the wrong space.
 
-`matrix_without_scale` at the call site rather than a "do not inherit scale" flag inside the
+`withoutScale` at the call site rather than a "do not inherit scale" flag inside the
 hierarchy, because it is a decision about *what is being attached* and only the caller can see that.
 
 ### A joint's frame is not a promise about where the mesh got drawn

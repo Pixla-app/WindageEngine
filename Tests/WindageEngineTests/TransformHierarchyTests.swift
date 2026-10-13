@@ -144,7 +144,7 @@ struct TransformHierarchyTests {
     @Test("scale comes out, rotation and position stay")
     func scaleIsRemoved() {
         let m = translation(5, 6, 7) * quarterTurn * scale(0.01)
-        let rigid = matrix_without_scale(m)
+        let rigid = m.withoutScale
         #expect(position(rigid) == SIMD3(5, 6, 7))
         for column in [rigid.columns.0, rigid.columns.1, rigid.columns.2] {
             #expect(abs(simd_length(SIMD3(column.x, column.y, column.z)) - 1) < 1e-6)
@@ -170,7 +170,7 @@ struct TransformHierarchyTests {
                                       inheriting.worldTransform(of: 0).columns.0.z)) - 0.01) < 1e-6)
 
         var rigid = inheriting
-        rigid.refresh(attachedTo: [matrix_without_scale(hand)])
+        rigid.refresh(attachedTo: [hand.withoutScale])
         #expect(abs(position(rigid.worldTransform(of: 0)).y - 1.3) < 1e-5)
         #expect(abs(simd_length(SIMD3(rigid.worldTransform(of: 0).columns.0.x,
                                       rigid.worldTransform(of: 0).columns.0.y,
@@ -181,7 +181,7 @@ struct TransformHierarchyTests {
     func zeroAxisSurvives() {
         var flat = matrix_identity_float4x4
         flat.columns.1 = SIMD4(0, 0, 0, 0)
-        let rigid = matrix_without_scale(flat)
+        let rigid = flat.withoutScale
         #expect(rigid.columns.1 == SIMD4<Float>(0, 0, 0, 0))
         #expect(!rigid.columns.0.x.isNaN)
     }

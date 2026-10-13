@@ -12,8 +12,8 @@ struct FrustumTests {
 
     /// The same projection the engine builds, so the convention under test is the real one.
     private var frustum: Frustum {
-        let projection = matrix_perspective_right_hand_reverse_z(
-            fovyRadians: 65 * .pi / 180, aspectRatio: 1.6, nearZ: 0.1)
+        let projection = simd_float4x4(
+            perspectiveFovY: 65 * .pi / 180, aspectRatio: 1.6, nearZ: 0.1)
         return Frustum(viewProjection: projection)   // camera at the origin, looking down -Z
     }
 
@@ -24,8 +24,8 @@ struct FrustumTests {
 
     @Test("Something straight ahead is visible")
     func aheadIsVisible() {
-        #expect(frustum.canSee(box(at: SIMD3(0, 0, -20))))
-        #expect(frustum.canSee(box(at: SIMD3(0, 0, -500))))
+        #expect(frustum.mayIntersect(box(at: SIMD3(0, 0, -20))))
+        #expect(frustum.mayIntersect(box(at: SIMD3(0, 0, -500))))
     }
 
     /// **The near plane is the one reversed-Z gets backwards.** Extracted the textbook way it culls
@@ -33,19 +33,19 @@ struct FrustumTests {
     /// geometry failing to load rather than as a culling bug.
     @Test("Reversed-Z near and far are the right way round")
     func nearPlaneIsNotInverted() {
-        #expect(frustum.canSee(box(at: SIMD3(0, 0, -1))), "a close object was culled by the near plane")
-        #expect(frustum.canSee(box(at: SIMD3(0, 0, -100000))), "an infinite far plane rejected something distant")
+        #expect(frustum.mayIntersect(box(at: SIMD3(0, 0, -1))), "a close object was culled by the near plane")
+        #expect(frustum.mayIntersect(box(at: SIMD3(0, 0, -100000))), "an infinite far plane rejected something distant")
     }
 
     @Test("Something behind the camera is not")
     func behindIsCulled() {
-        #expect(!frustum.canSee(box(at: SIMD3(0, 0, 40))))
+        #expect(!frustum.mayIntersect(box(at: SIMD3(0, 0, 40))))
     }
 
     @Test("Something far off to the side is not")
     func offToTheSideIsCulled() {
-        #expect(!frustum.canSee(box(at: SIMD3(400, 0, -20))))
-        #expect(!frustum.canSee(box(at: SIMD3(0, 400, -20))))
+        #expect(!frustum.mayIntersect(box(at: SIMD3(400, 0, -20))))
+        #expect(!frustum.mayIntersect(box(at: SIMD3(0, 400, -20))))
     }
 
     /// **A false positive costs a draw; a false negative deletes something the player can see.**
@@ -54,7 +54,7 @@ struct FrustumTests {
     func straddlingIsKept() {
         // Wide enough to reach well outside the frustum, centred outside it, but still overlapping.
         let straddling = BoundingBox(minimum: SIMD3(-2000, -1, -21), maximum: SIMD3(-8, 1, -19))
-        #expect(frustum.canSee(straddling), "a box overlapping the view was culled")
+        #expect(frustum.mayIntersect(straddling), "a box overlapping the view was culled")
     }
 
     /// **Five planes, not six — the first thing this probe found.**

@@ -179,14 +179,14 @@ public nonisolated struct ShadowCascades {
     public var blendStartVector: SIMD4<Float> { vector { blendStart(forCascade: $0) } }
 
     /// The sun's own view matrix. Position is irrelevant to a directional light; only the axis is.
-    private func lightView(sunDirection: SIMD3<Float>) -> matrix_float4x4 {
+    private func lightView(sunDirection: SIMD3<Float>) -> simd_float4x4 {
         let forward = -sunDirection
         var upHint = SIMD3<Float>(0, 1, 0)
         if abs(simd_dot(forward, upHint)) > 0.99 { upHint = SIMD3(0, 0, 1) }
         let right = simd_normalize(simd_cross(upHint, forward))
         let up = simd_cross(forward, right)
 
-        return matrix_float4x4(columns: (
+        return simd_float4x4(columns: (
             SIMD4<Float>(right.x, up.x, -forward.x, 0),
             SIMD4<Float>(right.y, up.y, -forward.y, 0),
             SIMD4<Float>(right.z, up.z, -forward.z, 0),
@@ -197,7 +197,7 @@ public nonisolated struct ShadowCascades {
     /// World-to-light-clip per cascade, reversed-Z like the main pass.
     public func cascadeMatrices(cameraPosition: SIMD3<Float>,
                                 cameraForward: SIMD3<Float>,
-                                sunDirection: SIMD3<Float>) -> [matrix_float4x4] {
+                                sunDirection: SIMD3<Float>) -> [simd_float4x4] {
         let view = lightView(sunDirection: sunDirection)
 
         return (0..<count).map { index in
@@ -220,7 +220,7 @@ public nonisolated struct ShadowCascades {
 
             // Orthographic, reversed-Z: near maps to 1 and far to 0, matching the main pass so the
             // codebase has exactly one depth convention.
-            var projection = matrix_float4x4(0)
+            var projection = simd_float4x4(0)
             projection.columns.0.x = 1 / extent
             projection.columns.1.y = 1 / extent
             projection.columns.2.z = 1 / (far - near)

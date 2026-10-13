@@ -10,7 +10,87 @@ Every release of Windage Engine, newest first. Format follows
 
 ## [Unreleased]
 
-Nothing yet.
+**API audit, core, meshes, HUD and math.** The 1.0 audit's names and shapes for the frame loop, the HUD, the
+loaders and the maths: Swift names for Apple's C-template helpers, `UIColor` renamed out of UIKit's way,
+throwing initializers that say why, one style for the HUD's drawing calls, and the internals that were public
+only for tests made internal. Every game in the studio was moved in the same pass. Nothing draws differently:
+the sample's walks and recorded frames are unchanged, pixel for pixel.
+
+### Changed — breaking
+
+- **The maths have Swift names.** `matrix4x4_translation(x, y, z)` → `simd_float4x4(translation: SIMD3(x, y, z))`;
+  `matrix4x4_rotation(radians:axis:)` → `simd_float4x4(rotationAngle:axis:)`;
+  `matrix_perspective_right_hand_reverse_z(fovyRadians:aspectRatio:nearZ:)` and its `depthRange:` overload →
+  one `simd_float4x4(perspectiveFovY:aspectRatio:nearZ:depthRange:)`, `depthRange` defaulting to `0...1` and
+  giving the same matrix to the bit; `radians_from_degrees` / `radians_to_degrees` →
+  `Float.radians(fromDegrees:)` / `Float.degrees(fromRadians:)`; `matrix_without_scale(m)` → `m.withoutScale`.
+  A file that names `simd_float4x4` now needs `import simd`, where the old free functions did not.
+- **`UIColor` is `InterfaceColor`.** Same type, same values; the old name collided with UIKit's the moment a
+  file imported it, and would have blocked an iPad or iOS target.
+- **`FrameRenderer`, `HUDRenderer`, `FontAtlas` and `TextureStore` initializers throw** instead of returning
+  nil: `FrameRendererError` (no Metal 4, or which object the device would not make), `HUDRendererError`,
+  `FontAtlasError`, and `TextureStoreError.fallbackUnavailable`.
+- **`GameLoop.viewportChanged(width:height:)` is `viewportSizeChanged(width:height:)`**, documented as pixels,
+  and **`encodeHUD(into:frameSlot:)` is `encodeHUD(into:frameSlot:interpolation:)`**, given the same
+  interpolation as `encode`, so a marker over a moving thing is drawn where the thing was.
+- **`FrameRenderer` is no longer an `NSObject` or a `CAMetalDisplayLinkDelegate`** — a private object receives
+  the display link's frames — and its `commandQueue` and `commandBuffer` are internal. A game is handed the
+  command buffer and encoders it needs.
+- **`FixedTimestep.step` is `stepDuration`** (a noun was reading as a verb) and **`interpolationAlpha` is
+  `interpolation`**, the name every hook uses.
+- **The HUD's drawing calls name their shape and take `SIMD2` positions:** `rect(x:y:width:height:color:)` →
+  `fillRect(origin:size:color:)`; `stroke(x:y:width:height:thickness:color:)` →
+  `strokeRect(origin:size:thickness:color:)`; `ring(…)` → `fillRing(…)`; `fill(polygon:color:feather:)` →
+  `fillPolygon(_:color:feather:)`; `text(_:x:y:pointSize:color:)` → `text(_:atBaseline:pointSize:color:)`.
+  `EngineMark.draw(into:x:y:height:color:)` → `draw(into:origin:height:color:)`.
+- **`HUDRenderer.maxVerticesPerFrame` is an instance property set at init** (default 8,192) instead of a fixed
+  static, and a frame that overflows it says so in the log, once, rather than silently drawing short.
+- **`SplashScreen`:** `ignoresSkipsFor` → `skipDelay`, `markWidthFraction` → `markScale`,
+  `draw(into:viewport:)` → `draw(into:viewportSize:)`.
+- **`MeshLoader.load(named:withExtension:…)` has no default extension.** It defaulted to `"obj"` while the
+  engine prefers USD; the extension is the format, so it is named.
+- **`MeshDetail`:** the tuning constants (`step`, `maximumTiers`, `stall`, `creaseCosine`, `smallest`) are
+  `MeshDetail.Options` (`reduction`, `maximumTiers`, `stall`, `creaseCosine`, `smallestTriangleCount`), passed
+  as `options:`; `tiers(for:vertexDescriptor:normalAttribute:)` takes `positionAttribute:` too, and
+  `tiers(_:full:vertices:stride:normalOffset:)` a `positionOffset:`; `choose(…pixels:)` →
+  `coarsestTier(…maximumPixelError:)`; `Reduction` and `Tier` fields are `let`.
+- **`Frustum.canSee(_:)` is `mayIntersect(_:)`** — the test is conservative, and the name now says so.
+- **`BoundingBox.intersection(origin:direction:maxDistance:)` → `hitDistance(ofRayFrom:direction:maxDistance:)`**
+  and **`intersects(segmentFrom:to:)` → `hitDistance(ofSegmentFrom:to:)`** — both return a distance.
+- **`InstanceBatches.Batch.first` is `start`**, which no longer reads as `Collection.first`.
+- **`TextureStore.TextureOrigin` is the top-level `TextureOrigin`**, and `TextureStore.allocations` is
+  `[any MTLAllocation]`, the type `HUDRenderer.allocations` already had.
+- **`Material`'s subscript is gone**; `material.textures[slot]` is the one way to a map.
+- **`AssetOrientation.read(from:unitsPerMeter:)` is `init(asset:unitsPerMeter:)`.**
+- **`ShaderLibrary.Failure` is the top-level `ShaderLibraryError`**, and `ShaderLibrary` is `nonisolated`.
+- **`FontAtlas.lineHeight` is `lineHeight(pointSize:)`**, in the units the text is drawn at; the atlas's glyph
+  table, sheet texture and white texel are internal.
+- **Made internal, having been public only for tests or construction:** `HUDRenderer.triangulate(_:)` and
+  `rim(of:width:)`, `InstanceBuffer.capacity(for:current:)` and `minimumCapacity`, `EngineMark.offset` and
+  `aspect`, `Material.roughness(fromSpecularExponent:)`, `InterfaceColor.toLinear(_:)`.
+- **`matrix_float4x4` and `matrix_float3x3` are spelled `simd_float4x4` and `simd_float3x3` throughout the
+  engine.** The same types; one spelling.
+
+### Added
+
+- `FrameRenderer.makeDisplayLink(for:frameRateRange:)`, for a game that wants other than 30–120 Hz.
+- `FixedTimestep.simulatedTime`, `totalSteps` and `accumulator` are readable.
+- `MeshLoaderError.unusableVertexDescriptor` and `conversionFailed(_:underlying:)`, so a failure inside Model
+  I/O or Metal reaches the game with its cause instead of escaping as some other type.
+- `LoadedMesh` and `SceneObject` are `Sendable` (unchecked, documented), so a mesh loaded on a worker can be
+  handed to the main actor without a wrapper of the game's own.
+- `Frustum` is `nonisolated`, `Sendable` and `Equatable`; `SemanticVersion` is `Hashable` and
+  `LosslessStringConvertible`.
+
+### Fixed
+
+- **`AssetOrientation` refuses a `unitsPerMeter` that is not positive and finite**, at init and on set. Zero was
+  quietly read as 1, so an asset whose scale had been forgotten came in at whatever size it happened to be.
+- **`MeshLoader` reports a missing file as `assetNotFound`**, not as a file with no meshes.
+- **`MeshDetail.tiers(for:…)` reads the position where the layout puts it.** It read the start of buffer 0, so
+  a layout with anything before the position simplified the wrong numbers.
+- **`HUDRenderer.draw(into:frameSlot:)` checks its slot**, which could write past the vertex buffer.
+- **`FrameRenderer`'s initializer no longer traps** when the device will not make a command allocator.
 
 ## [0.28.0] — 2026-10-13
 

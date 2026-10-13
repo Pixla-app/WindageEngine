@@ -29,7 +29,7 @@ struct NormalMatrixTests {
 
     @Test("Translation does not affect normals")
     func translationIsIgnored() {
-        let result = normalMatrix(from: matrix4x4_translation(5, -3, 12))
+        let result = normalMatrix(from: simd_float4x4(translation: SIMD3(5, -3, 12)))
         let normal = SIMD3<Float>(0, 1, 0)
         #expect(simd_length(rotated(normal, by: result) - normal) < 1e-6)
     }
@@ -37,7 +37,7 @@ struct NormalMatrixTests {
     /// For a rotation the inverse transpose is the rotation itself, so normals simply rotate.
     @Test("Rotation carries normals with it")
     func rotationRotatesNormals() {
-        let rotation = matrix4x4_rotation(radians: .pi / 2, axis: SIMD3(0, 0, 1))
+        let rotation = simd_float4x4(rotationAngle: .pi / 2, axis: SIMD3(0, 0, 1))
         let result = normalMatrix(from: rotation)
         // Rotating +Y by 90° about +Z gives -X.
         let transformed = rotated(SIMD3(0, 1, 0), by: result)
