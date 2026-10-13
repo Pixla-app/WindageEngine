@@ -12,6 +12,28 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.25.0] — 2026-10-12
+
+**Level of detail.** A mesh gets simpler versions of itself when it loads, and a copy draws the coarsest one
+whose change in shape would cover under half a pixel where it stands. Measured where it came from — a world
+editor's wood of 1,000 trees of 19,000 triangles each on an M2 — 25 ms a frame after culling became 5.6 ms.
+
+### Added
+
+- **`MeshDetail`** — `tiers(for:vertexDescriptor:normalAttribute:)` makes up to ten **tiers** of a loaded mesh,
+  each about half the triangles of the one before, each with **its own vertices and normals recomputed from
+  its own faces** (kept normals drew far copies nearly black). `choose(errors:distance:scale:pixelsPerRadian:)`
+  picks one. `reductions(…)` and `tiers(_:full:…)` are the steps, for a mesh that did not come from
+  `MeshLoader`. CPU only; drawing a tier is the game's. Called tiers because `Level` is the level file.
+- **A `MeshOptimizer` target**: meshoptimizer 1.3's simplifier (MIT), vendored unmodified — the engine's
+  first code not written in Swift. **An app that ships `MeshDetail` ships `Sources/MeshOptimizer/LICENSE.md`.**
+
+### Not in the sample
+
+The sample's meshes are a few hundred triangles seen from a few metres, so no tier would ever be chosen and a
+demonstration would be staged. It is proved by a test that loads a real mesh through `MeshLoader`, and by the
+consumer it was extracted from. It goes into the sample the day the sample has something far away.
+
 ## [0.24.0] — 2026-10-12
 
 **A self-drawing shadow batch is told which pass it is drawing**, so it can draw only what that pass can see.

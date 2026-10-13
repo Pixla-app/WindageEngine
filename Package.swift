@@ -11,8 +11,18 @@ let package = Package(
         .executable(name: "WindageSample", targets: ["WindageSample"]),
     ],
     targets: [
+        // meshoptimizer's simplifier, for level of detail (`MeshDetail`): C++, vendored unmodified from the 1.3
+        // release (MIT, LICENSE beside it) — `simplifier.cpp`, the `allocator.cpp` it needs, and the header.
+        // The one part of the engine not written in Swift: it is the simplifier gltfpack and most engines use,
+        // and a reimplementation would be slower and less trustworthy. **An app shipping `MeshDetail` ships
+        // its license.**
+        .target(
+            name: "MeshOptimizer",
+            exclude: ["LICENSE.md"]
+        ),
         .target(
             name: "WindageEngine",
+            dependencies: ["MeshOptimizer"],
             // Declared so SwiftPM synthesises `Bundle.module`, which the HUD and tone-map pipelines
             // load their shaders from. Xcode compiles the .metal into the same bundle as `default.metallib`;
             // SwiftPM's CLI does not compile Metal at all, which is why `swift test` can build the

@@ -170,7 +170,7 @@ has nothing to build** · and a complete sample game exercising all of it.
 | ~~**Particles**~~ | **Done 2026-09-10.** `ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer` — embers, a pickup burst and landing dust in the sample. See below. |
 | ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
 | ~~**Instancing**~~ | **Done 2026-10-12 (0.22.0).** `InstanceBatches` and `InstanceBuffer` — copies grouped by kind, one draw per submesh per kind; the sample strews debris with it. |
-| **LOD** | Still to come: nothing in reach has lower-detail meshes for it to choose between. It arrives with the first asset or scene that needs it. |
+| ~~**LOD**~~ | **Done 2026-10-12 (0.25.0).** `MeshDetail` — simpler *tiers* of a mesh made when it loads (meshoptimizer's simplifier, vendored), and the tier a copy's distance earns: the coarsest whose error is under half a pixel. Extracted from a world editor's woods; not in the sample, whose scenes are too small to need it. |
 | ~~**Input rebinding, settings persistence**~~ | **Done 2026-09-10.** `InputBindings`, `PlayerSettings` and `KeyCode`; the sample has a settings screen that saves as you change it. See below. |
 
 **Contested — defer, and say so rather than pretending they are unwanted.**

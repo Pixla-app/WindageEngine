@@ -67,6 +67,17 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-12 — level of detail (0.25.0)
+
+**`MeshDetail`**: up to ten tiers of a loaded mesh, each with its own vertices and normals recomputed from its
+own faces, and `choose` — the coarsest tier under half a pixel of error. Built on **meshoptimizer 1.3's
+simplifier, vendored unmodified as the `MeshOptimizer` target** (MIT; an app shipping it ships its license).
+Extracted from a world editor's woods: 1,000 trees of 19,000 triangles, 25 → 5.6 ms on an M2. Three things
+learned there, written into the doc comments: **permissive** simplification, because low-poly assets split
+every vertex at every hard edge; **recomputed normals**, because kept ones drew far copies nearly black; **half a
+pixel**, because at one a wood of six-pixel trees visibly lost its tiers of branches. 6 new tests, one loading a
+real mesh. **Not in the sample** — nothing there is far enough away to switch; see the CHANGELOG.
+
 ## Done 2026-10-12 — a self-drawing batch knows its pass (0.24.0)
 
 `ShadowMap.Batch`'s `encode` closure gets a `ShadowMap.Pass` (index, light view-projection), so a batch can
