@@ -95,4 +95,25 @@ struct ShadowMapTests {
                        ShadowMap.BufferIndex.jointPalette]
         #expect(Set(indices).count == indices.count)
     }
+
+    /// An editor's orbiting view has a position and a direction but is not a `Camera`. The cascades it
+    /// gets must be the ones a `Camera` in the same place, looking the same way, would get.
+    @Test("Cascades from a bare position and direction match a Camera's")
+    func matricesFromPositionMatchACamera() {
+        guard let shadowMap = makeShadowMap() else { return }
+        let camera = Camera(position: SIMD3(3, 2, -7), yaw: 0.7, pitch: -0.3)
+        let sun = simd_normalize(SIMD3<Float>(0.4, 0.8, 0.2))
+        let fromCamera = shadowMap.updateMatrices(frameSlot: 0, camera: camera, sunDirection: sun)
+        let fromParts = shadowMap.updateMatrices(frameSlot: 1, cameraPosition: camera.position,
+                                                 cameraForward: camera.forward, sunDirection: sun)
+        #expect(fromCamera == fromParts)
+    }
+
+    @Test("A batch that encodes its own draws has its own index for instances")
+    func instancesHaveTheirOwnIndex() {
+        let indices = [ShadowMap.BufferIndex.vertices, ShadowMap.BufferIndex.uniforms,
+                       ShadowMap.BufferIndex.lightViewProjection, ShadowMap.BufferIndex.jointPalette,
+                       ShadowMap.BufferIndex.instances]
+        #expect(Set(indices).count == indices.count)
+    }
 }

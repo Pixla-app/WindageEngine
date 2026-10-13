@@ -12,6 +12,29 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.23.0] — 2026-10-12
+
+**Shadows for geometry the engine does not draw object by object.** Instanced copies cast now, and so can a
+mesh a game builds into its own buffers — a heightfield it sculpts. And the cascades can be placed from any
+view, not only a ``Camera``. Both came from a world editor putting the sun's shadows on a scattered wood, an
+orbiting view and sculpted ground; the sample proves the first with its debris.
+
+### Added
+
+- **`ShadowMap.Batch(pipeline:encode:)`** — a batch that encodes its own draws. The engine binds the
+  pipeline and the light matrix, and hands over the encoder and argument table, once per cascade — and once
+  per atlas tile and cube face, where `ShadowAtlas` and `ShadowCubes` draw it whole (it cannot be culled
+  per object). `Batch.encode` is `nil` for an ordinary batch.
+- **`ShadowMap.BufferIndex.instances` (4)** — where an instanced shadow vertex function reads its copies'
+  transforms. The three shadow passes' argument tables hold five buffers now.
+- **`ShadowMap.updateMatrices(frameSlot:cameraPosition:cameraForward:sunDirection:)`** — the cascades for a
+  view that is not a `Camera`. The `Camera` form calls it, and a test holds the two to the same matrices.
+- **The sample's debris casts shadows**, sun and lamps, through `sampleInstancedShadowVertex`.
+
+### Changed
+
+- **Recorded frames redrawn** for the debris's shadows: long ones from the ruins' near brazier.
+
 ## [0.22.0] — 2026-10-12
 
 **Instancing.** Many copies of the same meshes drawn once per submesh per kind, with an instance count,

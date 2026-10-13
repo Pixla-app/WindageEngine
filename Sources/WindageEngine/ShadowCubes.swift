@@ -95,7 +95,7 @@ public final class ShadowCubes {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 4      // matching ShadowMap's indices
+        tableDescriptor.maxBufferBindCount = 5      // matching ShadowMap.BufferIndex, instances included
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
               let matrices = device.makeBuffer(
                 length: ShadowCubes.matrixStride * ShadowCubes.faceCount * self.lightCount
@@ -277,6 +277,14 @@ public final class ShadowCubes {
                                          index: ShadowMap.BufferIndex.lightViewProjection)
 
                 for (batchIndex, batch) in batches.enumerated() {
+                    // A batch that draws itself cannot be culled per object here: it is drawn whole,
+                    // which costs draws rather than deleting shadows — `ShadowMap.Batch.encode`.
+                    if let encode = batch.encode {
+                        encoder.setRenderPipelineState(batch.pipeline)
+                        draws += 1
+                        encode(encoder, argumentTable)
+                        continue
+                    }
                     var bound = false
                     for index in reachable[batchIndex] {
                         // A face sees a sixth of the sphere. **Skipping the other five sixths is what

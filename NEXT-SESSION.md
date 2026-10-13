@@ -67,6 +67,14 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-12 — shadows for self-drawn geometry (0.23.0)
+
+`ShadowMap.Batch(pipeline:encode:)` — a batch that encodes its own draws, for instanced copies and for a
+mesh a game builds itself; `ShadowAtlas` and `ShadowCubes` draw it whole. `BufferIndex.instances` (4).
+`updateMatrices(frameSlot:cameraPosition:cameraForward:sunDirection:)` for a view that is not a `Camera`.
+The sample's debris casts through it. 638 tests; 20 walks and 5 frames as recorded (redrawn for the debris's
+shadows). Followed into every consumer the same day.
+
 ## Done 2026-10-12 — instancing (0.22.0)
 
 **`InstanceBatches` and `InstanceBuffer`**: copies grouped by kind in a fixed order, and a per-frame

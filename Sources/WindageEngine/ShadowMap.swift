@@ -61,6 +61,12 @@ public final class ShadowMap {
         /// batch that cannot cheaply say where its objects are keeps the conservative behaviour,
         /// which costs draws rather than deleting shadows.
         public let bounds: ((Int) -> BoundingBox)?
+        /// **Draws for geometry that is not one `MTKMesh` per object** — instanced copies drawn with an
+        /// instance count, or a mesh a game builds into its own buffers, like a heightfield it sculpts.
+        /// The engine binds the cascade's light matrix and the pipeline, then hands over the encoder and
+        /// the argument table; the closure binds what its vertex function reads and encodes its draws.
+        /// `nil` for an ordinary batch, which the engine draws object by object.
+        public let encode: ((MTL4RenderCommandEncoder, MTL4ArgumentTable) -> Void)?
 
         public init(pipeline: MTLRenderPipelineState,
                     count: Int,
@@ -74,6 +80,19 @@ public final class ShadowMap {
             self.uniformAddress = uniformAddress
             self.jointPaletteAddress = jointPaletteAddress
             self.bounds = bounds
+            self.encode = nil
+        }
+
+        /// A batch that encodes its own draws — see ``encode``. Called once per cascade.
+        public init(pipeline: MTLRenderPipelineState,
+                    encode: @escaping (MTL4RenderCommandEncoder, MTL4ArgumentTable) -> Void) {
+            self.pipeline = pipeline
+            self.count = 1
+            self.mesh = { _ in fatalError("a batch that encodes its own draws has no mesh") }
+            self.uniformAddress = { _ in 0 }
+            self.jointPaletteAddress = nil
+            self.bounds = nil
+            self.encode = encode
         }
     }
 
@@ -89,6 +108,9 @@ public final class ShadowMap {
         public static let lightViewProjection = 2
         /// The joint palette, for a skinned batch.
         public static let jointPalette = 3
+        /// The copies' transforms, for an instanced batch that encodes its own draws — the
+        /// ``InstanceBuffer`` contract: one `float4x4` per copy, indexed by `[[instance_id]]`.
+        public static let instances = 4
     }
 
     /// Depth only, and this is not the engine's main depth format by accident: a cascade array is
@@ -139,7 +161,7 @@ public final class ShadowMap {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 4
+        tableDescriptor.maxBufferBindCount = 5   // through BufferIndex.instances
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else { return nil }
         argumentTable = table
     }
@@ -178,8 +200,19 @@ public final class ShadowMap {
     public func updateMatrices(frameSlot: Int,
                                camera: Camera,
                                sunDirection: SIMD3<Float>) -> [matrix_float4x4] {
-        let matrices = cascades.cascadeMatrices(cameraPosition: camera.position,
-                                                cameraForward: camera.forward,
+        updateMatrices(frameSlot: frameSlot, cameraPosition: camera.position, cameraForward: camera.forward,
+                       sunDirection: sunDirection)
+    }
+
+    /// The same, for a view that is not a ``Camera`` — an orbiting editor camera, a cutscene's rail.
+    /// The cascades need only where the eye is and which way it looks.
+    @discardableResult
+    public func updateMatrices(frameSlot: Int,
+                               cameraPosition: SIMD3<Float>,
+                               cameraForward: SIMD3<Float>,
+                               sunDirection: SIMD3<Float>) -> [matrix_float4x4] {
+        let matrices = cascades.cascadeMatrices(cameraPosition: cameraPosition,
+                                                cameraForward: cameraForward,
                                                 sunDirection: sunDirection)
         let base = frameSlot * cascades.count * ShadowMap.matrixStride
         for (index, matrix) in matrices.enumerated() {
@@ -234,6 +267,10 @@ public final class ShadowMap {
 
             for batch in batches where batch.count > 0 {
                 encoder.setRenderPipelineState(batch.pipeline)
+                if let encode = batch.encode {
+                    encode(encoder, argumentTable)
+                    continue
+                }
                 for index in 0..<batch.count {
                     argumentTable.setAddress(batch.uniformAddress(index), index: BufferIndex.uniforms)
                     if let joints = batch.jointPaletteAddress {

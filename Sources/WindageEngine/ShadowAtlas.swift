@@ -84,7 +84,7 @@ public final class ShadowAtlas {
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
-        tableDescriptor.maxBufferBindCount = 4      // matching ShadowMap's indices
+        tableDescriptor.maxBufferBindCount = 5      // matching ShadowMap.BufferIndex, instances included
         guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
               let matrices = device.makeBuffer(
                 length: ShadowAtlas.matrixStride * self.tilesPerSide * self.tilesPerSide
@@ -205,6 +205,11 @@ public final class ShadowAtlas {
 
             for batch in batches where batch.count > 0 {
                 encoder.setRenderPipelineState(batch.pipeline)
+                // A batch that draws itself — instanced copies, a game-built mesh — see `ShadowMap.Batch.encode`.
+                if let encode = batch.encode {
+                    encode(encoder, argumentTable)
+                    continue
+                }
                 for index in 0..<batch.count {
                     argumentTable.setAddress(batch.uniformAddress(index),
                                              index: ShadowMap.BufferIndex.uniforms)

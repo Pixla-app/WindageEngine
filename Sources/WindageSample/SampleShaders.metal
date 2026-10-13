@@ -247,6 +247,17 @@ vertex float4 sampleShadowVertex(VertexIn in [[stage_in]],
     return lightViewProjection * (uniforms.model * float4(in.position, 1.0));
 }
 
+/// The shadow pass for instanced copies — the debris. Each copy's transform from the buffer the engine's
+/// `ShadowMap.BufferIndex.instances` names, on top of the object's own, exactly as the main pass draws it.
+vertex float4 sampleInstancedShadowVertex(VertexIn in [[stage_in]],
+                                          uint instance [[instance_id]],
+                                          constant Uniforms &uniforms [[buffer(1)]],
+                                          constant float4x4 &lightViewProjection [[buffer(2)]],
+                                          const device float4x4 *copies [[buffer(4)]])
+{
+    return lightViewProjection * (copies[instance] * uniforms.model * float4(in.position, 1.0));
+}
+
 /// The shadow pass for skinned geometry.
 ///
 /// **A second pipeline rather than a flag**, because the vertex layout differs — and it has to exist

@@ -399,6 +399,11 @@ final class SampleGame: GameLoop {
     private let skinnedPipeline: MTLRenderPipelineState?
     /// Debris, drawn instanced. **Optional, the same way: no pipeline means no debris.**
     private let instancedPipeline: MTLRenderPipelineState?
+    /// The debris's shadows: a batch that encodes its own instanced draws (`ShadowMap.Batch.encode`).
+    private let instancedShadowPipeline: MTLRenderPipelineState?
+    /// This frame's debris transforms, written before the shadow passes so they and the scene draw the
+    /// same copies.
+    private var rubbleCopies: MTLBuffer?
     /// The debris lying round this level's buildings — ``SampleRubble`` — as one batch of the box mesh.
     private var rubble = InstanceBatches<String>()
     private let rubbleBuffer: InstanceBuffer
@@ -1220,6 +1225,7 @@ final class SampleGame: GameLoop {
         // have to be right and none of which is obvious.
         var shadow: MTLRenderPipelineState?
         var skinnedShadow: MTLRenderPipelineState?
+        var instancedShadow: MTLRenderPipelineState?
         if shadowMap != nil {
             do {
                 let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
@@ -1231,6 +1237,14 @@ final class SampleGame: GameLoop {
                     descriptor: ShadowMap.pipelineDescriptor(vertexFunction: staticFunction,
                                                              vertexDescriptor: vertexDescriptor,
                                                              label: "SampleShadow"))
+
+                let instancedFunction = MTL4LibraryFunctionDescriptor()
+                instancedFunction.library = shaderLibrary
+                instancedFunction.name = "sampleInstancedShadowVertex"
+                instancedShadow = try? compiler.makeRenderPipelineState(
+                    descriptor: ShadowMap.pipelineDescriptor(vertexFunction: instancedFunction,
+                                                             vertexDescriptor: vertexDescriptor,
+                                                             label: "SampleInstancedShadow"))
 
                 let skinnedFunction = MTL4LibraryFunctionDescriptor()
                 skinnedFunction.library = shaderLibrary
@@ -1246,6 +1260,7 @@ final class SampleGame: GameLoop {
         }
         shadowPipeline = shadow
         skinnedShadowPipeline = skinnedShadow
+        instancedShadowPipeline = instancedShadow
         if shadowMap == nil || shadowPipeline == nil {
             print("WindageSample: no shadows — the scene will be flat-lit")
         }
@@ -3241,6 +3256,7 @@ final class SampleGame: GameLoop {
     /// The shadow pass, before anything is drawn to the screen.
     func encodePrePasses(into commandBuffer: MTL4CommandBuffer, frameSlot: Int, interpolation: Float) {
         writeUniforms(frameSlot: frameSlot, interpolation: interpolation)
+        rubbleCopies = rubbleBuffer.write(rubble, frameSlot: frameSlot)
         guard let shadowMap else { return }
 
         let view = displayCamera(interpolation)
@@ -3289,6 +3305,33 @@ final class SampleGame: GameLoop {
                 // sample's clips; a game with a vault or a dive computes it from the pose instead.
                 bounds: { Volume(local: mesh.bounds, transform: self.figures[$0].transform)
                     .worldBounds.expanded(by: 0.5) }))
+        }
+
+        // The debris casts too — every piece in one instanced draw per cascade, through a batch that
+        // encodes itself.
+        if let instancedShadowPipeline, let box = meshes["box"], let copies = rubbleCopies, !rubble.isEmpty {
+            let uniforms = uniformBuffer.gpuAddress
+                + UInt64(uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot))
+            let batchList = rubble.batches
+            batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table in
+                table.setAddress(uniforms, index: ShadowMap.BufferIndex.uniforms)
+                for (bufferIndex, vertexBuffer) in box.mesh.vertexBuffers.enumerated() {
+                    table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
+                }
+                for batch in batchList {
+                    table.setAddress(copies.gpuAddress + UInt64(batch.byteOffset),
+                                     index: ShadowMap.BufferIndex.instances)
+                    for submesh in box.mesh.submeshes {
+                        encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
+                                                      indexCount: submesh.indexCount,
+                                                      indexType: submesh.indexType,
+                                                      indexBuffer: submesh.indexBuffer.buffer.gpuAddress
+                                                          + UInt64(submesh.indexBuffer.offset),
+                                                      indexBufferLength: submesh.indexBuffer.length,
+                                                      instanceCount: batch.count)
+                    }
+                }
+            })
         }
 
         shadowMap.encode(into: commandBuffer, frameSlot: frameSlot, batches: batches)
@@ -3439,11 +3482,10 @@ final class SampleGame: GameLoop {
     ///
     /// **Same fragment shader, same shadow map, same uniforms** — a skinned mesh differs from the
     /// rest of the scene in exactly two things: where its vertices are and what moved them there.
-    /// The debris: every piece in one draw per submesh. **Not in the shadow pass** — scenery this small
-    /// casts nothing an eye would miss, and a hundred shadow draws would cost more than the debris.
+    /// The debris: every piece in one draw per submesh, and one more per cascade for its shadows —
+    /// see `encodePrePasses`.
     private func encodeRubble(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
-        guard let instancedPipeline, let box = meshes["box"],
-              let copies = rubbleBuffer.write(rubble, frameSlot: frameSlot) else { return }
+        guard let instancedPipeline, let box = meshes["box"], let copies = rubbleCopies else { return }
         encoder.setRenderPipelineState(instancedPipeline)
         defer { encoder.setRenderPipelineState(pipeline) }
         argumentTable.setAddress(
