@@ -61,9 +61,9 @@ struct JointTransformTests {
 @MainActor
 struct JointTrackTests {
 
-    private let track = JointTrack(times: [0, 1, 2, 3],
-                                   values: [0, 10, 20, 30].flatMap { [Float($0), Float($0) + 100] },
-                                   jointCount: 2)
+    private let track = try! JointTrack(times: [0, 1, 2, 3],
+                                        values: [0, 10, 20, 30].flatMap { [Float($0), Float($0) + 100] },
+                                        jointCount: 2)
 
     @Test("A time between keys reports both and the fraction")
     func spanBetweenKeys() {
@@ -84,9 +84,9 @@ struct JointTrackTests {
     /// The binary search has to land on the right segment for every key, not just the ones a
     /// hand-written case happens to try.
     @Test("The search finds the right segment at any time in a long track")
-    func searchIsCorrectThroughout() {
+    func searchIsCorrectThroughout() throws {
         let times = (0..<500).map { Float($0) * 0.033 }
-        let long = JointTrack(times: times, values: times, jointCount: 1)
+        let long = try JointTrack(times: times, values: times, jointCount: 1)
         for step in 0..<2000 {
             let t = Float(step) * 0.008
             let span = long.span(at: t)
@@ -100,8 +100,8 @@ struct JointTrackTests {
     /// frame. The sample's own figure is written that way, so its three channels have entirely
     /// different key times; a track that assumed one shared timeline would be wrong on it.
     @Test("A single-key track samples to that key at any time")
-    func singleKeyTrackIsConstant() {
-        let constant = JointTrack(times: [0], values: [Float(7)], jointCount: 1)
+    func singleKeyTrackIsConstant() throws {
+        let constant = try JointTrack(times: [0], values: [Float(7)], jointCount: 1)
         for time in [Float(-10), 0, 0.5, 1000] {
             let span = constant.span(at: time)
             #expect(constant[span.lower, 0] == 7)
@@ -114,56 +114,88 @@ struct JointTrackTests {
         #expect(track[2, 0] == 20)
         #expect(track[2, 1] == 120)
     }
+
+    /// **Malformed data is refused where it is made**, not found as an index out of range in the
+    /// middle of posing a character on some later frame.
+    @Test("A track of the wrong shape is refused when it is made")
+    func malformedTracksAreRefused() {
+        #expect(throws: AnimationClipError.valueCountMismatch(keys: 2, joints: 2, values: 3)) {
+            try JointTrack(times: [0, 1], values: [Float(0), 1, 2], jointCount: 2)
+        }
+        #expect(throws: AnimationClipError.negativeJointCount(-1)) {
+            try JointTrack<Float>(times: [], values: [], jointCount: -1)
+        }
+        #expect(throws: AnimationClipError.timesOutOfOrder(key: 2)) {
+            try JointTrack(times: [0, 1, 0.5], values: [Float(0), 1, 2], jointCount: 1)
+        }
+        #expect(throws: AnimationClipError.nonFiniteTime(key: 1)) {
+            try JointTrack(times: [0, .nan], values: [Float(0), 1], jointCount: 1)
+        }
+        // Two keys at one time are a step, and are allowed.
+        #expect((try? JointTrack(times: [0, 1, 1], values: [Float(0), 1, 2], jointCount: 1)) != nil)
+    }
 }
 
 @MainActor
 struct AnimationClipTests {
 
     /// One joint, rotating a quarter turn about Z over two seconds and back.
-    static func swing(jointPaths: [String] = ["root"]) -> AnimationClip {
+    static func swing(jointPaths: [String] = ["root"]) throws -> AnimationClip {
         let count = jointPaths.count
         let quarter = simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1))
         let identity = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-        return AnimationClip(
+        return try AnimationClip(
             name: "swing",
             jointPaths: jointPaths,
-            translation: JointTrack(times: [], values: [], jointCount: count),
-            rotation: JointTrack(times: [0, 1, 2],
+            translation: .empty(jointCount: count),
+            rotation: try JointTrack(times: [0, 1, 2],
                                  values: Array(repeating: identity, count: count)
                                        + Array(repeating: quarter, count: count)
                                        + Array(repeating: identity, count: count),
                                  jointCount: count),
-            scale: JointTrack(times: [], values: [], jointCount: count))
+            scale: .empty(jointCount: count))
+    }
+
+    @Test("A clip whose channels are for a different number of joints is refused")
+    func mismatchedChannelsAreRefused() throws {
+        let twoJoints = try JointTrack(times: [0], values: [SIMD3<Float>.zero, .zero], jointCount: 2)
+        #expect(throws: AnimationClipError.trackJointCountMismatch(channel: "translation", track: 2, clip: 1)) {
+            try AnimationClip(name: "bad", jointPaths: ["root"], translation: twoJoints,
+                              rotation: .empty(jointCount: 1), scale: .empty(jointCount: 1))
+        }
+        // A channel with no keys is never sampled, so its joint count does not matter.
+        #expect((try? AnimationClip(name: "fine", jointPaths: ["root"], translation: .empty(jointCount: 0),
+                                    rotation: .empty(jointCount: 1), scale: .empty(jointCount: 7))) != nil)
     }
 
     @Test("Duration is the latest key any channel reaches")
-    func durationIsTheLatestKey() {
-        #expect(Self.swing().duration == 2)
+    func durationIsTheLatestKey() throws {
+        #expect(try Self.swing().duration == 2)
     }
 
     /// A clip with rotation keys and nothing else is what a rigger normally authors. If the missing
     /// channels zeroed instead of falling back, every joint would collapse onto its parent.
     @Test("Channels the clip does not carry fall back to rest")
-    func absentChannelsUseRest() {
+    func absentChannelsUseRest() throws {
         let rest = JointTransform(translation: SIMD3(0, 1.5, 0), scale: SIMD3(repeating: 2))
-        let sampled = Self.swing().sample(joint: 0, at: 0.5, rest: rest)
+        let sampled = try Self.swing().sample(joint: 0, at: 0.5, rest: rest)
         #expect(sampled.translation == rest.translation)
         #expect(sampled.scale == rest.scale)
         #expect(sampled.rotation.angle > 0.1, "the channel the clip does carry was ignored")
     }
 
     @Test("A looping clip wraps and a one-shot clamps")
-    func timeWrapsOrClamps() {
-        let clip = Self.swing()
-        #expect(abs(clip.time(2.5, looping: true) - 0.5) < 1e-5)
-        #expect(abs(clip.time(-0.5, looping: true) - 1.5) < 1e-5)
-        #expect(clip.time(2.5, looping: false) == 2)
-        #expect(clip.time(-0.5, looping: false) == 0)
+    func timeWrapsOrClamps() throws {
+        let clip = try Self.swing()
+        #expect(abs(clip.wrappedTime(2.5, looping: true) - 0.5) < 1e-5)
+        #expect(abs(clip.wrappedTime(-0.5, looping: true) - 1.5) < 1e-5)
+        #expect(clip.wrappedTime(2.5, looping: false) == 2)
+        #expect(clip.wrappedTime(-0.5, looping: false) == 0)
     }
 
     @Test("Sampling interpolates between keys")
-    func samplingInterpolates() {
-        let halfway = Self.swing().sample(joint: 0, at: 0.5, rest: .identity)
+    func samplingInterpolates() throws {
+        let halfway = try Self.swing().sample(joint: 0, at: 0.5, rest: .identity)
         #expect(abs(halfway.rotation.angle - .pi / 4) < 1e-4)
     }
 }
@@ -178,9 +210,9 @@ struct AnimationBindingTests {
             restTransforms: Array(repeating: matrix_identity_float4x4, count: 3),
             bindTransforms: Array(repeating: matrix_identity_float4x4, count: 3))
         // The clip lists the same joints in a different order and omits one.
-        let clip = AnimationClipTests.swing(jointPaths: ["root/spine", "root"])
+        let clip = try AnimationClipTests.swing(jointPaths: ["root/spine", "root"])
         let binding = AnimationBinding(clip: clip, skeleton: skeleton)
-        #expect(binding.clipJoint == [1, 0, nil])
+        #expect(binding.clipJointIndices == [1, 0, nil])
         #expect(binding.unboundJoints == ["root/leg"])
         #expect(!binding.isEmpty)
     }
@@ -192,7 +224,7 @@ struct AnimationBindingTests {
         let skeleton = try Skeleton(jointPaths: ["hips"],
                                     restTransforms: [matrix_identity_float4x4],
                                     bindTransforms: [matrix_identity_float4x4])
-        let binding = AnimationBinding(clip: AnimationClipTests.swing(), skeleton: skeleton)
+        let binding = AnimationBinding(clip: try AnimationClipTests.swing(), skeleton: skeleton)
         #expect(binding.isEmpty)
         #expect(binding.unboundJoints == ["hips"])
     }

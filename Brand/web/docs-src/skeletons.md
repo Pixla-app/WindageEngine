@@ -9,15 +9,15 @@ A skinned character is a mesh, the skeleton it was bound to, and clips that move
 | Type | What it is |
 | --- | --- |
 | `Skeleton` | Structure only: joint paths, derived parentage, the rest pose and the inverse bind matrices. Loaded once, shared by every character wearing the rig. |
-| `AnimationClip` | Keys for translation, rotation and scale, with the clip's own joint names. Each channel is a `JointTrack`. |
-| `AnimationBinding` | Which of a rig's joints each of a clip's joints drives, matched **by path, once**. |
+| `AnimationClip` | Keys for translation, rotation and scale, with the clip's own joint names. Each channel is a `JointTrack`. Both check their data when made, and throw an `AnimationClipError` for keys of the wrong shape. |
+| `AnimationBinding` | Which of a rig's joints each of a clip's joints drives, matched **by path, once**. A playhead makes it; `unboundJoints` and `isEmpty` are what you read. |
 | `AnimationPlayhead` | A clip, its binding to a rig, and the time. |
 | `SkeletonPose` | A rig with a pose on it, one per character, kept between frames. |
 | `Rig` | What `RigLoader` returns: a `skeleton`, its `clips` and a `nodeTransform`. |
 
 ## Loading a rig
 
-`RigLoader.load(named:withExtension:bundle:)` reads the skeleton and every clip from one file; `load(url:)` does the same from anywhere on disk. The extension defaults to `"usdc"`.
+`RigLoader.load(named:withExtension:bundle:)` reads the skeleton and every clip from one file; `load(url:)` does the same from anywhere on disk. The extension and the bundle are always named: `.main` is right for an app and wrong for a SwiftPM target, whose resources are in `.module`.
 
 A real character usually arrives as one file per clip, and each of those files carries a whole copy of the mesh and the skeleton. Take the rig from the base file and only the clips from the others:
 
@@ -28,15 +28,16 @@ let rig = try RigLoader.load(named: "figure", withExtension: "usda",
 }
 ```
 
-`load(url:clipURLs:reportingTo:)` does the same from disk. Both:
+`load(url:clipURLs:reportingTo:)` does the same from disk. The closure is handed a `RigLoader.Warning` — `.noAnimation`, `.clipDrivesNoJoints` or `.clipFileFailed` — each printing as a sentence. Both:
 
 - **Rename a file's only clip to the file's name**, so a game asks for `figure-wave`, not the exporter's name.
 - **Drop and report a clip that drives none of the rig's joints** — otherwise it looks exactly like a character standing still.
+- **Report a clip file that is missing or unreadable, and load the rest.** Only the base file failing throws.
 - **Ignore the clip files' skeletons.** Their rest pose is wherever the exporter left the rig; merged, every joint a clip does not animate stands wrong.
 
-`RigLoader.clips(named:withExtension:bundle:)` and `clips(url:)` read only animations; `Rig.adding(_:)` puts them on a rig. `rig.jointsNotDrivenBy(clip)` lists joints a clip ignores: empty is what you want.
+`RigLoader.clips(named:withExtension:bundle:)` and `clips(url:)` read only animations; `Rig.adding(_:)` puts them on a rig. `rig.joints(notDrivenBy: clip)` lists joints a clip ignores: empty is what you want.
 
-Loading throws a `RigLoaderError` — `.assetNotFound`, `.noSkeleton`, `.conflictingGeometryBindTransforms` — or a `SkeletonError` for a missing or out-of-order parent or a bind transform that cannot be inverted, rather than drawing a limb in the wrong place.
+Loading throws a `RigLoaderError` — `.assetNotFound` (by name or by URL), `.noSkeleton`, `.conflictingGeometryBindTransforms`, `.malformedClip` — or a `SkeletonError` for a missing or out-of-order parent or a bind transform that cannot be inverted, rather than drawing a limb in the wrong place.
 
 ## Posing a character
 
@@ -65,9 +66,9 @@ figures[index].pose.set(to: figures[index].idle,
                         weight: figures[index].waveWeight)
 ```
 
-`weight` is how much of the second clip, 0 to 1. **Each clip is sampled at its own time.** Ease the weight rather than switching it. Posing allocates nothing.
+`weight` is how much of the second clip, 0 to 1. **Each clip is sampled at its own time.** Ease the weight rather than switching it. Posing allocates nothing. A playhead must be made with the pose's skeleton, or one with the same joints in the same order; one made for another rig stops with a message naming the clip, rather than posing garbage.
 
-For anything that is not a clip — a head turn, a solver — use `set(localTransforms:)` with `JointTransform`s, which keep rotation as a quaternion because a matrix cannot be blended.
+For anything that is not a clip — a head turn, a solver — use `set(to:)` with an array of `JointTransform`s, one per joint, which keep rotation as a quaternion because a matrix cannot be blended.
 
 ## What a pose gives you
 

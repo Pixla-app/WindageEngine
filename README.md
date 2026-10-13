@@ -1050,7 +1050,7 @@ form, and using it makes the curve the same at any step size.
 
 ### An ambience volume (0.11.2)
 
-`AudioEngine.ambienceVolume` scales the loops and nothing else — the output of their own spatialiser,
+`AudioEngine.loopVolume` scales the loops and nothing else — the output of their own spatialiser,
 which every loop and no one-shot passes through — and `PlayerSettings.ambienceVolume` is the player's
 dial for it, under the master volume. **A player who finds a fire too loud should not lose their own
 footsteps turning it down**, which one volume made them do.
@@ -1664,7 +1664,7 @@ on-screen hint is now built from the bindings, so it cannot advertise a key that
 
 ### Tolerant, field by field
 
-`SaveStore` returns nothing for a file it cannot decode, which for progress is the right failure and
+A file `SaveStore` cannot decode leaves a game starting fresh, which for progress is the right failure and
 for settings is a terrible one: **nothing means every setting reset**, so a player loses eight rebound
 keys because a later build added a ninth. Both types decode field by field — a missing field takes its
 default, an unknown one is ignored, a key name this build does not recognise costs only that one
@@ -2461,7 +2461,7 @@ cut out of it.
 
 ### Adding more of what a level already has (0.9.2)
 
-`Level.kinds` is one of each kind of thing in a level — two placements are the same kind when all but
+`LevelEditor.kinds()` is one of each kind of thing in a level — two placements are the same kind when all but
 *where* they are matches: mesh, scale, anchor, tags, lamp, surface. `LevelEditor.add(_:at:)` drops
 another of a kind at a point on the ground, bringing everything but the place: a brazier arrives lit,
 solid and made of metal, where `add(mesh:at:)` — which knows a name and nothing else — would bring a

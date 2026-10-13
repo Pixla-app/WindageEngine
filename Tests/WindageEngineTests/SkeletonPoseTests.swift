@@ -52,7 +52,7 @@ struct SkeletonPoseTests {
         var pose = SkeletonPose(skeleton: skeleton)
         var locals = pose.localTransforms
         locals[1].rotation = simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1))
-        pose.set(localTransforms: locals)
+        pose.set(to: locals)
 
         let skinned = skin(SIMD3(5, 2, 0), pose, [(1, 1)])
         #expect(simd_distance(skinned, SIMD3(4, 1, 0)) < 1e-4)
@@ -69,7 +69,7 @@ struct SkeletonPoseTests {
         var pose = SkeletonPose(skeleton: skeleton)
         var locals = pose.localTransforms
         locals[0].rotation = simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1))
-        pose.set(localTransforms: locals)
+        pose.set(to: locals)
 
         // The child was one metre up; a quarter turn about Z puts it one metre along -X.
         #expect(simd_distance(pose.modelTransform(ofJoint: 1).columns.3, SIMD4(-1, 0, 0, 1)) < 1e-4)
@@ -82,7 +82,7 @@ struct SkeletonPoseTests {
         var pose = SkeletonPose(skeleton: skeleton)
         var locals = pose.localTransforms
         locals[1].rotation = simd_quatf(angle: .pi / 2, axis: SIMD3(0, 0, 1))
-        pose.set(localTransforms: locals)
+        pose.set(to: locals)
 
         let tip = SIMD3<Float>(5, 2, 0)
         let held = skin(tip, pose, [(0, 1)])              // root did not move
@@ -95,7 +95,7 @@ struct SkeletonPoseTests {
     func clipPosesTheRig() throws {
         let skeleton = try SkeletonTests.offsetRig()
         var pose = SkeletonPose(skeleton: skeleton)
-        let clip = AnimationClipTests.swing(jointPaths: ["root/mid"])
+        let clip = try AnimationClipTests.swing(jointPaths: ["root/mid"])
         var playhead = AnimationPlayhead(clip: clip, skeleton: skeleton)
         playhead.advance(by: 1)                            // the quarter-turn key
         pose.set(to: playhead)
@@ -109,7 +109,7 @@ struct SkeletonPoseTests {
     func crossFadeIsBetween() throws {
         let skeleton = try SkeletonTests.offsetRig()
         var pose = SkeletonPose(skeleton: skeleton)
-        let clip = AnimationClipTests.swing(jointPaths: ["root/mid"])
+        let clip = try AnimationClipTests.swing(jointPaths: ["root/mid"])
 
         var still = AnimationPlayhead(clip: clip, skeleton: skeleton)      // t = 0, no rotation
         var swung = AnimationPlayhead(clip: clip, skeleton: skeleton)
@@ -128,7 +128,7 @@ struct SkeletonPoseTests {
     @Test("A one-shot finishes and a loop does not")
     func playheadReportsFinishing() throws {
         let skeleton = try SkeletonTests.offsetRig()
-        let clip = AnimationClipTests.swing()
+        let clip = try AnimationClipTests.swing()
         var once = AnimationPlayhead(clip: clip, skeleton: skeleton, looping: false)
         var forever = AnimationPlayhead(clip: clip, skeleton: skeleton, looping: true)
         once.advance(by: 5)
@@ -138,4 +138,45 @@ struct SkeletonPoseTests {
         #expect(!forever.isFinished)
         #expect(abs(forever.sampleTime - 1) < 1e-5)
     }
+}
+
+/// **A playhead made for another rig stops at once, saying so.** It used to read its joint mapping
+/// past the end on whatever frame first posed with it.
+///
+/// Built inline: an exit test's body runs in a child process, off the main actor the test helpers
+/// are on.
+@Test func aPlayheadForAnotherRigIsRefused() async {
+    await #expect(processExitsWith: .failure) {
+        let rig = try Skeleton(jointPaths: ["root", "root/mid"],
+                               restTransforms: [matrix_identity_float4x4, matrix_identity_float4x4],
+                               bindTransforms: [matrix_identity_float4x4, matrix_identity_float4x4])
+        let other = try Skeleton(jointPaths: ["hips"], restTransforms: [matrix_identity_float4x4],
+                                 bindTransforms: [matrix_identity_float4x4])
+        let clip = try AnimationClip(name: "still", jointPaths: ["hips"], translation: .empty(jointCount: 1),
+                                     rotation: .empty(jointCount: 1), scale: .empty(jointCount: 1))
+        var pose = SkeletonPose(skeleton: rig)
+        pose.set(to: AnimationPlayhead(clip: clip, skeleton: other))
+    }
+    await #expect(processExitsWith: .failure) {
+        let rig = try Skeleton(jointPaths: ["root", "root/mid"],
+                               restTransforms: [matrix_identity_float4x4, matrix_identity_float4x4],
+                               bindTransforms: [matrix_identity_float4x4, matrix_identity_float4x4])
+        let other = try Skeleton(jointPaths: ["hips"], restTransforms: [matrix_identity_float4x4],
+                                 bindTransforms: [matrix_identity_float4x4])
+        let clip = try AnimationClip(name: "still", jointPaths: ["root"], translation: .empty(jointCount: 1),
+                                     rotation: .empty(jointCount: 1), scale: .empty(jointCount: 1))
+        var pose = SkeletonPose(skeleton: rig)
+        pose.set(to: AnimationPlayhead(clip: clip, skeleton: rig),
+                 blendedWith: AnimationPlayhead(clip: clip, skeleton: other), weight: 0.5)
+    }
+}
+
+/// The check is on the joints, not the instance: a skeleton loaded twice poses the same.
+@MainActor
+@Test func aPlayheadForAnIdenticalRigPoses() throws {
+    let skeleton = try SkeletonTests.offsetRig()
+    let twin = try SkeletonTests.offsetRig()
+    var pose = SkeletonPose(skeleton: skeleton)
+    pose.set(to: AnimationPlayhead(clip: try AnimationClipTests.swing(jointPaths: ["root/mid"]), skeleton: twin))
+    #expect(pose.jointCount == 2)
 }

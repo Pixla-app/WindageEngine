@@ -25,7 +25,46 @@ import simd
 /// the parts nobody can design correctly before a second game has pushed on them — the same rule the
 /// rest of this engine is built under. What is here is the smallest set that makes a level file
 /// editable by pointing at it rather than by typing coordinates.
-public nonisolated struct LevelEditor {
+public nonisolated struct LevelEditor: Sendable {
+
+    /// The steps one press of a key makes, and how much an editor remembers — **a tool's choices, set
+    /// when the editor is made**, with defaults that suit a level measured in meters.
+    public struct Configuration: Equatable, Sendable {
+        /// How far one nudge moves something, in meters. A duplicate lands two nudges away on x and z.
+        public var nudge: Float
+        /// How far one turn rotates something, in radians. 15° by default, so twenty-four of them is a
+        /// full circle and a right angle is reachable exactly.
+        public var turn: Float
+        /// How far one press raises or lowers a lamp, in meters.
+        public var lampRaise: Float
+        /// How much one press brightens a lamp. **A third of a stop** by default — 2^⅓, three presses to
+        /// double — because brightness is judged in ratios, like exposure: a fixed step of +5 is a leap
+        /// on a candle and nothing on a floodlight.
+        public var lampBrighten: Float
+        /// The brightest and dimmest a lamp can be set, as radiant intensity. **Not down to zero**, for
+        /// the reason ``LevelEditor/scale(by:)`` is not: a lamp dimmed to nothing is still there, casting
+        /// nothing, with no way to see it to fix it.
+        public var lampIntensityRange: ClosedRange<Float>
+        /// How many steps back the editor remembers. Deep enough to undo a bad idea, shallow enough
+        /// that a level of a few thousand placements does not sit in memory a hundred times over.
+        public var undoDepth: Int
+
+        public init(nudge: Float = 0.5,
+                    turn: Float = .pi / 12,
+                    lampRaise: Float = 0.1,
+                    lampBrighten: Float = pow(2, 1.0 / 3),
+                    lampIntensityRange: ClosedRange<Float> = 0.5...5000,
+                    undoDepth: Int = 64) {
+            self.nudge = nudge
+            self.turn = turn
+            self.lampRaise = lampRaise
+            self.lampBrighten = lampBrighten
+            self.lampIntensityRange = lampIntensityRange
+            self.undoDepth = max(1, undoDepth)
+        }
+    }
+
+    public let configuration: Configuration
 
     /// The level being edited.
     public private(set) var level: Level
@@ -35,26 +74,23 @@ public nonisolated struct LevelEditor {
 
     /// Whether there are changes not yet written to disk.
     ///
-    /// **Tracked rather than inferred by comparing to the file.** A comparison says "different",
-    /// which is also true after an undo back to the original — and an editor that claims unsaved
-    /// changes when there are none trains people to ignore it.
-    public private(set) var isDirty = false
+    /// **Tracked by which state is current, not by comparing levels.** Every edit makes a new state;
+    /// undo and redo step between them; saving remembers the current one. So an undo back to what was
+    /// saved is clean again, a redo away from it is dirty, and nothing compares two levels to find out —
+    /// an editor that claims unsaved changes when there are none trains people to ignore it.
+    public var isDirty: Bool { state != savedState }
 
-    /// How far one nudge moves something, in meters.
-    public static let nudge: Float = 0.5
-    /// How far one turn rotates something, in radians. 15°, so twenty-four of them is a full circle
-    /// and a right angle is reachable exactly.
-    public static let turn: Float = .pi / 12
+    /// Which state the level is in: a number per edit, never reused.
+    private var state = 0
+    private var savedState = 0
+    private var nextState = 1
 
-    private var undoStack: [Level] = []
-    private var redoStack: [Level] = []
+    private var undoStack: [(level: Level, state: Int)] = []
+    private var redoStack: [(level: Level, state: Int)] = []
 
-    /// How many steps back an editor remembers. Deep enough to undo a bad idea, shallow enough that
-    /// a level of a few thousand placements does not sit in memory a hundred times over.
-    public static let undoDepth = 64
-
-    public init(level: Level) {
+    public init(level: Level, configuration: Configuration = Configuration()) {
         self.level = level
+        self.configuration = configuration
     }
 
     // MARK: - Selection
@@ -96,7 +132,7 @@ public nonisolated struct LevelEditor {
         guard let index = selection, level.placements.indices.contains(index) else { return }
         record()
         var copy = level.placements[index]
-        copy.position += SIMD3(LevelEditor.nudge * 2, 0, LevelEditor.nudge * 2)
+        copy.position += SIMD3(configuration.nudge * 2, 0, configuration.nudge * 2)
         level.placements.insert(copy, at: index + 1)
         selection = index + 1
     }
@@ -119,7 +155,38 @@ public nonisolated struct LevelEditor {
         selection = level.placements.count - 1
     }
 
-    /// Add another of a kind of thing — one of ``Level/kinds`` — at a point on the ground, and select it.
+    /// One of each kind of thing in the level being edited, in the order each first appears — **a
+    /// level's own vocabulary**, for an editor to add more of.
+    ///
+    /// Two placements are the same kind when everything but *where* they are matches: mesh, scale,
+    /// anchor, tags, lamp and surface. A brazier with its lamp and a bare one are two kinds; two crates
+    /// at different spots are one. **The height is kept from the first of each kind**, because `y` is
+    /// part of what a placement is under an anchor — a tread sunk to its step — while `x`, `z` and the
+    /// yaw are only where it happened to be put, and come back zeroed.
+    ///
+    /// > **Not prefabs.** A prefab is a thing authored once and instanced; this is a question asked of
+    /// > a level that already exists — what is in it — and it needs no format of its own.
+    ///
+    /// **A method, and the editor's**: it compares every placement with every kind found so far, which
+    /// is fine for a palette built when a level opens and not something to read per frame.
+    public func kinds() -> [Level.Placement] {
+        var found: [Level.Placement] = []
+        for placement in level.placements {
+            var kind = placement
+            kind.position.x = 0
+            kind.position.z = 0
+            kind.yaw = 0
+            let isNew = !found.contains { other in
+                var y = other
+                y.position.y = kind.position.y
+                return y == kind
+            }
+            if isNew { found.append(kind) }
+        }
+        return found
+    }
+
+    /// Add another of a kind of thing — one of ``kinds()`` — at a point on the ground, and select it.
     ///
     /// **Everything but the place comes with it**: its height under its anchor, scale, tags, surface
     /// and lamp. That is the difference from ``add(mesh:at:tags:light:)``, which knows only a mesh — a
@@ -141,20 +208,8 @@ public nonisolated struct LevelEditor {
     // two things a person adjusts by eye: how high it hangs and how bright it is.
     //
     // **An operation that changes nothing records nothing.** Brightening a placement with no lamp
-    // is a no-op, not an undo step and an unsaved change.
-
-    /// How far one press raises or lowers a lamp, in meters.
-    public static let lampRaise: Float = 0.1
-
-    /// How much one press brightens a lamp. **A third of a stop** — 2^⅓, three presses to double —
-    /// because brightness is judged in ratios, like exposure: a fixed step of +5 is a leap on a candle
-    /// and nothing on a floodlight.
-    public static let lampBrighten: Float = pow(2, 1.0 / 3)
-
-    /// The brightest and dimmest a lamp can be set, as radiant intensity. **Not zero**, for the reason
-    /// ``scale(by:)`` is not: a lamp dimmed to nothing is still there, casting nothing, with no way to
-    /// see it to fix it.
-    public static let lampIntensityRange: ClosedRange<Float> = 0.5...5000
+    // is a no-op, not an undo step and an unsaved change. The steps a key makes are in
+    // ``configuration``.
 
     /// Give the selection a lamp, replace the one it has, or take it away with `nil`.
     ///
@@ -168,18 +223,19 @@ public nonisolated struct LevelEditor {
     /// world**. The lamp's offset scales with its placement, so on a placement at twice the size the
     /// offset moves half as far; a key that moved it by different amounts on different things would
     /// be a key nobody could judge.
-    public mutating func raiseLight(by metres: Float) {
-        guard let selected, selected.light != nil, metres != 0 else { return }
-        edit { $0.light!.position.y += metres / max($0.scale, 1e-3) }
+    public mutating func raiseLight(by distance: Float) {
+        guard let selected, selected.light != nil, distance != 0 else { return }
+        edit { $0.light!.position.y += distance / max($0.scale, 1e-3) }
     }
 
-    /// Brighten the selection's lamp by a factor — below 1 dims it — within ``lampIntensityRange``.
+    /// Brighten the selection's lamp by a factor — below 1 dims it — within
+    /// ``Configuration/lampIntensityRange``.
     /// The color keeps its hue: every channel scales together.
     public mutating func brightenLight(by factor: Float) {
         guard let light = selected?.light, factor > 0, factor != 1 else { return }
         let intensity = max(light.color.max(), 1e-6)
-        let wanted = min(max(intensity * factor, LevelEditor.lampIntensityRange.lowerBound),
-                         LevelEditor.lampIntensityRange.upperBound)
+        let range = configuration.lampIntensityRange
+        let wanted = min(max(intensity * factor, range.lowerBound), range.upperBound)
         guard wanted != intensity else { return }
         edit { $0.light!.color *= wanted / intensity }
     }
@@ -192,11 +248,13 @@ public nonisolated struct LevelEditor {
 
     // MARK: - Undo
 
+    /// Called before every change: keeps the level as it was, and moves to a new state.
     private mutating func record() {
-        undoStack.append(level)
-        if undoStack.count > LevelEditor.undoDepth { undoStack.removeFirst() }
+        undoStack.append((level, state))
+        if undoStack.count > configuration.undoDepth { undoStack.removeFirst() }
         redoStack.removeAll()
-        isDirty = true
+        state = nextState
+        nextState += 1
     }
 
     public var canUndo: Bool { !undoStack.isEmpty }
@@ -204,18 +262,16 @@ public nonisolated struct LevelEditor {
 
     public mutating func undo() {
         guard let previous = undoStack.popLast() else { return }
-        redoStack.append(level)
-        level = previous
+        redoStack.append((level, state))
+        (level, state) = previous
         clampSelection()
-        isDirty = true
     }
 
     public mutating func redo() {
         guard let next = redoStack.popLast() else { return }
-        undoStack.append(level)
-        level = next
+        undoStack.append((level, state))
+        (level, state) = next
         clampSelection()
-        isDirty = true
     }
 
     private mutating func clampSelection() {
@@ -227,8 +283,11 @@ public nonisolated struct LevelEditor {
     // MARK: - Saving
 
     /// Write the level out and clear the dirty flag.
+    ///
+    /// **Atomic, like ``SaveStore``**: written beside the file and renamed over it, so a crash mid-save
+    /// leaves the old level rather than half of the new one.
     public mutating func save(to url: URL) throws {
-        try level.encoded().write(to: url)
-        isDirty = false
+        try level.encoded().write(to: url, options: .atomic)
+        savedState = state
     }
 }

@@ -121,7 +121,13 @@ public nonisolated struct SampleRun {
         self.objectives = objectives
         self.collected = Array(repeating: false, count: objectives.count)
         self.store = store
-        self.progress = store.load() ?? Progress()
+        // A save that will not read must not stop the game: say so, and start fresh.
+        do {
+            self.progress = try store.load() ?? Progress()
+        } catch {
+            print("WindageSample: progress could not be read, starting fresh — \(error)")
+            self.progress = Progress()
+        }
     }
 
     /// What happened in a step that something outside might want to react to.

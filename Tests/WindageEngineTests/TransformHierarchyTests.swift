@@ -98,21 +98,21 @@ struct TransformHierarchyTests {
 
     @Test("a parent resolved after its child is refused")
     func parentAfterChildIsRefused() {
-        #expect(throws: TransformHierarchy.Fault.self) {
+        #expect(throws: TransformHierarchyError.self) {
             _ = try TransformHierarchy(attachments: [.node(1), .world])
         }
     }
 
     @Test("a node attached to itself is refused")
     func selfParentIsRefused() {
-        #expect(throws: TransformHierarchy.Fault.self) {
+        #expect(throws: TransformHierarchyError.self) {
             _ = try TransformHierarchy(attachments: [.world, .node(1)])
         }
     }
 
     @Test("a parent that is not in the hierarchy is refused")
     func unknownParentIsRefused() {
-        #expect(throws: TransformHierarchy.Fault.self) {
+        #expect(throws: TransformHierarchyError.self) {
             _ = try TransformHierarchy(attachments: [.world, .node(7)])
         }
     }
@@ -120,7 +120,7 @@ struct TransformHierarchyTests {
     /// The one that would otherwise be a silent identity at sixty hertz.
     @Test("an external index past what was declared is refused")
     func unknownExternalIsRefused() {
-        #expect(throws: TransformHierarchy.Fault.self) {
+        #expect(throws: TransformHierarchyError.self) {
             _ = try TransformHierarchy(attachments: [.external(2)], externalCount: 2)
         }
         #expect(throws: Never.self) {
@@ -130,13 +130,29 @@ struct TransformHierarchyTests {
 
     @Test("a transform for every node, or none at all")
     func countsMustMatch() {
-        #expect(throws: TransformHierarchy.Fault.self) {
+        #expect(throws: TransformHierarchyError.self) {
             _ = try TransformHierarchy(attachments: [.world, .world],
                                        localTransforms: [matrix_identity_float4x4])
         }
         #expect(throws: Never.self) {
             _ = try TransformHierarchy(attachments: [.world, .world])
         }
+    }
+
+    /// **The MUST this replaced:** `localTransforms` was a settable array, so one short was accepted
+    /// and read past its end by the next refresh.
+    @Test("local transforms are replaced whole only at the right count, and one at a time by index")
+    func localTransformsAreChecked() throws {
+        var hierarchy = try TransformHierarchy(attachments: [.world, .node(0)])
+        #expect(throws: TransformHierarchyError.countMismatch(attachments: 2, transforms: 1)) {
+            try hierarchy.setLocalTransforms([translation(1, 0, 0)])
+        }
+        #expect(hierarchy.localTransforms == [matrix_identity_float4x4, matrix_identity_float4x4],
+                "a refused replacement changed nothing")
+        try hierarchy.setLocalTransforms([translation(1, 0, 0), translation(0, 2, 0)])
+        hierarchy.setLocalTransform(translation(0, 3, 0), ofNode: 1)
+        hierarchy.refresh()
+        #expect(position(hierarchy.worldTransform(of: 1)) == SIMD3(1, 3, 0))
     }
 
     // MARK: - Scale, which is the trap
@@ -184,5 +200,12 @@ struct TransformHierarchyTests {
         let rigid = flat.withoutScale
         #expect(rigid.columns.1 == SIMD4<Float>(0, 0, 0, 0))
         #expect(!rigid.columns.0.x.isNaN)
+    }
+}
+
+@Test func aLocalTransformForANodeThatIsNotThereIsRefused() async {
+    await #expect(processExitsWith: .failure) {
+        var hierarchy = try TransformHierarchy(attachments: [.world])
+        hierarchy.setLocalTransform(matrix_identity_float4x4, ofNode: 1)
     }
 }

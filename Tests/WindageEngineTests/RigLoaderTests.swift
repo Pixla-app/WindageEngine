@@ -146,7 +146,7 @@ struct RigLoaderTests {
         // A file with one clip has it renamed to the file's own name — an exporter's internal name
         // for an animation is not something a game wants to ask for.
         #expect(rig.clip(named: "offset-rig-walk") != nil)
-        #expect(rig.jointsNotDrivenBy(try #require(rig.clip(named: "offset-rig-walk"))).isEmpty)
+        #expect(rig.joints(notDrivenBy: try #require(rig.clip(named: "offset-rig-walk"))).isEmpty)
     }
 
     /// **The trap this fixture exists for.** The walk file's copy of the skeleton has the child joint
@@ -187,13 +187,13 @@ struct RigLoaderTests {
     /// character loading.
     @Test("A missing clip file is reported rather than fatal")
     func missingClipFileIsReported() throws {
-        var reports: [String] = []
+        var reports: [RigLoader.Warning] = []
         let rig = try RigLoader.load(named: "offset-rig", withExtension: "usda",
                                      clipFiles: ["no-such-clip"], bundle: .module) {
             reports.append($0)
         }
         #expect(rig.clips.count == 1, "the base file's own clip should still be there")
-        #expect(reports.count == 1)
+        #expect(reports == [.clipFileFailed(file: "no-such-clip", error: .assetNotFound("no-such-clip.usda"))])
     }
 
     /// **An engine that can only load from its own bundle cannot load anything a person chose** — a
@@ -216,23 +216,33 @@ struct RigLoaderTests {
         #expect(rig.clip(named: "offset-rig-walk") != nil)
     }
 
-    /// `MDLAsset(url:)` logs and hands back an empty asset rather than throwing, so an unreadable
-    /// clip file is one that contributed nothing — worth saying out loud, since silence here is a
-    /// character that simply never plays that move.
-    @Test("An unreadable clip URL is reported, not fatal")
+    /// `MDLAsset(url:)` logs and hands back an empty asset rather than throwing, so a missing clip
+    /// file would be one that contributed nothing — said as missing, **the same as the bundle form
+    /// says it**, since silence here is a character that simply never plays that move.
+    @Test("A missing clip URL is reported as missing, not fatal")
     func unreadableClipURLIsReported() throws {
         let base = try #require(Bundle.module.url(forResource: "offset-rig", withExtension: "usda"))
         let missing = base.deletingLastPathComponent().appendingPathComponent("not-here.usdc")
-        var reports: [String] = []
+        var reports: [RigLoader.Warning] = []
         let rig = try RigLoader.load(url: base, clipURLs: [missing]) { reports.append($0) }
         #expect(rig.clips.count == 1)
-        #expect(reports.count == 1)
+        #expect(reports == [.clipFileFailed(file: "not-here", error: .assetNotFound(missing.path))])
     }
 
     @Test("A missing file is named in the error")
     func missingFileThrows() {
-        #expect(throws: RigLoaderError.self) {
+        #expect(throws: RigLoaderError.assetNotFound("no-such-rig.usda")) {
             try RigLoader.load(named: "no-such-rig", withExtension: "usda", bundle: .module)
         }
+    }
+
+    /// It used to come back as "no skeleton", which sends someone looking inside a file that is not
+    /// there.
+    @Test("A missing file by URL is missing, not a file with no skeleton")
+    func missingURLThrowsNotFound() throws {
+        let base = try #require(Bundle.module.url(forResource: "offset-rig", withExtension: "usda"))
+        let missing = base.deletingLastPathComponent().appendingPathComponent("not-here.usdc")
+        #expect(throws: RigLoaderError.assetNotFound(missing.path)) { try RigLoader.load(url: missing) }
+        #expect(throws: RigLoaderError.assetNotFound(missing.path)) { try RigLoader.clips(url: missing) }
     }
 }

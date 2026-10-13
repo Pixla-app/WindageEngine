@@ -23,6 +23,13 @@ Coldkeel's own code, unchanged. The camera's speeds and sensitivities are per ca
 limits however they are set, and the character controller's world is one list of solids. The sample's walks
 and frames are unchanged.
 
+**API audit, world, animation, audio and saving.** Malformed data is refused where it is made: a clip whose
+keys are the wrong shape, a playhead posed onto a rig it was not made for, a hierarchy given the wrong number
+of transforms. Loaders, the level and the audio engine throw errors that say what failed instead of
+printing and returning nil; the audio engine's distance curves are a game's to set, with today's as the
+defaults; a delayed sound waits on the audio clock. Level files read and write exactly as before. The
+sample's walks and frames are unchanged.
+
 ### Changed — breaking
 
 - **The maths have Swift names.** `matrix4x4_translation(x, y, z)` → `simd_float4x4(translation: SIMD3(x, y, z))`;
@@ -117,6 +124,50 @@ and frames are unchanged.
   sprint latch: the sample has no aiming.
 - **`PlayerSettings.headBob` is `headBobAmount`** — `CharacterController.headBob` is the bob itself, this is how
   much of it to show. Still stored under `headBob`, so a settings file keeps it.
+- **`TransformHierarchy.localTransforms` is read-only.** Set one with `setLocalTransform(_:ofNode:)` or all
+  with `setLocalTransforms(_:)`, which throws for the wrong count. **`TransformHierarchy.Fault` is the top-level
+  `TransformHierarchyError`**, the engine's one convention for errors.
+- **`JointTrack` and `AnimationClip` initializers throw `AnimationClipError`** for values that are not one per
+  joint per key, a negative joint count, key times that are not finite or go backwards, and a channel for a
+  different number of joints than the clip names. `JointTrack.empty(jointCount:)` makes a channel with no keys.
+- **`AnimationClip.time(_:looping:)` is `wrappedTime(_:looping:)`.**
+- **`AnimationBinding`'s initializer and its `clipJoint` mapping are internal**; a playhead makes the binding,
+  and `unboundJoints` and `isEmpty` are what a game reads.
+- **`SkeletonPose.set(localTransforms:)` is `set(to:)`**, beside the two clip forms; **`refresh()` is internal**,
+  since every `set` already ends with it.
+- **`RigLoader`:** `bundle` and the extension have no defaults; `Rig.jointsNotDrivenBy(_:)` is
+  `joints(notDrivenBy:)`; the clip-file loads report a `RigLoader.Warning` (`.noAnimation`, `.clipDrivesNoJoints`,
+  `.clipFileFailed`) to a non-escaping closure instead of a string; `clips(url:)` throws; `rig(from:named:)` and
+  the initializers from `MDLSkeleton` and `MDLPackedJointAnimation` are internal — Model I/O's types are out of
+  the public API.
+- **`Level.LoadError` is the top-level `LevelError`**, with `.unreadable` and `.malformed` beside `.notFound` and
+  `.unsupportedVersion`, so a decode failure no longer escapes as a `DecodingError`.
+  `Level.load(named:extension:bundle:)` is `load(named:withExtension:bundle:)`.
+- **`Level` and `Level.Placement` have one initializer each**, every field defaulted: `groundSurface:` and
+  `surface:` join the first, and `Placement` takes `sound:`.
+- **`Level.formatVersion` is read-only**: set by hand it could write a file the same build refuses.
+- **`Level.Ground(heightAt:footprintCorners:)` is `Ground(height:footprintCorners:)`**, asked with
+  `height(atX:z:)` and `footprintCorners(of:)`.
+- **`Level.carriedLights(on:)` and `carriedSounds(on:)` return `CarriedLightInWorld` and `CarriedSoundInWorld`**
+  instead of tuples. The field names are the same.
+- **`Level.kinds` is `LevelEditor.kinds()`** — editor policy, and quadratic, so a method.
+- **`LevelEditor`'s key steps are a `LevelEditor.Configuration`** set at init — `nudge`, `turn`, `lampRaise`,
+  `lampBrighten`, `lampIntensityRange`, `undoDepth`, each defaulting to its old value — instead of statics.
+  `raiseLight(by metres:)` is `raiseLight(by distance:)`.
+- **`Volume.local` is `localBounds`**, and its initializer `Volume(localBounds:transform:)`.
+- **`AudioEngine`'s initializers throw `AudioEngineError`** instead of returning nil, and **`load` throws**
+  instead of returning `false` and printing. **`AudioEngine.voiceCount` and `loopReferenceDistance` are an
+  `AudioEngine.Configuration`** (`voiceCount`, `oneShotFalloff`, `loopFalloff`) passed at init; the defaults
+  are exactly the old values, so nothing sounds different.
+- **`AudioEngine.ambienceVolume` is `loopVolume`**, named for what it scales. `PlayerSettings.ambienceVolume`,
+  the player's setting, keeps its name.
+- **`AudioEngine.renderOffline(seconds:)` takes a `Float`**, the engine's type for a span of time, like `delay`.
+- **`AudioEngine.startLoop` is no longer `@discardableResult`**: a loop nobody holds cannot be stopped.
+- **`SaveStore.load()` throws** for a file that is there and will not read or decode, and still returns `nil`
+  for no file; **`clear()` throws** when a file that is there cannot be removed. `(try? store.load()) ??
+  fallback` keeps the old behavior. **`SaveStore.url` creates nothing**; `save` makes the folder.
+- **`SkeletonError`, `RigLoaderError` and the new errors are `nonisolated` and `Equatable`**, like the code that
+  throws them.
 
 ### Added
 
@@ -137,6 +188,9 @@ and frames are unchanged.
 - `CharacterController.teleport(to:)` — a respawn that keeps the tuning, where a new controller silently
   reset it.
 - `Camera` is `Equatable`. `KeyCode.forwardDelete`.
+- `AudioEngine.pause()` and `resume()`; `stop()` is documented as final.
+- `LevelEditor.Configuration`, `LevelEditor.kinds()`, `RigLoader.Warning`, `JointTrack.empty(jointCount:)`.
+- `LevelEditor` is `Sendable`; `Volume` is `Sendable` and `Equatable`.
 
 ### Fixed
 
@@ -151,6 +205,18 @@ and frames are unchanged.
   only in `init`, `look` and `turn`. A game nudging the view for recoil could leave a pitch past 89°.
 - **`StickResponse.shaped` gives a finite answer for any dead zone and exponent**, and `InputState`'s dead zones
   are held to `PlayerSettings.deadzoneRange`: a negative dead zone divided a resting stick's zero by zero.
+- **`SkeletonPose.set(to:)` and the cross-fade check the playhead was made for this skeleton** — or one with
+  the same joints in the same order — and stop with a message naming the clip, instead of reading the mapping
+  past its end on a later frame.
+- **`AudioEngine.play(_:at:volume:delay:)` waits on the audio clock**, not a main-queue timer: it holds while the
+  engine is paused, is exact in an offline render, and `stop()` cancels a sound still waiting.
+- **`AudioEngine.load(_:samples:sampleRate:)` refuses an empty array**, which trapped on a nil base address.
+- **`LevelEditor.isDirty` is clean again after an undo back to what was saved**, and dirty after a redo away
+  from it. **`LevelEditor.save(to:)` is atomic.**
+- **`RigLoader.load(url:)` and `clips(url:)` report a missing file as `assetNotFound`**, not as a file with no
+  skeleton or no clips; the URL and bundle clip-file loads report the same things the same way.
+- **`Level.decode(from:)` reads the version first**, so a newer file that would not decode as this format is
+  `.unsupportedVersion` rather than malformed.
 
 ### Removed
 

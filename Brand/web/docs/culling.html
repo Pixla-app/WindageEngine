@@ -59,11 +59,11 @@
 <ul><li>It is the standard conservative box test. For each plane it takes the box corner furthest along the plane's normal and rejects only if even that corner is outside.</li><li>A box straddling a plane is kept, even when most of it is outside. That costs a draw, never a missing object.</li></ul>
 <h2 id="boundingbox-in-world-space">BoundingBox, in world space</h2>
 <p><code>mayIntersect</code> takes a <code>BoundingBox</code> in <strong>world</strong> space. A <code>LoadedMesh</code>'s <code>bounds</code> are in the mesh's own space, so transform them first. <code>BoundingBox.transformed(by:)</code> re-derives the box from all eight corners, which stays correct under rotation. A <code>Volume</code> does this for you:</p>
-<pre class="code-swift"><span class="k">let</span> volume = Volume(local: mesh.bounds, transform: transform)
+<pre class="code-swift"><span class="k">let</span> volume = Volume(localBounds: mesh.bounds, transform: transform)
 <span class="k">let</span> box = volume.worldBounds</pre>
 <p>Remember the mesh's <code>nodeTransform</code> belongs inside the transform — see <a href="meshes.html">meshes</a>.</p>
 <p><strong>A skinned mesh's bounds are its bind pose.</strong> An arm raised at runtime leaves the box, and a culling test against it deletes the character's shadow at exactly the moment it moves. Widen it with <code>expanded(by:)</code>; the sample uses half a meter for its figures:</p>
-<pre class="code-swift">bounds: { Volume(local: mesh.bounds, transform: <span class="k">self</span>.figures[$0].transform)
+<pre class="code-swift">bounds: { Volume(localBounds: mesh.bounds, transform: <span class="k">self</span>.figures[$0].transform)
     .worldBounds.expanded(by: 0.5) }</pre>
 <h2 id="culling-shadow-passes">Culling shadow passes</h2>
 <p>A shadow is the scene drawn again from a light's point of view, so the same test applies per pass. <code>ShadowMap.Batch</code> takes an optional <code>bounds</code> closure — this drawable's world-space box — for the passes that can use it:</p>

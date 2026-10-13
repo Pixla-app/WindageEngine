@@ -35,11 +35,11 @@
 <h2 id="savestore">SaveStore</h2>
 <pre class="code-swift"><span class="k">let</span> store = SaveStore&lt;SampleRun.Progress&gt;(container: <span <span class="k">class</span>="p">"WindageSample"</span>, name: <span <span class="k">class</span>="p">"progress"</span>)
 
-<span class="k">let</span> progress = store.load() ?? SampleRun.Progress()   <span class="c">// nil when there is nothing, or it cannot be read</span>
+<span class="k">let</span> progress = (<span class="k">try</span>? store.load()) ?? SampleRun.Progress()   <span class="c">// nil when there is nothing; throws when it cannot be read</span>
 <span class="k">try</span> store.save(progress)
-store.clear()                                         <span class="c">// "reset progress"</span></pre>
+<span class="k">try</span> store.clear()                                            <span class="c">// "reset progress"</span></pre>
 <p><code>SaveStore&lt;Value: Codable &amp; Sendable&gt;</code> is a small value type:</p>
-<div class="table"><table><thead><tr><th>Member</th><th>What it does</th></tr></thead><tbody><tr><td><code>init(container:name:)</code></td><td><code>container</code> is the folder for your game; <code>name</code> is the file, without extension</td></tr><tr><td><code>url</code></td><td>where the file lives; creates the folder if needed, writes nothing else</td></tr><tr><td><code>load() -&gt; Value?</code></td><td>the saved value, or <code>nil</code></td></tr><tr><td><code>save(_:) throws</code></td><td>writes the value, replacing what was there</td></tr><tr><td><code>clear()</code></td><td>removes the file</td></tr></tbody></table></div>
+<div class="table"><table><thead><tr><th>Member</th><th>What it does</th></tr></thead><tbody><tr><td><code>init(container:name:)</code></td><td><code>container</code> is the folder for your game; <code>name</code> is the file, without extension</td></tr><tr><td><code>url</code></td><td>where the file lives; only a path, so asking for it creates nothing</td></tr><tr><td><code>load() throws -&gt; Value?</code></td><td>the saved value, <code>nil</code> when nothing has been saved, and an error when a file is there and will not read</td></tr><tr><td><code>save(_:) throws</code></td><td>writes the value, replacing what was there, and makes the folder the first time</td></tr><tr><td><code>clear() throws</code></td><td>removes the file; clearing nothing is not an error</td></tr></tbody></table></div>
 <p><strong>Name the container after your game</strong>, so two games on one machine do not collide and a person can find your files. Use one store per kind of thing: the sample keeps settings and progress apart, so resetting progress does not reset a player's keys.</p>
 <pre class="code-swift"><span class="k">private</span> <span class="k">static</span> <span class="k">let</span> settingsStore = SaveStore&lt;PlayerSettings&gt;(container: container, name: <span <span class="k">class</span>="p">"settings"</span>)</pre>
 <h3 id="where">Where files go</h3>
@@ -48,13 +48,13 @@ store.clear()                                         <span class="c">// "reset 
 <p>This is why <code>SaveStore</code> is in the engine at all. <strong>The engine never assumes a writable location outside the app's container</strong>, because your game, not the engine, is what gets distributed, and it may be sandboxed. A path beside the executable works right up until the app is sandboxed, so there is one place that knows where a game may write. Resources you ship are read from bundles. The save itself is pretty-printed JSON with sorted keys.</p>
 <h3 id="atomic">Atomic writes</h3>
 <p><code>save</code> writes to a temporary file and renames it over the old one, and a rename is atomic. If the game crashes mid-write, the save is either the old one or the new one, never half of either.</p>
-<h3 id="bad-file">A bad file reads as nothing</h3>
-<p><code>load()</code> returns <code>nil</code> rather than throwing when the file is missing, truncated, or written by a build that cannot be decoded. A save that will not load must not stop the game starting: losing a high score is a disappointment; refusing to launch is a bug report.</p>
-<p>That is the right failure for progress and a bad one for settings, where <code>nil</code> means every setting reset. The fix is in the type you save, not in <code>SaveStore</code>; see versioning below.</p>
+<h3 id="bad-file">A bad file says so</h3>
+<p><code>load()</code> returns <code>nil</code> when there is no file, and <strong>throws</strong> when there is one that is truncated or written by a build that cannot be decoded. A save that will not load must still not stop the game starting — losing a high score is a disappointment; refusing to launch is a bug report — so catch it, log it, and start fresh. <code>(try? store.load()) ?? fallback</code> is the short form.</p>
+<p>Starting fresh is the right failure for progress and a bad one for settings, where it means every setting reset. The fix is in the type you save, not in <code>SaveStore</code>; see versioning below.</p>
 <p><strong>In tests</strong>, use a container of your own and clear what you write: tests sharing the real file clobber a player's save, and parallel tests clobber each other.</p>
 <h2 id="settings">PlayerSettings</h2>
 <p><code>PlayerSettings</code> is what a player sets once and expects to find set again. It is <code>Codable</code>, so it saves through a <code>SaveStore</code> as it is:</p>
-<pre class="code-swift"><span class="k">private</span> <span class="k">var</span> settings = SampleGame.settingsStore.load() ?? PlayerSettings()
+<pre class="code-swift"><span class="k">private</span> <span class="k">var</span> settings = (<span class="k">try</span>? SampleGame.settingsStore.load()) ?? PlayerSettings()
 
 <span class="c">// Written the moment anything changes: no "apply" button to forget.</span>
 <span class="k">try</span> SampleGame.settingsStore.save(settings)</pre>

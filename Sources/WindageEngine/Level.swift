@@ -48,7 +48,10 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     /// failure surfaces as level geometry quietly absent rather than as a refusal to load.
     public static let currentVersion = 1
 
-    public var formatVersion: Int
+    /// The format version this level was read as, or ``currentVersion`` for one made in code.
+    ///
+    /// **Read-only**: set by hand it could write a file the same build then refuses to load.
+    public private(set) var formatVersion: Int
     public var name: String
 
     /// Free-form per-level values the game interprets — a sun angle, a wind seed, a par time.
@@ -84,34 +87,6 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     /// The game's word, like ``Placement/surface``.
     public var groundSurface: String?
 
-    /// One of each kind of thing in the level, in the order each first appears — **a level's own
-    /// vocabulary**, for an editor to add more of.
-    ///
-    /// Two placements are the same kind when everything but *where* they are matches: mesh, scale,
-    /// anchor, tags, lamp and surface. A brazier with its lamp and a bare one are two kinds; two crates
-    /// at different spots are one. **The height is kept from the first of each kind**, because `y` is
-    /// part of what a placement is under an anchor — a tread sunk to its step — while `x`, `z` and the
-    /// yaw are only where it happened to be put, and come back zeroed.
-    ///
-    /// > **Not prefabs.** A prefab is a thing authored once and instanced; this is a question asked of
-    /// > a level that already exists — what is in it — and it needs no format of its own.
-    public var kinds: [Placement] {
-        var found: [Placement] = []
-        for placement in placements {
-            var kind = placement
-            kind.position.x = 0
-            kind.position.z = 0
-            kind.yaw = 0
-            let isNew = !found.contains { other in
-                var y = other
-                y.position.y = kind.position.y
-                return y == kind
-            }
-            if isNew { found.append(kind) }
-        }
-        return found
-    }
-
     /// What is under the feet: the surface of the placement stood on, or the ground's when that is
     /// `nil`. **The one question a footstep asks**, answered from the level rather than from a guess.
     ///
@@ -129,7 +104,8 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
                 sky: ProceduralSky? = nil,
                 lights: [PunctualLight] = [],
                 placements: [Placement] = [],
-                markers: [Marker] = []) {
+                markers: [Marker] = [],
+                groundSurface: String? = nil) {
         self.formatVersion = Level.currentVersion
         self.name = name
         self.settings = settings
@@ -137,19 +113,6 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         self.lights = lights
         self.placements = placements
         self.markers = markers
-    }
-
-    /// A level whose ground is made of something. Separate from the initializer above for the reason
-    /// ``Placement/init(mesh:position:yaw:scale:anchor:tags:light:surface:)`` gives.
-    public init(name: String,
-                settings: [String: Double] = [:],
-                sky: ProceduralSky? = nil,
-                lights: [PunctualLight] = [],
-                placements: [Placement] = [],
-                markers: [Marker] = [],
-                groundSurface: String?) {
-        self.init(name: name, settings: settings, sky: sky, lights: lights, placements: placements,
-                  markers: markers)
         self.groundSurface = groundSurface
     }
 
@@ -203,6 +166,10 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     ///
     /// Reading them here rather than in a game is the difference between one migration and one per
     /// consumer.
+    ///
+    /// **Part of format version 1, and kept for as long as version 1 loads.** A level with a `sky`
+    /// block ignores the two keys; one with neither gets the default sky. Dropping the migration would
+    /// change what an existing file looks like, so it can only go with a format version that says so.
     public var resolvedSky: ProceduralSky {
         if let sky { return sky }
         guard let pitch = settings["sunPitch"], let yaw = settings["sunYaw"] else {
@@ -268,27 +235,9 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         /// Resolve it with ``Level/carriedSounds(on:)``; play it with ``AudioEngine/startLoop(_:at:volume:)``.
         public var sound: CarriedSound?
 
-        public init(mesh: String,
-                    position: SIMD3<Float>,
-                    yaw: Float = 0,
-                    scale: Float = 1,
-                    anchor: Anchor = .ground,
-                    tags: [String] = [],
-                    light: PunctualLight? = nil) {
-            self.mesh = mesh
-            self.position = position
-            self.yaw = yaw
-            self.scale = scale
-            self.anchor = anchor
-            self.tags = tags
-            self.light = light
-        }
-
-        /// A placement made of something. **A separate initializer rather than one more defaulted
-        /// parameter on the one above**, because adding a parameter changes that initializer's symbol:
-        /// a consumer's already-compiled code then fails to link against the new engine until it
-        /// happens to be rebuilt — which is exactly what happened to a consumer's test target when this
-        /// field arrived.
+        /// **One initializer, every field.** The engine is built from source with every game that uses
+        /// it, so a defaulted parameter added here costs no consumer a link failure — the reason a
+        /// second initializer was once kept beside this one.
         public init(mesh: String,
                     position: SIMD3<Float>,
                     yaw: Float = 0,
@@ -296,10 +245,17 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
                     anchor: Anchor = .ground,
                     tags: [String] = [],
                     light: PunctualLight? = nil,
-                    surface: String?) {
-            self.init(mesh: mesh, position: position, yaw: yaw, scale: scale, anchor: anchor, tags: tags,
-                      light: light)
+                    surface: String? = nil,
+                    sound: CarriedSound? = nil) {
+            self.mesh = mesh
+            self.position = position
+            self.yaw = yaw
+            self.scale = scale
+            self.anchor = anchor
+            self.tags = tags
+            self.light = light
             self.surface = surface
+            self.sound = sound
         }
 
         // Written long-hand so the JSON stays small and stable: yaw, scale, anchor and tags are all
@@ -443,18 +399,25 @@ nonisolated extension Level {
     /// what an anchor *means*, and that meaning is identical in every game, so it lives here instead
     /// of being re-derived per title.
     public struct Ground: Sendable {
-        /// Ground height at a world x/z.
-        public let heightAt: @Sendable (Float, Float) -> Float
+        private let heightFunction: @Sendable (Float, Float) -> Float
+        private let footprintFunction: @Sendable (String) -> [SIMD2<Float>]
 
-        /// A mesh's footprint corners in **its own model space**, for ``Anchor/beddedFootprint``.
-        /// Returning none is fine — the placement then beds on its origin alone.
-        public let footprintCorners: @Sendable (String) -> [SIMD2<Float>]
-
-        public init(heightAt: @escaping @Sendable (Float, Float) -> Float,
-                    footprintCorners: @escaping @Sendable (String) -> [SIMD2<Float>] = { _ in [] }) {
-            self.heightAt = heightAt
-            self.footprintCorners = footprintCorners
+        /// - Parameters:
+        ///   - height: ground height at a world x and z, in that order.
+        ///   - footprintCorners: a mesh's footprint corners in **its own model space**, by mesh name, for
+        ///     ``Anchor/beddedFootprint``. Returning none is fine — the placement then beds on its origin
+        ///     alone.
+        public init(height: @escaping @Sendable (_ x: Float, _ z: Float) -> Float,
+                    footprintCorners: @escaping @Sendable (_ mesh: String) -> [SIMD2<Float>] = { _ in [] }) {
+            self.heightFunction = height
+            self.footprintFunction = footprintCorners
         }
+
+        /// Ground height at a world x/z.
+        public func height(atX x: Float, z: Float) -> Float { heightFunction(x, z) }
+
+        /// A mesh's footprint corners in its own model space; empty when the game gave none.
+        public func footprintCorners(of mesh: String) -> [SIMD2<Float>] { footprintFunction(mesh) }
     }
 
     /// Where a placement actually stands.
@@ -467,7 +430,7 @@ nonisolated extension Level {
         case .absolute:
             return placement.position
         case .ground:
-            return SIMD3(x, ground.heightAt(x, z) + placement.position.y, z)
+            return SIMD3(x, ground.height(atX: x, z: z) + placement.position.y, z)
         case .beddedFootprint:
             // The **lowest** corner, not the average and not the origin: bedding to anything higher
             // leaves the low end of a long building in the air, which is the failure this exists for.
@@ -478,10 +441,10 @@ nonisolated extension Level {
             // sampled the ground under the corners of the placement's *mirror image*. On flat ground
             // or for a square footprint nothing shows; a long building turned on a slope was bedded
             // on corners it does not have.
-            var lowest = ground.heightAt(x, z)
-            for corner in ground.footprintCorners(placement.mesh) {
+            var lowest = ground.height(atX: x, z: z)
+            for corner in ground.footprintCorners(of: placement.mesh) {
                 let offset = Level.turned(corner * placement.scale, by: placement.yaw)
-                lowest = min(lowest, ground.heightAt(x + offset.x, z + offset.y))
+                lowest = min(lowest, ground.height(atX: x + offset.x, z: z + offset.y))
             }
             return SIMD3(x, lowest + placement.position.y, z)
         }
@@ -493,25 +456,57 @@ nonisolated extension Level {
         lights + carriedLights(on: ground).map(\.light)
     }
 
+    /// A lamp a placement carries, in the world — see ``carriedLights(on:)``.
+    public struct CarriedLightInWorld: Equatable, Sendable {
+        /// The index in ``Level/placements`` of the placement carrying it.
+        public var placement: Int
+        /// The lamp, its position and any cone's direction moved into the world.
+        public var light: PunctualLight
+
+        public init(placement: Int, light: PunctualLight) {
+            self.placement = placement
+            self.light = light
+        }
+    }
+
+    /// A sound a placement carries, in the world — see ``carriedSounds(on:)``.
+    public struct CarriedSoundInWorld: Equatable, Sendable {
+        /// The index in ``Level/placements`` of the placement carrying it.
+        public var placement: Int
+        /// The sound's name, for the game to play — ``CarriedSound/name``.
+        public var name: String
+        /// Where it comes from in the world.
+        public var position: SIMD3<Float>
+        public var volume: Float
+
+        public init(placement: Int, name: String, position: SIMD3<Float>, volume: Float) {
+            self.placement = placement
+            self.name = name
+            self.position = position
+            self.volume = volume
+        }
+    }
+
+    /// The sounds placements carry, in the world: which placement, what, where and how loud.
+    ///
+    /// **Through the placement's own transform**, so a brazier moved, turned, scaled or copied in the
+    /// editor takes its crackle with it — the reason a sound is carried rather than listed.
+    public func carriedSounds(on ground: Ground) -> [CarriedSoundInWorld] {
+        placements.indices.compactMap { index in
+            guard let sound = placements[index].sound else { return nil }
+            let world = transform(of: placements[index], on: ground) * SIMD4(sound.offset, 1)
+            return CarriedSoundInWorld(placement: index, name: sound.name,
+                                       position: SIMD3(world.x, world.y, world.z), volume: sound.volume)
+        }
+    }
+
     /// The lights placements carry, moved into the world, and which placement each came from.
     ///
     /// **Through a ``TransformHierarchy``**, each light attached externally to its placement's
     /// transform: this is the case that type's `.external` attachment exists for, and a second
     /// consumer of it. The position goes through the whole transform, scale included; a cone's
     /// direction is turned by the placement's rotation alone, since a direction has no size.
-    /// The sounds placements carry, in the world: which placement, what, where and how loud.
-    ///
-    /// **Through the placement's own transform**, so a brazier moved, turned, scaled or copied in the
-    /// editor takes its crackle with it — the reason a sound is carried rather than listed.
-    public func carriedSounds(on ground: Ground) -> [(placement: Int, name: String, position: SIMD3<Float>, volume: Float)] {
-        placements.indices.compactMap { index in
-            guard let sound = placements[index].sound else { return nil }
-            let world = transform(of: placements[index], on: ground) * SIMD4(sound.offset, 1)
-            return (index, sound.name, SIMD3(world.x, world.y, world.z), sound.volume)
-        }
-    }
-
-    public func carriedLights(on ground: Ground) -> [(placement: Int, light: PunctualLight)] {
+    public func carriedLights(on ground: Ground) -> [CarriedLightInWorld] {
         let carriers = placements.indices.filter { placements[$0].light != nil }
         guard !carriers.isEmpty else { return [] }
         let offsets = carriers.map { index -> simd_float4x4 in
@@ -535,7 +530,7 @@ nonisolated extension Level {
                 cone.direction = simd_normalize(SIMD3(d.x, d.y, d.z))
                 light.cone = cone
             }
-            return (index, light)
+            return CarriedLightInWorld(placement: index, light: light)
         }
     }
 
@@ -573,7 +568,7 @@ nonisolated extension Level {
         switch marker.anchor {
         case .absolute: return marker.position
         default: return SIMD3(marker.position.x,
-                              ground.heightAt(marker.position.x, marker.position.z) + marker.position.y,
+                              ground.height(atX: marker.position.x, z: marker.position.z) + marker.position.y,
                               marker.position.z)
         }
     }
@@ -581,38 +576,75 @@ nonisolated extension Level {
 
 // MARK: - Reading and writing
 
-nonisolated extension Level {
+/// Why a level could not be loaded.
+///
+/// **Every failure ``Level/load(named:withExtension:bundle:)`` and ``Level/decode(from:)`` can meet**,
+/// so a game can `catch` this alone and know it has them all. The underlying reason is kept as text
+/// so the error stays `Equatable`.
+public nonisolated enum LevelError: Error, CustomStringConvertible, Equatable, Sendable {
+    /// No level by that name in the bundle.
+    case notFound(String)
+    /// The file is there and could not be read.
+    case unreadable(String, reason: String)
+    /// The data is not a level — not JSON, or JSON missing what a level must have.
+    case malformed(String)
+    /// Written by a newer format than this build reads.
+    case unsupportedVersion(found: Int, supported: Int)
 
-    public enum LoadError: Error, CustomStringConvertible, Equatable {
-        case notFound(String)
-        case unsupportedVersion(found: Int, supported: Int)
-
-        public var description: String {
-            switch self {
-            case .notFound(let name):
-                return "no level named '\(name)' in the bundle"
-            case .unsupportedVersion(let found, let supported):
-                return "level format version \(found); this build understands \(supported)"
-            }
+    public var description: String {
+        switch self {
+        case .notFound(let name):
+            "no level named '\(name)' in the bundle"
+        case .unreadable(let name, let reason):
+            "level '\(name)' could not be read — \(reason)"
+        case .malformed(let reason):
+            "not a level file — \(reason)"
+        case .unsupportedVersion(let found, let supported):
+            "level format version \(found); this build understands \(supported)"
         }
     }
+}
+
+nonisolated extension Level {
 
     /// Decode a level, refusing one written by a newer format.
+    ///
+    /// - Throws: ``LevelError/malformed(_:)`` for data that is not a level, and
+    ///   ``LevelError/unsupportedVersion(found:supported:)`` for one written by a newer format.
     public static func decode(from data: Data) throws -> Level {
-        let level = try JSONDecoder().decode(Level.self, from: data)
-        guard level.formatVersion <= Level.currentVersion else {
-            throw LoadError.unsupportedVersion(found: level.formatVersion, supported: Level.currentVersion)
+        // The version first, alone: a newer file may not decode as this format at all, and "written by
+        // a newer build" is the true answer, where "malformed" would send someone looking for damage.
+        struct Version: Decodable { let formatVersion: Int }
+        let decoder = JSONDecoder()
+        do {
+            let version = try decoder.decode(Version.self, from: data).formatVersion
+            guard version <= Level.currentVersion else {
+                throw LevelError.unsupportedVersion(found: version, supported: Level.currentVersion)
+            }
+            return try decoder.decode(Level.self, from: data)
+        } catch let error as LevelError {
+            throw error
+        } catch {
+            throw LevelError.malformed(String(describing: error))
         }
-        return level
     }
 
     /// **From a bundle, never from an arbitrary path.** The engine has to run sandboxed or not — see
     /// the studio's distribution rule — so it may not assume it can read wherever it likes.
-    public static func load(named name: String, extension ext: String = "json", bundle: Bundle) throws -> Level {
-        guard let url = bundle.url(forResource: name, withExtension: ext) else {
-            throw LoadError.notFound(name)
+    ///
+    /// - Throws: ``LevelError`` — not found, unreadable, malformed, or a newer format.
+    public static func load(named name: String, withExtension fileExtension: String = "json",
+                            bundle: Bundle) throws -> Level {
+        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
+            throw LevelError.notFound(name)
         }
-        return try decode(from: try Data(contentsOf: url))
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw LevelError.unreadable(name, reason: error.localizedDescription)
+        }
+        return try decode(from: data)
     }
 
     /// Encode, sorted and pretty-printed.

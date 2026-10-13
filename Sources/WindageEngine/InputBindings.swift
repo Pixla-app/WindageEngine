@@ -481,7 +481,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         didSet { volume = PlayerSettings.clamp(volume, 0...1, 0.8) }
     }
 
-    /// The sounds places make — ``AudioEngine/ambienceVolume`` — 0…1, under ``volume``. **Separate
+    /// The sounds places make — ``AudioEngine/loopVolume`` — 0…1, under ``volume``. **Separate
     /// because a player who finds a fire too loud should not lose their footsteps turning it down.**
     public var ambienceVolume: Float = 1 {
         didSet { ambienceVolume = PlayerSettings.clamp(ambienceVolume, 0...1, 1) }

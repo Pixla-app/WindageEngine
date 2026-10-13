@@ -5,6 +5,35 @@
 
 import simd
 
+/// What is wrong with a ``TransformHierarchy`` that could not be built, or with local transforms it
+/// was given.
+///
+/// **Every fault here is a structural one, caught when the hierarchy is built or its transforms
+/// replaced.** None of them can be detected later by looking: each produces a transform that is merely
+/// wrong, or an index read past the end at sixty hertz.
+public nonisolated enum TransformHierarchyError: Error, CustomStringConvertible, Sendable, Equatable {
+    case countMismatch(attachments: Int, transforms: Int)
+    case selfParent(node: Int)
+    case parentAfterChild(node: Int, parent: Int)
+    case unknownNode(node: Int, parent: Int)
+    case unknownExternal(node: Int, external: Int, count: Int)
+
+    public var description: String {
+        switch self {
+        case .countMismatch(let attachments, let transforms):
+            "\(attachments) attachments against \(transforms) transforms"
+        case .selfParent(let node):
+            "node \(node) is attached to itself"
+        case .parentAfterChild(let node, let parent):
+            "node \(node) is attached to \(parent), which is resolved after it"
+        case .unknownNode(let node, let parent):
+            "node \(node) is attached to \(parent), which is not in this hierarchy"
+        case .unknownExternal(let node, let external, let count):
+            "node \(node) is attached to external \(external), and only \(count) were declared"
+        }
+    }
+}
+
 /// Things that hang off other things: a lamp on a hand, a turret on a hull, a sight on a rifle.
 ///
 /// ### This is parenting, and it is deliberately not a scene graph
@@ -49,31 +78,6 @@ public nonisolated struct TransformHierarchy: Sendable {
         case external(Int)
     }
 
-    /// **Every fault here is a structural one, caught when the hierarchy is built.** None of them can
-    /// be detected later by looking: each produces a transform that is merely wrong.
-    public enum Fault: Error, CustomStringConvertible, Sendable {
-        case countMismatch(attachments: Int, transforms: Int)
-        case selfParent(node: Int)
-        case parentAfterChild(node: Int, parent: Int)
-        case unknownNode(node: Int, parent: Int)
-        case unknownExternal(node: Int, external: Int, count: Int)
-
-        public var description: String {
-            switch self {
-            case .countMismatch(let attachments, let transforms):
-                "\(attachments) attachments against \(transforms) transforms"
-            case .selfParent(let node):
-                "node \(node) is attached to itself"
-            case .parentAfterChild(let node, let parent):
-                "node \(node) is attached to \(parent), which is resolved after it"
-            case .unknownNode(let node, let parent):
-                "node \(node) is attached to \(parent), which is not in this hierarchy"
-            case .unknownExternal(let node, let external, let count):
-                "node \(node) is attached to external \(external), and only \(count) were declared"
-            }
-        }
-    }
-
     public let attachments: [Attachment]
 
     /// How many external transforms ``refresh(attachedTo:)`` will be given.
@@ -85,7 +89,11 @@ public nonisolated struct TransformHierarchy: Sendable {
     public let externalCount: Int
 
     /// Each node relative to whatever it hangs off.
-    public var localTransforms: [simd_float4x4]
+    ///
+    /// **Read-only, with checked setters** — ``setLocalTransform(_:ofNode:)`` and
+    /// ``setLocalTransforms(_:)``. Assigned directly, an array one short would be accepted here and
+    /// read past its end by the next ``refresh(attachedTo:)``, far from whoever made it.
+    public private(set) var localTransforms: [simd_float4x4]
 
     /// Where each node has ended up. Valid after ``refresh(attachedTo:)``.
     public private(set) var worldTransforms: [simd_float4x4]
@@ -98,7 +106,7 @@ public nonisolated struct TransformHierarchy: Sendable {
         let locals = localTransforms
             ?? [simd_float4x4](repeating: matrix_identity_float4x4, count: attachments.count)
         guard locals.count == attachments.count else {
-            throw Fault.countMismatch(attachments: attachments.count, transforms: locals.count)
+            throw TransformHierarchyError.countMismatch(attachments: attachments.count, transforms: locals.count)
         }
 
         for (node, attachment) in attachments.enumerated() {
@@ -106,14 +114,14 @@ public nonisolated struct TransformHierarchy: Sendable {
             case .world:
                 continue
             case .node(let parent):
-                guard parent != node else { throw Fault.selfParent(node: node) }
+                guard parent != node else { throw TransformHierarchyError.selfParent(node: node) }
                 guard parent >= 0, parent < attachments.count else {
-                    throw Fault.unknownNode(node: node, parent: parent)
+                    throw TransformHierarchyError.unknownNode(node: node, parent: parent)
                 }
-                guard parent < node else { throw Fault.parentAfterChild(node: node, parent: parent) }
+                guard parent < node else { throw TransformHierarchyError.parentAfterChild(node: node, parent: parent) }
             case .external(let index):
                 guard index >= 0, index < externalCount else {
-                    throw Fault.unknownExternal(node: node, external: index, count: externalCount)
+                    throw TransformHierarchyError.unknownExternal(node: node, external: index, count: externalCount)
                 }
             }
         }
@@ -122,6 +130,27 @@ public nonisolated struct TransformHierarchy: Sendable {
         self.externalCount = max(0, externalCount)
         self.localTransforms = locals
         self.worldTransforms = locals
+    }
+
+    /// Moves one node relative to whatever it hangs off. Takes effect at the next
+    /// ``refresh(attachedTo:)``.
+    public mutating func setLocalTransform(_ transform: simd_float4x4, ofNode node: Int) {
+        precondition(localTransforms.indices.contains(node),
+                     "node \(node) is not in a hierarchy of \(localTransforms.count)")
+        localTransforms[node] = transform
+    }
+
+    /// Replaces every node's local transform at once. Takes effect at the next
+    /// ``refresh(attachedTo:)``.
+    ///
+    /// - Throws: ``TransformHierarchyError/countMismatch(attachments:transforms:)`` when the array is
+    ///   not one transform per node; the hierarchy is left as it was.
+    public mutating func setLocalTransforms(_ transforms: [simd_float4x4]) throws {
+        guard transforms.count == attachments.count else {
+            throw TransformHierarchyError.countMismatch(attachments: attachments.count,
+                                                        transforms: transforms.count)
+        }
+        localTransforms = transforms
     }
 
     /// Resolves every node's world transform, in one forward pass.

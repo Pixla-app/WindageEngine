@@ -79,43 +79,43 @@ Most are one of these, repeated across files; the full lines follow below.
 
 ### World, animation, audio, saving
 [MUST] TransformHierarchy.swift:166 — `matrix_without_scale(_:)` C-style name — member `withoutScale` — sample → DONE: `simd_float4x4.withoutScale`, a property, moved to Math.swift with the other renames (core pass).
-[MUST] TransformHierarchy.swift:88 — `localTransforms` settable to wrong count, then crashes — `private(set)` plus checked setter — engine
-[MUST] SkeletonPose.swift:79,101 — no check the playhead matches the skeleton; traps — precondition with message — sample
-[MUST] AnimationClip.swift:89,141 — inits accept malformed data; traps later — validate (throwing) — engine
-[SHOULD] RigLoader.swift:102,160,202 — `bundle: .main` default, which AudioEngine removed as wrong for SwiftPM — drop — sample
-[SHOULD] Level.swift:611 — `extension:` vs everyone else's `withExtension:` — rename — Coldkeel, sample
-[SHOULD] Level.swift:586 — `LoadError` doesn't cover decode/file errors that are actually thrown — add cases, wrap — Coldkeel, sample
-[SHOULD] TransformHierarchy.swift:54 — error named `Fault`; error naming/placement varies — one convention — engine
-[SHOULD] Skeleton.swift:8, RigLoader.swift:10 — errors main-actor while their throwers are nonisolated — mark nonisolated — engine
-[SHOULD] Level.swift:144,292 — duplicate inits kept for binary compatibility that doesn't apply; `sound` missing from init — one memberwise init — Coldkeel, sample
-[SHOULD] Level.swift:51 — `formatVersion` settable, can write a file the same build refuses — `private(set)` — engine
-[SHOULD] Level.swift:506,514 — tuples returned; can't grow without breaking — named structs — sample
-[SHOULD] Level.swift:344 — offset is `offset` for sounds, `position` for carried lamps — one name — sample
-[SHOULD] Level.swift:447 — `Ground.heightAt` unlabeled closure (`heightAt(x, z)`) — `height(atX:z:)` — Coldkeel, sample
-[SHOULD] LevelEditor.swift:44-157 — one tool's key steps as public statics — editor configuration in init — sample
-[SHOULD] LevelEditor.swift:230 — `save(to:)` not atomic, unlike `SaveStore` — `.atomic` — engine
-[SHOULD] LevelEditor.swift:28 — not `Sendable` — add — sample
-[SHOULD] Volume.swift:27 — not `Sendable`/`Equatable` — add — Coldkeel, Brinewake, sample
-[SHOULD] AudioEngine.swift:63,70,140,157 — failures printed, `nil`/`false` returned — throw `AudioEngineError` — Coldkeel, sample
-[SHOULD] AudioEngine.swift:39-99 — one-shot distance curve tuned for a long-range shot, plus public tuning statics — `AudioEngine.Configuration` — Coldkeel, sample
-[SHOULD] AudioEngine.swift:253,279 — time is Float here, Double there; `delay` ignores pause and can't be cancelled — one time type; schedule on the audio clock — Coldkeel, sample
-[SHOULD] AudioEngine.swift:318 — `ambienceVolume` controls "loops" — one name — sample
-[SHOULD] RigLoader.swift:122,161 — warnings as free strings through a non-Sendable closure — structured warnings — sample
-[SHOULD] RigLoader.swift:111,200,210 — missing file reported as "no skeleton"; URL and bundle forms disagree — throw `assetNotFound` in both — sample
-[SHOULD] RigLoader.swift:218,325,347 — Model I/O types in public API, used by nobody outside — internal — engine
-[SHOULD] AnimationClip.swift:171 — `time(_:looping:)` reads as a property — `wrappedTime(_:looping:)` — engine
-[CONSIDER] RigLoader.swift:65 — `jointsNotDrivenBy(_:)` — `joints(notDrivenBy:)` — engine
-[CONSIDER] AnimationClip.swift:209 — `AnimationBinding` public but engine-built; `clipJoint` is an array — internal or `clipJointIndices` — engine
-[CONSIDER] SkeletonPose.swift:133 — `refresh()` has no reason to be public — internal — engine
-[CONSIDER] SkeletonPose.swift:79-122 — three `set(...)` overloads with unrelated labels — consistent names — sample
-[CONSIDER] Volume.swift:30 — `local` beside `worldBounds` — `localBounds` — Coldkeel, Brinewake, sample
-[CONSIDER] Level.swift:206 — legacy `sunPitch`/`sunYaw` migration frozen into behavior — drop with a format bump, or document — sample
-[CONSIDER] Level.swift:98 — `kinds` is O(n²) editor policy as a property — method or move to the editor — sample
-[CONSIDER] LevelEditor.swift:205-218 — undo/redo mark dirty even back at the saved state; edits placements only — settle before freezing — sample
-[CONSIDER] LevelEditor.swift:171,178 — key-step helpers shaped by the sample; `metres` parameter name — keep `setLight(_:)`, drop helpers — sample
-[CONSIDER] AudioEngine.swift:187 — discarding a `Loop` makes it unstoppable — remove `@discardableResult` — sample
-[CONSIDER] AudioEngine.swift:332 — `stop()` is terminal — lifecycle or document — Coldkeel, sample
-[CONSIDER] SaveStore.swift:40,52,64 — `url` getter creates a directory; load/clear swallow errors — pure getter, throwing load — sample
+[MUST] TransformHierarchy.swift:88 — `localTransforms` settable to wrong count, then crashes — `private(set)` plus checked setter — engine → DONE: `public private(set)`, plus `setLocalTransform(_:ofNode:)` (precondition on the index) and `setLocalTransforms(_:)` (throws `.countMismatch`, leaves the hierarchy as it was).
+[MUST] SkeletonPose.swift:79,101 — no check the playhead matches the skeleton; traps — precondition with message — sample → DONE: both clip `set`s check, by precondition naming the clip, that the playhead's binding was built for this skeleton's joint paths — a skeleton with the same joints in the same order passes; the same skeleton compares by shared storage, not strings.
+[MUST] AnimationClip.swift:89,141 — inits accept malformed data; traps later — validate (throwing) — engine → DONE: `JointTrack.init` and `AnimationClip.init` throw `AnimationClipError` (value count, negative joint count, non-finite or decreasing times, a keyed channel for a different joint count); `JointTrack.empty(jointCount:)` for an unkeyed channel; RigLoader wraps it as `RigLoaderError.malformedClip`.
+[SHOULD] RigLoader.swift:102,160,202 — `bundle: .main` default, which AudioEngine removed as wrong for SwiftPM — drop — sample → DONE: no default `bundle` on any bundle load — nor a default extension, matching `MeshLoader`.
+[SHOULD] Level.swift:611 — `extension:` vs everyone else's `withExtension:` — rename — Coldkeel, sample → DONE: `load(named:withExtension:bundle:)`.
+[SHOULD] Level.swift:586 — `LoadError` doesn't cover decode/file errors that are actually thrown — add cases, wrap — Coldkeel, sample → DONE: top-level `LevelError` (`.notFound`, `.unreadable(_:reason:)`, `.malformed(_:)`, `.unsupportedVersion`); file and decode errors are wrapped, reasons kept as text so it stays `Equatable`; the version is read first, so a newer file is never reported as malformed.
+[SHOULD] TransformHierarchy.swift:54 — error named `Fault`; error naming/placement varies — one convention — engine → DONE: the engine's convention is a top-level `<Type>Error: Error, CustomStringConvertible, Sendable` (as `MeshLoaderError`, `TextureStoreError`): `TransformHierarchyError`, `LevelError`, and the new `AnimationClipError` and `AudioEngineError`.
+[SHOULD] Skeleton.swift:8, RigLoader.swift:10 — errors main-actor while their throwers are nonisolated — mark nonisolated — engine → DONE: `nonisolated` (and `Equatable`), as are the new error types.
+[SHOULD] Level.swift:144,292 — duplicate inits kept for binary compatibility that doesn't apply; `sound` missing from init — one memberwise init — Coldkeel, sample → DONE: one initializer each, every field defaulted; `Placement` takes `sound:`.
+[SHOULD] Level.swift:51 — `formatVersion` settable, can write a file the same build refuses — `private(set)` — engine → DONE: `public private(set)`; the file format is unchanged.
+[SHOULD] Level.swift:506,514 — tuples returned; can't grow without breaking — named structs — sample → DONE: `Level.CarriedLightInWorld` and `Level.CarriedSoundInWorld`, with the tuples' field names, so `.light`, `.placement` and key paths still read the same.
+[SHOULD] Level.swift:344 — offset is `offset` for sounds, `position` for carried lamps — one name — sample → DECLINED: the lamp's offset is `PunctualLight.position` because a carried lamp is the same type as a free-standing one; renaming the sound's Swift name would make it disagree with its `offset` key in the file, and renaming the key changes the file format.
+[SHOULD] Level.swift:447 — `Ground.heightAt` unlabeled closure (`heightAt(x, z)`) — `height(atX:z:)` — Coldkeel, sample → DONE: `Ground(height:footprintCorners:)`, asked with `height(atX:z:)` and `footprintCorners(of:)`; the closures are private.
+[SHOULD] LevelEditor.swift:44-157 — one tool's key steps as public statics — editor configuration in init — sample → DONE: `LevelEditor.Configuration` (`nudge`, `turn`, `lampRaise`, `lampBrighten`, `lampIntensityRange`, `undoDepth`), passed at init, every default today's value.
+[SHOULD] LevelEditor.swift:230 — `save(to:)` not atomic, unlike `SaveStore` — `.atomic` — engine → DONE.
+[SHOULD] LevelEditor.swift:28 — not `Sendable` — add — sample → DONE.
+[SHOULD] Volume.swift:27 — not `Sendable`/`Equatable` — add — Coldkeel, Brinewake, sample → DONE.
+[SHOULD] AudioEngine.swift:63,70,140,157 — failures printed, `nil`/`false` returned — throw `AudioEngineError` — Coldkeel, sample → DONE: both inits and both loads throw `AudioEngineError` (`.unsupportedSampleRate`, `.couldNotStart`, `.soundNotFound`, `.unreadableSound`, `.noSamples`); an empty sample array, which trapped, is refused.
+[SHOULD] AudioEngine.swift:39-99 — one-shot distance curve tuned for a long-range shot, plus public tuning statics — `AudioEngine.Configuration` — Coldkeel, sample → DONE: `AudioEngine.Configuration` (`voiceCount`, `oneShotFalloff`, `loopFalloff`, each a `Falloff`) at init; the defaults are exactly today's values, so nothing sounds different; the statics are gone.
+[SHOULD] AudioEngine.swift:253,279 — time is Float here, Double there; `delay` ignores pause and can't be cancelled — one time type; schedule on the audio clock — Coldkeel, sample → DONE: `Float` seconds throughout, the engine's type for a span (so `renderOffline(seconds:)` too); `delay` is scheduled on the voice's own sample timeline, so it holds through the new `pause()`, is exact offline, and `stop()` cancels it. A per-sound cancel handle is not added: no game needs one.
+[SHOULD] AudioEngine.swift:318 — `ambienceVolume` controls "loops" — one name — sample → DONE: `loopVolume`. `PlayerSettings.ambienceVolume`, the player's setting and its saved key, is unchanged.
+[SHOULD] RigLoader.swift:122,161 — warnings as free strings through a non-Sendable closure — structured warnings — sample → DONE: `RigLoader.Warning` (`.noAnimation`, `.clipDrivesNoJoints`, `.clipFileFailed`), `Sendable`, `Equatable`, printing as a sentence, to a non-escaping closure.
+[SHOULD] RigLoader.swift:111,200,210 — missing file reported as "no skeleton"; URL and bundle forms disagree — throw `assetNotFound` in both — sample → DONE: the URL forms check the file is there and throw `assetNotFound`, as `MeshLoader` does; both clip-file loads share one path and report a missing file as `.clipFileFailed`.
+[SHOULD] RigLoader.swift:218,325,347 — Model I/O types in public API, used by nobody outside — internal — engine → DONE: `rig(from:named:)` and the `MDLSkeleton`/`MDLPackedJointAnimation` initializers are internal.
+[SHOULD] AnimationClip.swift:171 — `time(_:looping:)` reads as a property — `wrappedTime(_:looping:)` — engine → DONE.
+[CONSIDER] RigLoader.swift:65 — `jointsNotDrivenBy(_:)` — `joints(notDrivenBy:)` — engine → DONE.
+[CONSIDER] AnimationClip.swift:209 — `AnimationBinding` public but engine-built; `clipJoint` is an array — internal or `clipJointIndices` — engine → DONE: the type stays public (a playhead carries it, and `unboundJoints`/`isEmpty` are worth reading); its init and mapping (`clipJointIndices`) are internal.
+[CONSIDER] SkeletonPose.swift:133 — `refresh()` has no reason to be public — internal — engine → DONE.
+[CONSIDER] SkeletonPose.swift:79-122 — three `set(...)` overloads with unrelated labels — consistent names — sample → DONE: all three are `set(to:)` — a playhead, a playhead `blendedWith:weight:`, or `[JointTransform]`.
+[CONSIDER] Volume.swift:30 — `local` beside `worldBounds` — `localBounds` — Coldkeel, Brinewake, sample → DONE: `localBounds`, and `Volume(localBounds:transform:)`.
+[CONSIDER] Level.swift:206 — legacy `sunPitch`/`sunYaw` migration frozen into behavior — drop with a format bump, or document — sample → DONE: documented as part of format version 1, kept while version 1 loads — dropping it would change how existing files look, so it can only go with a format bump.
+[CONSIDER] Level.swift:98 — `kinds` is O(n²) editor policy as a property — method or move to the editor — sample → DONE: `LevelEditor.kinds()`, a method.
+[CONSIDER] LevelEditor.swift:205-218 — undo/redo mark dirty even back at the saved state; edits placements only — settle before freezing — sample → DONE for dirty: each edit is a numbered state, so an undo back to the saved state is clean and a redo away from it is dirty. Placements-only is kept: markers, free lights and the sky get operations when an editor needs them.
+[CONSIDER] LevelEditor.swift:171,178 — key-step helpers shaped by the sample; `metres` parameter name — keep `setLight(_:)`, drop helpers — sample → DONE: `metres` → `distance`. The helpers are kept (declining that half): they hold the scale compensation and the intensity clamp, which every caller would otherwise rewrite; their steps are now `Configuration`'s.
+[CONSIDER] AudioEngine.swift:187 — discarding a `Loop` makes it unstoppable — remove `@discardableResult` — sample → DONE.
+[CONSIDER] AudioEngine.swift:332 — `stop()` is terminal — lifecycle or document — Coldkeel, sample → DONE: `stop()` documented as final (and `resume()` does nothing after it); `pause()` and `resume()` added for holding sound.
+[CONSIDER] SaveStore.swift:40,52,64 — `url` getter creates a directory; load/clear swallow errors — pure getter, throwing load — sample → DONE: `url` is a pure path and `save` makes the folder; `load()` returns `nil` for no file and throws for one that will not read or decode; `clear()` throws only when a file that is there cannot be removed.
 
 ### Light, shadows, sky, particles
 [MUST] PunctualLight.swift:42-46 — cone settable past its checks — re-apply on set — sample, Sedgefall tests

@@ -188,7 +188,7 @@ public nonisolated struct CharacterController: Sendable {
                       abs(x.y) <= level * across, abs(z.y) <= level * along,
                       abs(up.x) <= level * tall, abs(up.z) <= level * tall,
                       abs(x.x * z.x + x.z * z.z) <= level * across * along else { return nil }
-                let local = volume.local
+                let local = volume.localBounds
                 let middle = m * SIMD4((local.minimum + local.maximum) / 2, 1)
                 // Local +x lands on (cos, −sin) turned by yaw — Level.transform(yaw:scale:at:).
                 self.init(center: SIMD2(middle.x, middle.z),

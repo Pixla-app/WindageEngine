@@ -9,7 +9,7 @@ import simd
 
 struct VolumeTests {
 
-    private let crate = Volume(local: BoundingBox(minimum: SIMD3(-0.5, 0, -0.5),
+    private let crate = Volume(localBounds: BoundingBox(minimum: SIMD3(-0.5, 0, -0.5),
                                                   maximum: SIMD3(0.5, 1, 0.5)))
 
     private func placed(_ volume: Volume, at position: SIMD3<Float>) -> Volume {
@@ -31,7 +31,7 @@ struct VolumeTests {
     /// min and max alone can come out inside-out.
     @Test("World bounds follow a rotation, not just a translation")
     func boundsFollowARotation() {
-        var wide = Volume(local: BoundingBox(minimum: SIMD3(-3, 0, -0.5),
+        var wide = Volume(localBounds: BoundingBox(minimum: SIMD3(-3, 0, -0.5),
                                              maximum: SIMD3(3, 1, 0.5)))
         let alongX = wide.worldBounds
         wide.transform = simd_float4x4(rotationAngle: .pi / 2, axis: SIMD3(0, 1, 0))

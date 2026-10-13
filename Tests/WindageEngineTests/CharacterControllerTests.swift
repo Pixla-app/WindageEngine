@@ -1466,7 +1466,7 @@ struct CharacterTurnedSolidTests {
     @Test("A volume's footprint: its centre, its size scaled, its yaw — and none for a tilted one")
     func footprintOfAVolume() {
         let local = BoundingBox(minimum: SIMD3(0, 0, -0.5), maximum: SIMD3(2, 1, 0.5))
-        let placed = Volume(local: local, transform: Level.transform(yaw: 0.8, scale: 1.5, at: SIMD3(6, 0, -3)))
+        let placed = Volume(localBounds: local, transform: Level.transform(yaw: 0.8, scale: 1.5, at: SIMD3(6, 0, -3)))
         let f = Footprint(of: placed)
         #expect(f != nil)
         if let f {
@@ -1486,7 +1486,7 @@ struct CharacterTurnedSolidTests {
         let tilt: Float = 0.3
         let tilted = matrix_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, cos(tilt), sin(tilt), 0),
                                              SIMD4(0, -sin(tilt), cos(tilt), 0), SIMD4(0, 0, 0, 1)))
-        #expect(Footprint(of: Volume(local: local, transform: tilted)) == nil, "a tilted box has no rectangular plan")
+        #expect(Footprint(of: Volume(localBounds: local, transform: tilted)) == nil, "a tilted box has no rectangular plan")
     }
 }
 
@@ -1786,14 +1786,14 @@ struct CharacterRoundSolidTests {
     @Test("A disc from a volume: the circle its plan's square holds; none for a tilted one")
     func discOfAVolume() {
         let local = BoundingBox(minimum: SIMD3(-2, 0, -2), maximum: SIMD3(2, 0.2, 2))
-        let placed = Volume(local: local, transform: Level.transform(yaw: 0.7, scale: 1.5, at: SIMD3(-5, 0, 5)))
+        let placed = Volume(localBounds: local, transform: Level.transform(yaw: 0.7, scale: 1.5, at: SIMD3(-5, 0, 5)))
         let disc = Footprint(discOf: placed)
         #expect(disc?.radius == 3)
         #expect(disc.map { simd_distance($0.center, SIMD2(-5, 5)) < 1e-5 } ?? false)
         let tilt: Float = 0.3
         let tilted = matrix_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, cos(tilt), sin(tilt), 0),
                                                SIMD4(0, -sin(tilt), cos(tilt), 0), SIMD4(0, 0, 0, 1)))
-        #expect(Footprint(discOf: Volume(local: local, transform: tilted)) == nil)
+        #expect(Footprint(discOf: Volume(localBounds: local, transform: tilted)) == nil)
     }
 }
 

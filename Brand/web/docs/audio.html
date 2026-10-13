@@ -34,15 +34,16 @@
 <p><code>AudioEngine</code> plays sounds at positions in the world: one-shots for things that happen, and loops for things that keep making noise, like a brazier. Footsteps and landings come from the <a href="character-controller.html">character controller</a>, which reports what the body did, and from the <a href="levels.html">level</a>, which says what each surface is made of.</p>
 <h2 id="scope">What it does and does not do</h2>
 <p>Every sound is spatialized: you give the listener each frame and a world position for each sound. The engine plays one-shots and loops tied to a place. It has <strong>no music, no buses and no mixing groups</strong>. Those come when a game needs them.</p>
-<p>Sixteen one-shots can overlap (<code>AudioEngine.voiceCount</code>). Beyond that the oldest voice is reused, because the newest sound is the one that just happened.</p>
+<p>Sixteen one-shots can overlap by default (<code>AudioEngine.Configuration.voiceCount</code>). Beyond that the oldest voice is reused, because the newest sound is the one that just happened.</p>
 <h2 id="setup">Setting it up</h2>
-<pre class="code-swift"><span class="c">// your game: nil when there is no output device, and the game runs quiet</span>
-<span class="k">if</span> <span class="k">let</span> audio = AudioEngine() {
-    <span class="k">for</span> sound <span class="k">in</span> [<span <span class="k">class</span>="p">"pickup"</span>, <span <span class="k">class</span>="p">"crackle"</span>, <span <span class="k">class</span>="p">"step_stone_0"</span>, <span <span class="k">class</span>="p">"land_stone"</span>] <span class="k">where</span> !audio.load(sound, bundle: .module) {
-        print(<span <span class="k">class</span>="p">"no sound named \(sound)"</span>)
-    }
+<pre class="code-swift"><span class="c">// your game: with no output device, there is no engine, and the game runs quiet</span>
+<span class="k">let</span> audio: AudioEngine?
+<span class="k">do</span> { audio = <span class="k">try</span> AudioEngine() } <span class="k">catch</span> { audio = <span class="k">nil</span>; print(<span <span class="k">class</span>="p">"no audio — \(error)"</span>) }
+<span class="k">for</span> sound <span class="k">in</span> [<span <span class="k">class</span>="p">"pickup"</span>, <span <span class="k">class</span>="p">"crackle"</span>, <span <span class="k">class</span>="p">"step_stone_0"</span>, <span <span class="k">class</span>="p">"land_stone"</span>] {
+    <span class="k">do</span> { <span class="k">try</span> audio?.load(sound, bundle: .module) } <span class="k">catch</span> { print(error) }   <span class="c">// "no sound file pickup.wav"</span>
 }</pre>
-<p><code>load(_:withExtension:bundle:)</code> decodes a sound and keeps it in memory, with <code>wav</code> as the default extension. <strong><code>bundle</code> has no default on purpose.</strong> In an app bundle the sounds are in <code>.main</code>, while in a SwiftPM executable <code>.main</code> holds nothing and the sounds are in <code>.module</code>. <code>load(_:samples:sampleRate:)</code> loads mono samples your game generates.</p>
+<p><code>AudioEngine()</code> throws an <code>AudioEngineError</code> saying why it could not start. <code>load(_:withExtension:bundle:)</code> decodes a sound and keeps it in memory, with <code>wav</code> as the default extension, and throws <code>.soundNotFound</code> or <code>.unreadableSound</code>. <strong><code>bundle</code> has no default on purpose.</strong> In an app bundle the sounds are in <code>.main</code>, while in a SwiftPM executable <code>.main</code> holds nothing and the sounds are in <code>.module</code>. <code>load(_:samples:sampleRate:)</code> loads mono samples your game generates.</p>
+<p><code>AudioEngine(configuration:)</code> takes the voice count and both spatializers' distance curves (<code>Configuration.Falloff</code>: reference distance, maximum distance, rolloff). The defaults are the curves described below.</p>
 <p>Move the listener once a frame:</p>
 <pre class="code-swift">audio?.updateListener(position: camera.position, forward: camera.forward, up: SIMD3(0, 1, 0))</pre>
 <h2 id="one-shots">One-shots</h2>
@@ -50,14 +51,14 @@
 audio.play(<span <span class="k">class</span>="p">"pickup"</span>, at: cratePosition, volume: 0.8)
 audio.play(<span <span class="k">class</span>="p">"impact"</span>, at: target, delay: distance / 343)   <span class="c">// sound takes time to travel</span>
 audio.play(<span <span class="k">class</span>="p">"win"</span>)                                         <span class="c">// not positioned</span></pre>
-<p><code>play(_:at:volume:delay:)</code> plays a sound at a world position. <code>delay</code> is in seconds. At about 343 m/s, an impact 800 m away is heard nearly two and a half seconds after it happens. <code>play(_:volume:)</code> plays without a position, for sounds that happen <em>to</em> the player.</p>
+<p><code>play(_:at:volume:delay:)</code> plays a sound at a world position. <code>delay</code> is in seconds. At about 343 m/s, an impact 800 m away is heard nearly two and a half seconds after it happens. The delay is counted on the audio clock, so it holds while the engine is paused and <code>stop()</code> cancels a sound still waiting. <code>play(_:volume:)</code> plays without a position, for sounds that happen <em>to</em> the player.</p>
 <h2 id="loops">Loops that belong to a place</h2>
 <pre class="code-swift"><span class="k">if</span> <span class="k">let</span> loop = audio.startLoop(<span <span class="k">class</span>="p">"crackle"</span>, at: position, volume: 0.8) {
     audio.moveLoop(loop, to: newPosition)
     audio.stopLoop(loop)
 }</pre>
-<p><code>startLoop(_:at:volume:)</code> returns an <code>AudioEngine.Loop</code> handle, and <code>stopAllLoops()</code> and <code>loopCount</code> cover the rest. Each loop starts at a different point in its sound, so two braziers playing the same crackle don't sound like one crackle in two places.</p>
-<p><strong>Loops get their own spatializer with a different falloff.</strong> One-shots are tuned for a sound heard across a range: full volume out to 8 m, then 90% of the inverse law. Through that curve, a brazier sounds as loud at 8 m as it does up close, and two of them fill a level with fire. Loops use the physical inverse law from <code>AudioEngine.loopReferenceDistance</code> (2 m) and measured 1 : 0.250 : 0.100 at 2, 8 and 20 m.</p>
+<p><code>startLoop(_:at:volume:)</code> returns an <code>AudioEngine.Loop</code> handle — keep it, since a loop nobody holds can only be stopped by <code>stopAllLoops()</code> — and <code>loopCount</code> covers the rest. Each loop starts at a different point in its sound, so two braziers playing the same crackle don't sound like one crackle in two places.</p>
+<p><strong>Loops get their own spatializer with a different falloff.</strong> One-shots are tuned for a sound heard across a range: full volume out to 8 m, then 90% of the inverse law. Through that curve, a brazier sounds as loud at 8 m as it does up close, and two of them fill a level with fire. Loops use the physical inverse law from 2 m (<code>Configuration.loopFalloff</code>) and measured 1 : 0.250 : 0.100 at 2, 8 and 20 m.</p>
 <p>A placement can carry a sound in its own space, like its lamp. <code>Level.carriedSounds(on:)</code> gives each one's world position, so a brazier moved in the editor takes its crackle with it. When your level changes, <strong>reconcile the loops instead of restarting them</strong>. The sample matches loops by name and position first, and only then by placement index, because copying a placement renumbers every placement after it.</p>
 <h2 id="footsteps">Footsteps and landings</h2>
 <p>The engine doesn't play footsteps itself. It gives your game the two facts it needs:</p>
@@ -79,14 +80,16 @@ audio.play(<span <span class="k">class</span>="p">"win"</span>)                 
 <p>A few details are worth knowing:</p>
 <ul><li><strong>Strides are counted from the distance the feet actually covered</strong>, not the distance asked for. A player pushing into a wall doesn't march on the spot.</li><li><strong>Strides are longer than a person's because the speeds are faster.</strong> <code>walkStride</code>, <code>sprintStride</code> and <code>crouchStride</code> (2.6, 5 and 1.6 m) give about 2.3, 3.6 and 1.7 steps a second. The first footstep comes partway into a stride (<code>firstStepPhase</code>), so a walk doesn't start silent.</li><li><strong>Each stair tread gets a footstep.</strong> A step up or down counts as a foot landing, whatever the stride says. A step down a stair is not a <code>.landed</code>, and a slide makes no footsteps.</li><li><strong><code>surface(standingOn:)</code> returns <code>nil</code> for a placement that names no surface.</strong> It doesn't fall back to the ground's, so the gap can be noticed. The sample logs it once and plays stone.</li></ul>
 <h2 id="volume">Volume</h2>
-<p><code>masterVolume</code> scales everything. <code>ambienceVolume</code> scales only the loops, so a player who finds a fire too loud doesn't lose their own footsteps turning it down. <code>PlayerSettings.ambienceVolume</code> is the matching player setting. Measured: half ambience lowers a loop by 6.02 dB and a one-shot by 0.0.</p>
+<p><code>masterVolume</code> scales everything. <code>loopVolume</code> scales only the loops, so a player who finds a fire too loud doesn't lose their own footsteps turning it down. <code>PlayerSettings.ambienceVolume</code> is the matching player setting. Measured: half ambience lowers a loop by 6.02 dB and a one-shot by 0.0.</p>
+<h2 id="lifecycle">Pausing and stopping</h2>
+<p><code>pause()</code> holds everything — one-shots, loops and delayed one-shots still waiting — and <code>resume()</code> carries on. <code>stop()</code> is final: it frees the output device, and a stopped engine plays nothing again.</p>
 <h2 id="offline">Measuring without listening</h2>
 <p><code>AudioEngine(offlineSampleRate:)</code> makes an engine with no device, and <code>renderOffline(seconds:)</code> returns the mix as one array per channel. The falloff numbers on this page were measured that way. <code>WINDAGE_SAMPLE_MEASURE_AUDIO=1 swift run WindageSample</code> measures the sample's own crackle at several distances.</p>
 <div class="note"><p><strong>Before adding an AVFoundation callback:</strong> a closure written inside the engine's methods inherits main-actor isolation, and AVFoundation calls it on a realtime audio thread, which crashes. Mark it <code>@Sendable</code> and give it its own thread-safe storage.</p></div>
   </main>
 
   <aside class="docs-toc" aria-label="On this page">
-    <h2>On this page</h2><a href="#scope">What it does and does not do</a><a href="#setup">Setting it up</a><a href="#one-shots">One-shots</a><a href="#loops">Loops that belong to a place</a><a href="#footsteps">Footsteps and landings</a><a href="#volume">Volume</a><a href="#offline">Measuring without listening</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
+    <h2>On this page</h2><a href="#scope">What it does and does not do</a><a href="#setup">Setting it up</a><a href="#one-shots">One-shots</a><a href="#loops">Loops that belong to a place</a><a href="#footsteps">Footsteps and landings</a><a href="#volume">Volume</a><a href="#lifecycle">Pausing and stopping</a><a href="#offline">Measuring without listening</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
   </aside>
 </div>
 

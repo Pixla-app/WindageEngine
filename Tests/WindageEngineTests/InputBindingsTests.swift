@@ -372,7 +372,7 @@ struct PlayerSettingsTests {
         let store = SaveStore<PlayerSettings>(container: "WindageEngineTests-\(UUID().uuidString)",
                                               name: "settings")
         defer {
-            store.clear()
+            try? store.clear()
             try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent())
         }
         var settings = PlayerSettings()
@@ -381,7 +381,7 @@ struct PlayerSettingsTests {
         try store.save(settings)
 
         let again = SaveStore<PlayerSettings>(container: store.container, name: "settings")
-        #expect(again.load() == settings)
+        #expect(try again.load() == settings)
     }
 }
 

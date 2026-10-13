@@ -31,7 +31,7 @@ public nonisolated struct AnimationPlayhead: Sendable {
     public var isFinished: Bool { !isLooping && time >= clip.duration }
 
     /// The time actually sampled — wrapped or clamped into the clip.
-    public var sampleTime: Float { clip.time(time, looping: isLooping) }
+    public var sampleTime: Float { clip.wrappedTime(time, looping: isLooping) }
 }
 
 /// A rig with a pose on it, and the matrices a vertex shader needs to wear it.
@@ -76,11 +76,16 @@ public nonisolated struct SkeletonPose: Sendable {
     }
 
     /// Poses the rig from one clip.
+    ///
+    /// The playhead must have been made for this pose's skeleton — or one with the same joints in the
+    /// same order. **A playhead made for another rig stops here, saying so**, rather than reading its
+    /// mapping past the end on some later frame.
     public mutating func set(to playhead: AnimationPlayhead) {
+        checkBinding(of: playhead, role: "playhead")
         let time = playhead.sampleTime
         for joint in 0..<skeleton.jointCount {
             let rest = JointTransform(matrix: skeleton.restTransforms[joint])
-            guard let clipJoint = playhead.binding.clipJoint[joint] else {
+            guard let clipJoint = playhead.binding.clipJointIndices[joint] else {
                 localTransforms[joint] = rest
                 continue
             }
@@ -98,18 +103,22 @@ public nonisolated struct SkeletonPose: Sendable {
     /// **Both clips are sampled at their own times.** They are unrelated clips of unrelated lengths;
     /// a walk and a run only line up if somebody authored them to, and that is a rigging decision
     /// this cannot make on their behalf.
+    ///
+    /// Both playheads must have been made for this pose's skeleton, as for the one-clip `set(to:)`.
     public mutating func set(to playhead: AnimationPlayhead,
                              blendedWith other: AnimationPlayhead,
                              weight: Float) {
+        checkBinding(of: playhead, role: "playhead")
+        checkBinding(of: other, role: "blended playhead")
         let clamped = min(max(weight, 0), 1)
         let timeA = playhead.sampleTime
         let timeB = other.sampleTime
         for joint in 0..<skeleton.jointCount {
             let rest = JointTransform(matrix: skeleton.restTransforms[joint])
-            let a = playhead.binding.clipJoint[joint].map {
+            let a = playhead.binding.clipJointIndices[joint].map {
                 playhead.clip.sample(joint: $0, at: timeA, rest: rest)
             } ?? rest
-            let b = other.binding.clipJoint[joint].map {
+            let b = other.binding.clipJointIndices[joint].map {
                 other.clip.sample(joint: $0, at: timeB, rest: rest)
             } ?? rest
             localTransforms[joint] = a.blended(toward: b, weight: clamped)
@@ -118,19 +127,27 @@ public nonisolated struct SkeletonPose: Sendable {
     }
 
     /// Poses the rig directly, for anything that is not a clip — a procedural head turn, a ragdoll,
-    /// a rig driven by a solver.
-    public mutating func set(localTransforms newValue: [JointTransform]) {
+    /// a rig driven by a solver. One transform per joint, joint-local, in the skeleton's order.
+    public mutating func set(to newValue: [JointTransform]) {
         precondition(newValue.count == skeleton.jointCount,
                      "pose has \(skeleton.jointCount) joints, given \(newValue.count)")
         localTransforms = newValue
         refresh()
     }
 
+    private func checkBinding(of playhead: AnimationPlayhead, role: String) {
+        precondition(playhead.binding.isBound(to: skeleton),
+                     "\(role) for clip '\(playhead.clip.name)' was made for a skeleton of "
+                     + "\(playhead.binding.skeletonJointPaths.count) joints that is not this pose's "
+                     + "(\(skeleton.jointCount) joints); make the AnimationPlayhead with this pose's skeleton")
+    }
+
     /// Rebuilds the model-space and skinning matrices from the local transforms.
     ///
     /// One forward pass, no recursion — which is what ``Skeleton``'s parent-first ordering rule buys,
-    /// and why that rule is checked rather than assumed.
-    public mutating func refresh() {
+    /// and why that rule is checked rather than assumed. Every `set` ends with it, so nothing outside
+    /// needs to call it.
+    mutating func refresh() {
         for joint in 0..<skeleton.jointCount {
             let local = localTransforms[joint].matrix
             if let parent = skeleton.parentIndices[joint] {

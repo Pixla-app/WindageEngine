@@ -9,9 +9,9 @@ description: SaveStore keeps any Codable value between runs, atomically, in a pl
 ```swift
 let store = SaveStore<SampleRun.Progress>(container: "WindageSample", name: "progress")
 
-let progress = store.load() ?? SampleRun.Progress()   // nil when there is nothing, or it cannot be read
+let progress = (try? store.load()) ?? SampleRun.Progress()   // nil when there is nothing; throws when it cannot be read
 try store.save(progress)
-store.clear()                                         // "reset progress"
+try store.clear()                                            // "reset progress"
 ```
 
 `SaveStore<Value: Codable & Sendable>` is a small value type:
@@ -19,10 +19,10 @@ store.clear()                                         // "reset progress"
 | Member | What it does |
 | --- | --- |
 | `init(container:name:)` | `container` is the folder for your game; `name` is the file, without extension |
-| `url` | where the file lives; creates the folder if needed, writes nothing else |
-| `load() -> Value?` | the saved value, or `nil` |
-| `save(_:) throws` | writes the value, replacing what was there |
-| `clear()` | removes the file |
+| `url` | where the file lives; only a path, so asking for it creates nothing |
+| `load() throws -> Value?` | the saved value, `nil` when nothing has been saved, and an error when a file is there and will not read |
+| `save(_:) throws` | writes the value, replacing what was there, and makes the folder the first time |
+| `clear() throws` | removes the file; clearing nothing is not an error |
 
 **Name the container after your game**, so two games on one machine do not collide and a person can find your files. Use one store per kind of thing: the sample keeps settings and progress apart, so resetting progress does not reset a player's keys.
 
@@ -43,11 +43,11 @@ This is why `SaveStore` is in the engine at all. **The engine never assumes a wr
 
 `save` writes to a temporary file and renames it over the old one, and a rename is atomic. If the game crashes mid-write, the save is either the old one or the new one, never half of either.
 
-### A bad file reads as nothing {#bad-file}
+### A bad file says so {#bad-file}
 
-`load()` returns `nil` rather than throwing when the file is missing, truncated, or written by a build that cannot be decoded. A save that will not load must not stop the game starting: losing a high score is a disappointment; refusing to launch is a bug report.
+`load()` returns `nil` when there is no file, and **throws** when there is one that is truncated or written by a build that cannot be decoded. A save that will not load must still not stop the game starting — losing a high score is a disappointment; refusing to launch is a bug report — so catch it, log it, and start fresh. `(try? store.load()) ?? fallback` is the short form.
 
-That is the right failure for progress and a bad one for settings, where `nil` means every setting reset. The fix is in the type you save, not in `SaveStore`; see versioning below.
+Starting fresh is the right failure for progress and a bad one for settings, where it means every setting reset. The fix is in the type you save, not in `SaveStore`; see versioning below.
 
 **In tests**, use a container of your own and clear what you write: tests sharing the real file clobber a player's save, and parallel tests clobber each other.
 
@@ -56,7 +56,7 @@ That is the right failure for progress and a bad one for settings, where `nil` m
 `PlayerSettings` is what a player sets once and expects to find set again. It is `Codable`, so it saves through a `SaveStore` as it is:
 
 ```swift
-private var settings = SampleGame.settingsStore.load() ?? PlayerSettings()
+private var settings = (try? SampleGame.settingsStore.load()) ?? PlayerSettings()
 
 // Written the moment anything changes: no "apply" button to forget.
 try SampleGame.settingsStore.save(settings)

@@ -74,6 +74,39 @@ public nonisolated struct JointTransform: Sendable, Equatable {
     }
 }
 
+/// Why a ``JointTrack`` or an ``AnimationClip`` could not be made from the data it was given.
+///
+/// **Checked when the clip is built, not when it is sampled.** Every one of these used to be accepted
+/// and then trap as an index out of range on some later frame, in the middle of posing a character,
+/// with nothing to say which clip or why.
+public nonisolated enum AnimationClipError: Error, CustomStringConvertible, Sendable, Equatable {
+    /// A track's values are not one per joint per key.
+    case valueCountMismatch(keys: Int, joints: Int, values: Int)
+    /// A track claims fewer than zero joints.
+    case negativeJointCount(Int)
+    /// A key time is NaN or infinite.
+    case nonFiniteTime(key: Int)
+    /// Key times go backwards; sampling finds its keys by binary search, which needs them in order.
+    case timesOutOfOrder(key: Int)
+    /// A channel's track is for a different number of joints than the clip names.
+    case trackJointCountMismatch(channel: String, track: Int, clip: Int)
+
+    public var description: String {
+        switch self {
+        case .valueCountMismatch(let keys, let joints, let values):
+            "\(keys) keys of \(joints) joints need \(keys * joints) values, given \(values)"
+        case .negativeJointCount(let count):
+            "a track cannot have \(count) joints"
+        case .nonFiniteTime(let key):
+            "key \(key) has a time that is not a finite number"
+        case .timesOutOfOrder(let key):
+            "key \(key) comes earlier than the key before it; key times must not decrease"
+        case .trackJointCountMismatch(let channel, let track, let clip):
+            "the \(channel) track is for \(track) joints, and the clip names \(clip)"
+        }
+    }
+}
+
 /// Keyframes for one channel across every joint the clip touches.
 ///
 /// **Time-major**: all of a moment's joints sit together, because sampling reads one moment and
@@ -86,10 +119,27 @@ public nonisolated struct JointTrack<Value: Sendable>: Sendable {
 
     public var isEmpty: Bool { times.isEmpty || jointCount == 0 }
 
-    public init(times: [Float], values: [Value], jointCount: Int) {
+    /// - Throws: ``AnimationClipError`` unless there is one value per joint per key, the joint count is
+    ///   not negative, and the key times are finite and never decrease.
+    public init(times: [Float], values: [Value], jointCount: Int) throws {
+        guard jointCount >= 0 else { throw AnimationClipError.negativeJointCount(jointCount) }
+        guard values.count == times.count * jointCount else {
+            throw AnimationClipError.valueCountMismatch(keys: times.count, joints: jointCount,
+                                                        values: values.count)
+        }
+        for (key, time) in times.enumerated() {
+            guard time.isFinite else { throw AnimationClipError.nonFiniteTime(key: key) }
+            if key > 0, time < times[key - 1] { throw AnimationClipError.timesOutOfOrder(key: key) }
+        }
         self.times = times
         self.values = values
         self.jointCount = jointCount
+    }
+
+    /// A track with no keys, for a channel a clip does not carry.
+    public static func empty(jointCount: Int) -> JointTrack {
+        // Cannot throw: no keys means no values to count and no times to order.
+        try! JointTrack(times: [], values: [], jointCount: max(0, jointCount))
     }
 
     public subscript(key: Int, joint: Int) -> Value { values[key * jointCount + joint] }
@@ -138,11 +188,31 @@ public nonisolated struct AnimationClip: Sendable {
 
     public var jointCount: Int { jointPaths.count }
 
+    /// - Throws: ``AnimationClipError/trackJointCountMismatch(channel:track:clip:)`` when a channel
+    ///   that has keys is for a different number of joints than `jointPaths` names. A channel with no
+    ///   keys is not checked: it is not sampled.
     public init(name: String,
                 jointPaths: [String],
                 translation: JointTrack<SIMD3<Float>>,
                 rotation: JointTrack<simd_quatf>,
-                scale: JointTrack<SIMD3<Float>>) {
+                scale: JointTrack<SIMD3<Float>>) throws {
+        let checks: [(String, Int, Bool)] = [("translation", translation.jointCount, translation.times.isEmpty),
+                                             ("rotation", rotation.jointCount, rotation.times.isEmpty),
+                                             ("scale", scale.jointCount, scale.times.isEmpty)]
+        for (channel, count, hasNoKeys) in checks where !hasNoKeys && count != jointPaths.count {
+            throw AnimationClipError.trackJointCountMismatch(channel: channel, track: count,
+                                                             clip: jointPaths.count)
+        }
+        self.init(validatedName: name, jointPaths: jointPaths,
+                  translation: translation, rotation: rotation, scale: scale)
+    }
+
+    /// The memberwise part, for data already checked — ``renamed(to:)`` has nothing to re-check.
+    private init(validatedName name: String,
+                 jointPaths: [String],
+                 translation: JointTrack<SIMD3<Float>>,
+                 rotation: JointTrack<simd_quatf>,
+                 scale: JointTrack<SIMD3<Float>>) {
         self.name = name
         self.jointPaths = jointPaths
         self.translation = translation
@@ -158,7 +228,7 @@ public nonisolated struct AnimationClip: Sendable {
     /// **For the names an exporter produces.** A clip arrives called
     /// `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`; a game asks for `walk`.
     public func renamed(to name: String) -> AnimationClip {
-        AnimationClip(name: name, jointPaths: jointPaths,
+        AnimationClip(validatedName: name, jointPaths: jointPaths,
                       translation: translation, rotation: rotation, scale: scale)
     }
 
@@ -168,7 +238,7 @@ public nonisolated struct AnimationClip: Sendable {
     /// hold the same pose — that is how a loop authored in any rigging tool is laid out. Wrapping
     /// past the end therefore interpolates from the second-to-last key to the last one and arrives
     /// exactly where it started.
-    public func time(_ time: Float, looping: Bool) -> Float {
+    public func wrappedTime(_ time: Float, looping: Bool) -> Float {
         guard duration > 0 else { return 0 }
         if !looping { return min(max(time, 0), duration) }
         let wrapped = time.truncatingRemainder(dividingBy: duration)
@@ -206,9 +276,16 @@ public nonisolated struct AnimationClip: Sendable {
 /// correct thing to do — index order is not a contract between a rig and a clip authored separately
 /// — but doing it 100 joints × 60 times a second is a string comparison budget nobody meant to
 /// spend.
+///
+/// **Made by the engine, read by a game.** An ``AnimationPlayhead`` builds one; ``unboundJoints`` and
+/// ``isEmpty`` are what a game asks of it. The mapping itself is the engine's business.
 public nonisolated struct AnimationBinding: Sendable {
     /// For each of the skeleton's joints, the clip joint driving it, or `nil` to leave it at rest.
-    public let clipJoint: [Int?]
+    let clipJointIndices: [Int?]
+
+    /// The joint paths of the skeleton this was built for — what ``SkeletonPose`` checks a playhead
+    /// against before posing with it.
+    let skeletonJointPaths: [String]
 
     /// The rig's joints this clip says nothing about — they stay at their rest transform.
     ///
@@ -217,7 +294,7 @@ public nonisolated struct AnimationBinding: Sendable {
     /// still.
     public let unboundJoints: [String]
 
-    public init(clip: AnimationClip, skeleton: Skeleton) {
+    init(clip: AnimationClip, skeleton: Skeleton) {
         var clipIndexByPath: [String: Int] = [:]
         clipIndexByPath.reserveCapacity(clip.jointPaths.count)
         for (index, path) in clip.jointPaths.enumerated() { clipIndexByPath[path] = index }
@@ -233,11 +310,21 @@ public nonisolated struct AnimationBinding: Sendable {
                 unbound.append(path)
             }
         }
-        self.clipJoint = mapping
+        self.clipJointIndices = mapping
+        self.skeletonJointPaths = skeleton.jointPaths
         self.unboundJoints = unbound
     }
 
     /// Whether the clip drives no joint of this rig at all — a clip and a rig that have nothing to
     /// do with each other.
-    public var isEmpty: Bool { clipJoint.allSatisfy { $0 == nil } }
+    public var isEmpty: Bool { clipJointIndices.allSatisfy { $0 == nil } }
+
+    /// Whether this was built for `skeleton`, or one with the same joints in the same order — which
+    /// poses identically, since the mapping is by path.
+    ///
+    /// **Cheap in the common case**: the same skeleton shares its joint-path array's storage, and two
+    /// equal arrays sharing storage compare without looking at a string.
+    func isBound(to skeleton: Skeleton) -> Bool {
+        skeletonJointPaths == skeleton.jointPaths
+    }
 }

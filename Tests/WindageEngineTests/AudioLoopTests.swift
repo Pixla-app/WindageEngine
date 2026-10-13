@@ -25,15 +25,15 @@ struct AudioLoopTests {
         }
     }()
 
-    private func engine() throws -> AudioEngine {
-        let audio = try #require(AudioEngine(offlineSampleRate: AudioLoopTests.rate))
-        #expect(audio.load("noise", samples: AudioLoopTests.noise, sampleRate: AudioLoopTests.rate))
+    private func engine(_ configuration: AudioEngine.Configuration = .init()) throws -> AudioEngine {
+        let audio = try AudioEngine(offlineSampleRate: AudioLoopTests.rate, configuration: configuration)
+        try audio.load("noise", samples: AudioLoopTests.noise, sampleRate: AudioLoopTests.rate)
         audio.updateListener(position: .zero, forward: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
         return audio
     }
 
     /// The level of a stretch of the mix, both ears together.
-    private func rms(_ audio: AudioEngine, seconds: Double) throws -> Float {
+    private func rms(_ audio: AudioEngine, seconds: Float) throws -> Float {
         let channels = try #require(audio.renderOffline(seconds: seconds))
         let all = channels.flatMap { $0 }
         return (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
@@ -85,7 +85,7 @@ struct AudioLoopTests {
     @Test("A loop is still going, at the same level, long after its sound has come round")
     func loopKeepsGoing() throws {
         let audio = try engine()
-        audio.startLoop("noise", at: ahead(2))
+        _ = audio.startLoop("noise", at: ahead(2))
         _ = try rms(audio, seconds: 0.1)
         let first = try rms(audio, seconds: 0.5)
         _ = try rms(audio, seconds: 2.0)                    // twice round a one-second sound
@@ -112,7 +112,7 @@ struct AudioLoopTests {
     func directionSurvives() throws {
         for (metres, loop) in [(Float(5), false), (400, false), (5, true)] {
             let audio = try engine()
-            if loop { audio.startLoop("noise", at: SIMD3(metres, 0, 0)) } else { audio.play("noise", at: SIMD3(metres, 0, 0)) }
+            if loop { _ = audio.startLoop("noise", at: SIMD3(metres, 0, 0)) } else { audio.play("noise", at: SIMD3(metres, 0, 0)) }
             _ = try #require(audio.renderOffline(seconds: 0.1))
             let channels = try #require(audio.renderOffline(seconds: 0.5))
             func level(_ c: [Float]) -> Float { (c.reduce(0) { $0 + $1 * $1 } / Float(max(c.count, 1))).squareRoot() }
@@ -127,14 +127,14 @@ struct AudioLoopTests {
     func ambienceScalesLoopsOnly() throws {
         func loopLevel(_ ambience: Float) throws -> Float {
             let audio = try engine()
-            audio.ambienceVolume = ambience
-            audio.startLoop("noise", at: ahead(2))
+            audio.loopVolume = ambience
+            _ = audio.startLoop("noise", at: ahead(2))
             _ = try rms(audio, seconds: 0.3)
             return try rms(audio, seconds: 0.5)
         }
         func shotLevel(_ ambience: Float) throws -> Float {
             let audio = try engine()
-            audio.ambienceVolume = ambience
+            audio.loopVolume = ambience
             audio.play("noise", at: ahead(8))
             _ = try rms(audio, seconds: 0.3)
             return try rms(audio, seconds: 0.5)
@@ -145,9 +145,68 @@ struct AudioLoopTests {
         #expect(abs(loopDrop + 6.02) < 0.1, "the loop moved \(loopDrop) dB")
         #expect(abs(shotDrop) < 0.05, "the one-shot moved \(shotDrop) dB")
         let silent = try engine()
-        silent.ambienceVolume = 0
-        silent.startLoop("noise", at: ahead(2))
+        silent.loopVolume = 0
+        _ = silent.startLoop("noise", at: ahead(2))
         _ = try rms(silent, seconds: 0.2)
         #expect(try rms(silent, seconds: 0.3) < 1e-5, "ambience off should be silence")
+    }
+
+    /// **The delay is counted on the audio clock.** It used to be a main-queue timer, which an offline
+    /// render never waits for and a pause never held.
+    @Test("A delayed one-shot is silent until its delay, then plays — counted in the mix's own time")
+    func delayIsOnTheAudioClock() throws {
+        let audio = try engine()
+        _ = try rms(audio, seconds: 0.1)                       // the voices have rendered: "now" is 0.1 s
+        audio.play("noise", at: ahead(8), delay: 0.5)
+        let before = try rms(audio, seconds: 0.45)
+        _ = try rms(audio, seconds: 0.1)
+        let after = try rms(audio, seconds: 0.3)
+        print("AUDIO delayed one-shot: before \(before), after \(after)")
+        #expect(before < 1e-5, "it played early: \(before)")
+        #expect(after > 0.01, "it never played: \(after)")
+    }
+
+    @Test("A delayed one-shot still waiting is cancelled by stop")
+    func stopCancelsAWaitingOneShot() throws {
+        let audio = try engine()
+        audio.play("noise", at: ahead(8), delay: 0.2)
+        audio.stop()
+        #expect(audio.renderOffline(seconds: 0.5).map { $0.flatMap { $0 }.allSatisfy { $0 == 0 } } ?? true)
+    }
+
+    /// **Today's curves are the defaults, and a game may set its own.** The loops' measured falloff
+    /// above is the default; here a loop given the one-shots' gentler curve carries further.
+    @Test("The distance curves are a game's to set")
+    func curvesAreConfigurable() throws {
+        #expect(AudioEngine.Configuration().loopFalloff
+                == .init(referenceDistance: 2, maximumDistance: 200, rolloffFactor: 1))
+        #expect(AudioEngine.Configuration().oneShotFalloff
+                == .init(referenceDistance: 8, maximumDistance: 2000, rolloffFactor: 0.9))
+        #expect(AudioEngine.Configuration().voiceCount == 16)
+
+        func ratio(_ configuration: AudioEngine.Configuration) throws -> Float {
+            let audio = try engine(configuration)
+            let loop = try #require(audio.startLoop("noise", at: ahead(2)))
+            _ = try rms(audio, seconds: 0.1)
+            let near = try rms(audio, seconds: 0.5)
+            audio.moveLoop(loop, to: ahead(20))
+            _ = try rms(audio, seconds: 0.1)
+            return try rms(audio, seconds: 0.5) / near
+        }
+        var gentle = AudioEngine.Configuration()
+        gentle.loopFalloff = gentle.oneShotFalloff
+        let byDefault = try ratio(.init()), carried = try ratio(gentle)
+        #expect(carried > byDefault * 3, "the gentler curve did not carry: \(carried) against \(byDefault)")
+    }
+
+    @Test("A sound that cannot be loaded says why")
+    func loadFailuresThrow() throws {
+        let audio = try engine()
+        #expect(throws: AudioEngineError.soundNotFound("no-such-sound.wav")) {
+            try audio.load("no-such-sound", bundle: .module)
+        }
+        #expect(throws: AudioEngineError.noSamples("empty")) {
+            try audio.load("empty", samples: [], sampleRate: AudioLoopTests.rate)
+        }
     }
 }

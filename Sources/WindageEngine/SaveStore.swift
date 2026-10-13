@@ -36,32 +36,42 @@ public nonisolated struct SaveStore<Value: Codable & Sendable>: Sendable {
         self.name = name
     }
 
-    /// Where the file lives. Created on demand — asking for the URL does not write anything.
+    /// Where the file lives. **Only a path**: asking for it creates nothing — ``save(_:)`` makes the
+    /// folder when it first writes.
     public var url: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(container, isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("\(name).json")
+        folder.appendingPathComponent("\(name).json")
     }
 
-    /// What was saved, or `nil` if there is nothing or it cannot be read.
+    private var folder: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(container, isDirectory: true)
+    }
+
+    /// What was saved, or `nil` if nothing has been.
     ///
-    /// **Returns `nil` rather than throwing on a bad file, deliberately.** A save that will not
-    /// decode — written by an older build, or truncated — must not stop the game starting. Losing a
-    /// high score is a disappointment; refusing to launch is a bug report.
-    public func load() -> Value? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(Value.self, from: data)
+    /// **Throws for a file that is there and will not read or decode** — written by an older build, or
+    /// truncated — so a game can say so. A save that will not load must still not stop the game
+    /// starting: losing a high score is a disappointment, refusing to launch is a bug report. So the
+    /// usual call is `(try? store.load()) ?? fallback`, with a log of the error where it is worth one.
+    public func load() throws -> Value? {
+        let url = self.url
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(Value.self, from: data)
     }
 
     public func save(_ value: Value) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(value).write(to: url, options: .atomic)
+        let data = try encoder.encode(value)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 
-    /// Remove the file. Used by "reset progress", and by tests that must not leave one behind.
-    public func clear() {
-        try? FileManager.default.removeItem(at: url)
+    /// Remove the file, if there is one. Used by "reset progress", and by tests that must not leave one
+    /// behind. **Throws only when a file that is there cannot be removed.**
+    public func clear() throws {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
     }
 }

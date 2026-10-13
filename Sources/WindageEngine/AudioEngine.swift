@@ -6,6 +6,32 @@
 import AVFoundation
 import simd
 
+/// Why an ``AudioEngine`` could not be made, or a sound could not be loaded into one.
+public nonisolated enum AudioEngineError: Error, CustomStringConvertible, Sendable, Equatable {
+    /// No audio format could be made at this sample rate.
+    case unsupportedSampleRate(Double)
+    /// The engine could not be put into offline rendering, or could not start; the reason is
+    /// AVFoundation's.
+    case couldNotStart(reason: String)
+    /// No sound file by that name and extension in the bundle.
+    case soundNotFound(String)
+    /// The file is there and could not be read as audio.
+    case unreadableSound(String, reason: String)
+    /// Samples handed to ``AudioEngine/load(_:samples:sampleRate:)`` that make no sound: none at all,
+    /// or none a buffer could be made for.
+    case noSamples(String)
+
+    public var description: String {
+        switch self {
+        case .unsupportedSampleRate(let rate): "no audio format at \(rate) Hz"
+        case .couldNotStart(let reason): "the audio engine could not start — \(reason)"
+        case .soundNotFound(let name): "no sound file \(name)"
+        case .unreadableSound(let name, let reason): "sound \(name) could not be read — \(reason)"
+        case .noSamples(let name): "sound \(name) has no samples"
+        }
+    }
+}
+
 /// Positional one-shot audio.
 ///
 /// **Spatialized from the start, not stereo panning bolted on later.** A game about distance needs
@@ -18,11 +44,19 @@ import simd
 ///
 /// ### Two spatialisers, because one distance curve cannot serve both
 ///
-/// **The one-shots' curve was tuned for a shot heard across a range**: full volume out to 8 m, then
-/// 90% of the inverse law. Put a brazier's crackle through it and it is as loud at 8 m as at arm's
-/// length and still 43% at 20 m — two braziers fill a level with fire. Loops go through a second
+/// **The one-shots' default curve was tuned for a shot heard across a range**: full volume out to
+/// 8 m, then 90% of the inverse law. Put a brazier's crackle through it and it is as loud at 8 m as at
+/// arm's length and still 43% at 20 m — two braziers fill a level with fire. Loops go through a second
 /// spatializer with the physical inverse law from 2 m: half as loud at twice the distance, which is
-/// what a small, near sound does. Measured, not argued — see ``renderOffline(seconds:)``.
+/// what a small, near sound does. Measured, not argued — see ``renderOffline(seconds:)``. Both curves,
+/// and the number of one-shot voices, are a game's to set: ``Configuration``.
+///
+/// ### Lifecycle
+///
+/// An engine plays from the moment it is made. ``pause()`` holds everything — one-shots, loops and
+/// any delayed one-shot still waiting — and ``resume()`` carries on from where it was. ``stop()`` is
+/// **final**: it frees the output device, and an engine that has stopped plays nothing again. Make a
+/// new one.
 ///
 /// > **A landmine worth knowing before adding any AVFoundation callback here.** This type is
 /// > main-actor-isolated like everything else in the engine, and a closure written inside one of its
@@ -33,10 +67,50 @@ import simd
 /// > storage. Nothing here uses one today, which is the only reason this is a note and not a bug.
 public final class AudioEngine {
 
-    /// Voices that can overlap. Beyond this the oldest is reused, because a game that runs out of
-    /// voices silently drops the *newest* sound — which is always the one that just happened and
-    /// therefore the one that mattered.
-    public static let voiceCount = 16
+    /// How an engine spreads sound over distance, and how many one-shots it can play at once — set
+    /// when the engine is made. **The defaults are what every game has had so far.**
+    public struct Configuration: Equatable, Sendable {
+
+        /// One spatializer's distance curve: the inverse law, in meters.
+        public struct Falloff: Equatable, Sendable {
+            /// Full volume nearer than this.
+            public var referenceDistance: Float
+            /// No quieter beyond this.
+            public var maximumDistance: Float
+            /// 1 is the physical inverse law — half as loud at twice the reference distance; below 1
+            /// falls off more gently.
+            public var rolloffFactor: Float
+
+            public init(referenceDistance: Float, maximumDistance: Float, rolloffFactor: Float) {
+                self.referenceDistance = referenceDistance
+                self.maximumDistance = maximumDistance
+                self.rolloffFactor = rolloffFactor
+            }
+        }
+
+        /// One-shots that can overlap. Beyond this the oldest is reused, because a game that runs out of
+        /// voices silently drops the *newest* sound — which is always the one that just happened and
+        /// therefore the one that mattered.
+        public var voiceCount: Int
+        /// The one-shots' curve. The default — full volume to 8 m, 90% of the inverse law out to 2 km —
+        /// was tuned for a shot heard across a range.
+        public var oneShotFalloff: Falloff
+        /// The loops' curve. The default is the physical inverse law from 2 m, to 200 m — a small, near
+        /// sound.
+        public var loopFalloff: Falloff
+
+        public init(voiceCount: Int = 16,
+                    oneShotFalloff: Falloff = Falloff(referenceDistance: 8, maximumDistance: 2000,
+                                                      rolloffFactor: 0.9),
+                    loopFalloff: Falloff = Falloff(referenceDistance: 2, maximumDistance: 200,
+                                                   rolloffFactor: 1)) {
+            self.voiceCount = max(1, voiceCount)
+            self.oneShotFalloff = oneShotFalloff
+            self.loopFalloff = loopFalloff
+        }
+    }
+
+    public let configuration: Configuration
 
     private let engine = AVAudioEngine()
     private let environment = AVAudioEnvironmentNode()
@@ -50,9 +124,7 @@ public final class AudioEngine {
     private var idleLoopPlayers: [AVAudioPlayerNode] = []
     private var nextLoop = 0
     private let isOffline: Bool
-
-    /// Where a loop's inverse falloff starts, in meters: full volume nearer than this, half at twice it.
-    public static let loopReferenceDistance: Float = 2
+    private var hasStopped = false
 
     /// A loop that is playing. Hand it back to ``moveLoop(_:to:)`` and ``stopLoop(_:)``.
     public struct Loop: Hashable, Sendable {
@@ -60,43 +132,54 @@ public final class AudioEngine {
     }
 
     /// An engine that plays through the output device.
-    public convenience init?() {
-        self.init(offline: nil)
+    ///
+    /// - Throws: ``AudioEngineError`` when the device's format is unusable or the engine will not start
+    ///   — a machine with no output device, say. A game can run without sound; this says why it is.
+    public convenience init(configuration: Configuration = Configuration()) throws {
+        try self.init(offline: nil, configuration: configuration)
     }
 
     /// **An engine with no device at all**, whose mix is pulled with ``renderOffline(seconds:)`` —
     /// for measuring what a game sounds like without anyone listening: how loud a loop is at a
     /// distance, whether it is still going after a minute. `AVAudioEngine`'s manual rendering mode.
-    public convenience init?(offlineSampleRate sampleRate: Double) {
-        self.init(offline: sampleRate)
+    public convenience init(offlineSampleRate sampleRate: Double,
+                            configuration: Configuration = Configuration()) throws {
+        try self.init(offline: sampleRate, configuration: configuration)
     }
 
-    private init?(offline sampleRate: Double?) {
+    private init(offline sampleRate: Double?, configuration: Configuration) throws {
+        self.configuration = configuration
         isOffline = sampleRate != nil
         if let sampleRate {
             // Before anything is attached: the engine must be stopped, and its format is fixed here.
-            guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2),
-                  (try? engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)) != nil
-            else { return nil }
+            guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2) else {
+                throw AudioEngineError.unsupportedSampleRate(sampleRate)
+            }
+            do {
+                try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
+            } catch {
+                throw AudioEngineError.couldNotStart(reason: error.localizedDescription)
+            }
         }
         let rate = sampleRate ?? engine.outputNode.outputFormat(forBus: 0).sampleRate
-        guard let mono = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1) else { return nil }
+        guard let mono = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1) else {
+            throw AudioEngineError.unsupportedSampleRate(rate)
+        }
         monoFormat = mono
 
         engine.attach(environment)
         engine.connect(environment, to: engine.mainMixerNode, format: nil)
         engine.attach(nearEnvironment)
         engine.connect(nearEnvironment, to: engine.mainMixerNode, format: nil)
-        nearEnvironment.distanceAttenuationParameters.distanceAttenuationModel = .inverse
-        nearEnvironment.distanceAttenuationParameters.referenceDistance = AudioEngine.loopReferenceDistance
-        nearEnvironment.distanceAttenuationParameters.maximumDistance = 200
-        nearEnvironment.distanceAttenuationParameters.rolloffFactor = 1
 
         // Distance attenuation in metres, matching the world's units.
-        environment.distanceAttenuationParameters.distanceAttenuationModel = .inverse
-        environment.distanceAttenuationParameters.referenceDistance = 8
-        environment.distanceAttenuationParameters.maximumDistance = 2000
-        environment.distanceAttenuationParameters.rolloffFactor = 0.9
+        for (node, falloff) in [(environment, configuration.oneShotFalloff),
+                                (nearEnvironment, configuration.loopFalloff)] {
+            node.distanceAttenuationParameters.distanceAttenuationModel = .inverse
+            node.distanceAttenuationParameters.referenceDistance = falloff.referenceDistance
+            node.distanceAttenuationParameters.maximumDistance = falloff.maximumDistance
+            node.distanceAttenuationParameters.rolloffFactor = falloff.rolloffFactor
+        }
         // **Each voice renders `.auto` — HRTF on stereo output — and that is measured, not assumed.**
         // This line used to set `.sphericalHead` on the *environment* node, with a note that spherical
         // head "keeps the directional cue a game reads at a fraction of the cost". Neither half held:
@@ -108,7 +191,7 @@ public final class AudioEngine {
 
         // Mono voices: a spatialiser needs a point source, and a stereo file already has a position
         // baked into it that would fight the one being applied.
-        for _ in 0..<AudioEngine.voiceCount {
+        for _ in 0..<configuration.voiceCount {
             let player = AVAudioPlayerNode()
             engine.attach(player)
             engine.connect(player, to: environment, format: mono)
@@ -120,8 +203,7 @@ public final class AudioEngine {
         do {
             try engine.start()
         } catch {
-            print("WindageEngine: audio engine failed to start: \(error)")
-            return nil
+            throw AudioEngineError.couldNotStart(reason: error.localizedDescription)
         }
         players.forEach { $0.play() }
     }
@@ -136,32 +218,46 @@ public final class AudioEngine {
     /// holds no resources, so every load failed and printed. There is no default that is right for
     /// both, and a default that is silently wrong for one of them is worse than making every caller
     /// say where its sounds are. An app passes `.main`; a package target passes `.module`.
-    @discardableResult
-    public func load(_ name: String, withExtension ext: String = "wav", bundle: Bundle) -> Bool {
-        guard buffers[name] == nil else { return true }
-        guard let url = bundle.url(forResource: name, withExtension: ext),
-              let file = try? AVAudioFile(forReading: url),
-              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
-                                            frameCapacity: AVAudioFrameCount(file.length)),
-              (try? file.read(into: buffer)) != nil else {
-            print("WindageEngine: could not load sound \(name).\(ext)")
-            return false
+    ///
+    /// Loading a name already loaded does nothing.
+    ///
+    /// - Throws: ``AudioEngineError/soundNotFound(_:)`` or ``AudioEngineError/unreadableSound(_:reason:)``.
+    public func load(_ name: String, withExtension ext: String = "wav", bundle: Bundle) throws {
+        guard buffers[name] == nil else { return }
+        guard let url = bundle.url(forResource: name, withExtension: ext) else {
+            throw AudioEngineError.soundNotFound("\(name).\(ext)")
         }
-        buffers[name] = buffer
-        return true
+        do {
+            let file = try AVAudioFile(forReading: url)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
+                                                frameCapacity: AVAudioFrameCount(file.length)) else {
+                throw AudioEngineError.unreadableSound("\(name).\(ext)", reason: "no buffer for its format")
+            }
+            try file.read(into: buffer)
+            buffers[name] = buffer
+        } catch let error as AudioEngineError {
+            throw error
+        } catch {
+            throw AudioEngineError.unreadableSound("\(name).\(ext)", reason: error.localizedDescription)
+        }
     }
 
     /// Loads a sound from samples already in memory — mono, at `sampleRate` — for a sound a game
-    /// makes rather than ships, and for a test that wants a signal it knows exactly.
-    @discardableResult
-    public func load(_ name: String, samples: [Float], sampleRate: Double) -> Bool {
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
-              let data = buffer.floatChannelData else { return false }
+    /// makes rather than ships, and for a test that wants a signal it knows exactly. Replaces a sound
+    /// already loaded under the name.
+    ///
+    /// - Throws: ``AudioEngineError/noSamples(_:)`` for an empty array,
+    ///   ``AudioEngineError/unsupportedSampleRate(_:)`` for a rate no format can have.
+    public func load(_ name: String, samples: [Float], sampleRate: Double) throws {
+        guard !samples.isEmpty else { throw AudioEngineError.noSamples(name) }
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            throw AudioEngineError.unsupportedSampleRate(sampleRate)
+        }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+              let data = buffer.floatChannelData else { throw AudioEngineError.noSamples(name) }
         buffer.frameLength = AVAudioFrameCount(samples.count)
         samples.withUnsafeBufferPointer { data[0].update(from: $0.baseAddress!, count: samples.count) }
         buffers[name] = buffer
-        return true
     }
 
     /// Where the ears are. Call once per frame.
@@ -184,7 +280,9 @@ public final class AudioEngine {
     /// **Each loop starts somewhere different in its sound**, so two braziers playing the same
     /// crackle are not a single crackle in two places — which is what starting both at sample zero
     /// sounds like. Through the near spatializer; see the type's notes.
-    @discardableResult
+    ///
+    /// **Keep what it returns**: a loop nobody holds cannot be stopped, short of ``stopAllLoops()``.
+    /// `nil` when no sound of that name is loaded.
     public func startLoop(_ name: String, at position: SIMD3<Float>, volume: Float = 1) -> Loop? {
         guard let buffer = buffers[name], buffer.frameLength > 0 else { return nil }
         let player = idleLoopPlayers.popLast() ?? makeLoopPlayer()
@@ -250,12 +348,12 @@ public final class AudioEngine {
     /// **What makes a sound checkable without ears.** Every level in this type — the loops' falloff,
     /// a loop still going after its buffer has come round — was measured through this before it was
     /// described.
-    public func renderOffline(seconds: Double) -> [[Float]]? {
+    public func renderOffline(seconds: Float) -> [[Float]]? {
         guard isOffline else { return nil }
         let format = engine.manualRenderingFormat
         guard let block = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: engine.manualRenderingMaximumFrameCount)
         else { return nil }
-        let total = AVAudioFrameCount(seconds * format.sampleRate)
+        let total = AVAudioFrameCount(Double(seconds) * format.sampleRate)
         var channels = [[Float]](repeating: [], count: Int(format.channelCount))
         var done: AVAudioFrameCount = 0
         while done < total {
@@ -276,6 +374,10 @@ public final class AudioEngine {
     ///   343 m/s, so an impact 800 m away is heard nearly two and a half seconds after it happens.
     ///   In most games that is a detail; in one built around long shots it is the feedback loop
     ///   itself, and the wait is the point.
+    ///
+    /// **The wait is counted on the audio clock**, not the main thread's: it holds while the engine is
+    /// paused, is exact to the sample in an offline render, and a sound still waiting is cancelled by
+    /// ``stop()`` — none of which held while it was a `DispatchQueue` timer.
     public func play(_ name: String, at position: SIMD3<Float>, volume: Float = 1, delay: Float = 0) {
         guard let buffer = buffers[name] else { return }
 
@@ -284,15 +386,23 @@ public final class AudioEngine {
 
         player.position = AVAudio3DPoint(x: position.x, y: position.y, z: position.z)
         player.volume = volume
+        player.scheduleBuffer(buffer, at: startTime(on: player, after: delay), options: .interrupts)
+    }
 
-        let start = {
-            player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+    /// When a voice should start a sound `delay` seconds from now, on its own timeline; `nil` — as soon
+    /// as it can — for no delay.
+    ///
+    /// A voice that has not rendered yet has no "now", and its timeline starts at zero when it does.
+    private func startTime(on player: AVAudioPlayerNode, after delay: Float) -> AVAudioTime? {
+        guard delay > 0 else { return nil }
+        var now: AVAudioFramePosition = 0
+        var rate = monoFormat.sampleRate
+        if let nodeTime = player.lastRenderTime, nodeTime.isSampleTimeValid,
+           let playerTime = player.playerTime(forNodeTime: nodeTime) {
+            now = playerTime.sampleTime
+            rate = playerTime.sampleRate
         }
-        if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(delay), execute: start)
-        } else {
-            start()
-        }
+        return AVAudioTime(sampleTime: now + AVAudioFramePosition((Double(delay) * rate).rounded()), atRate: rate)
     }
 
     /// Plays without a position — for anything that happens *to the player* rather than in the
@@ -308,14 +418,14 @@ public final class AudioEngine {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts)
     }
 
-    /// The loops, 0…1 — a brazier's crackle, a generator's hum — and **nothing else**: the player's
-    /// ambience setting.
+    /// The loops, 0…1 — a brazier's crackle, a generator's hum — and **nothing else**: what a game
+    /// offers a player as its ambience setting.
     ///
     /// **On the loops' own spatializer**, which is why it can be separate at all: every loop and no
     /// one-shot passes through it. A player who wants the fire quieter should not have to turn down
     /// their own footsteps with it, which is what one volume made them do. ``masterVolume`` still
     /// scales everything, this included.
-    public var ambienceVolume: Float {
+    public var loopVolume: Float {
         get { nearEnvironment.outputVolume }
         set { nearEnvironment.outputVolume = min(max(newValue, 0), 1) }
     }
@@ -329,7 +439,28 @@ public final class AudioEngine {
         set { engine.mainMixerNode.outputVolume = min(max(newValue, 0), 1) }
     }
 
+    /// Holds everything — one-shots, loops and delayed one-shots still waiting — until ``resume()``.
+    public func pause() {
+        engine.pause()
+    }
+
+    /// Carries on after ``pause()``. Does nothing after ``stop()``, which is final.
+    ///
+    /// - Throws: ``AudioEngineError/couldNotStart(reason:)`` — the output device went away, say.
+    public func resume() throws {
+        guard !hasStopped, !engine.isRunning else { return }
+        do {
+            try engine.start()
+        } catch {
+            throw AudioEngineError.couldNotStart(reason: error.localizedDescription)
+        }
+    }
+
+    /// **Final**: stops every sound, cancels any one-shot still waiting on its delay, and frees the
+    /// output device. A stopped engine plays nothing again — make a new one. To hold sound for a while,
+    /// ``pause()``.
     public func stop() {
+        hasStopped = true
         stopAllLoops()
         players.forEach { $0.stop() }
         engine.stop()

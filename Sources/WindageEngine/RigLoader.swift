@@ -7,17 +7,22 @@ import Foundation
 import ModelIO
 import simd
 
-public enum RigLoaderError: Error, CustomStringConvertible, Sendable {
+public nonisolated enum RigLoaderError: Error, CustomStringConvertible, Sendable, Equatable {
+    /// No file by that name in the bundle, or none at that URL.
     case assetNotFound(String)
+    /// The file was read and holds no skeleton.
     case noSkeleton(String)
     case conflictingGeometryBindTransforms(String)
+    /// A clip in the file has keys of the wrong shape — see ``AnimationClipError``.
+    case malformedClip(String, clip: String, AnimationClipError)
 
     public var description: String {
         switch self {
-        case .assetNotFound(let name): "No asset named \(name) in the bundle"
+        case .assetNotFound(let name): "no rig file \(name)"
         case .noSkeleton(let name): "\(name) loaded but contains no skeleton — it is a statue"
         case .conflictingGeometryBindTransforms(let name):
             "\(name) binds several meshes to one skeleton with different geometry bind transforms"
+        case .malformedClip(let name, let clip, let error): "\(name): clip '\(clip)' is malformed — \(error)"
         }
     }
 }
@@ -62,7 +67,7 @@ public nonisolated struct Rig: Sendable {
     /// **Empty is what you want; everything is what a clip for a different rig looks like.** Worth
     /// checking once at load — a clip that binds to nothing is indistinguishable at runtime from a
     /// character standing still.
-    public func jointsNotDrivenBy(_ clip: AnimationClip) -> [String] {
+    public func joints(notDrivenBy clip: AnimationClip) -> [String] {
         AnimationBinding(clip: clip, skeleton: skeleton).unboundJoints
     }
 }
@@ -97,50 +102,54 @@ public nonisolated struct Rig: Sendable {
 ///    the bind component finds no joints and concludes the same thing.
 public nonisolated enum RigLoader {
 
-    public static func load(named name: String,
-                            withExtension fileExtension: String = "usdc",
-                            bundle: Bundle = .main) throws -> Rig {
-        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
-            throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
+    /// Something worth knowing about a load that still produced a rig — a clip file that added
+    /// nothing, or a clip that was dropped. Handed to the `reportingTo` closure of the loads that take
+    /// clip files.
+    public enum Warning: Sendable, Equatable, CustomStringConvertible {
+        /// The clip file was read and holds no animation.
+        case noAnimation(file: String)
+        /// The clip drives none of the rig's joints, so it was dropped — see ``Rig/joints(notDrivenBy:)``.
+        case clipDrivesNoJoints(file: String, clip: String)
+        /// The clip file could not be loaded; the rest of the rig was.
+        case clipFileFailed(file: String, error: RigLoaderError)
+
+        public var description: String {
+            switch self {
+            case .noAnimation(let file): "\(file): no animation in it"
+            case .clipDrivesNoJoints(let file, let clip):
+                "\(file): clip '\(clip)' drives none of this rig's joints — dropped"
+            case .clipFileFailed(let file, let error): "\(file): \(error)"
+            }
         }
-        return try load(url: url)
     }
 
-    /// The same, from a file anywhere on disk — see ``MeshLoader/load(url:device:vertexDescriptor:semantics:)``
+    /// **`bundle` and the extension have no defaults**, like ``MeshLoader``'s and ``AudioEngine``'s:
+    /// `.main` is right for an app and wrong for a SwiftPM target, whose resources are in `.module`, and
+    /// the extension is the format.
+    public static func load(named name: String,
+                            withExtension fileExtension: String,
+                            bundle: Bundle) throws -> Rig {
+        try load(url: url(of: name, withExtension: fileExtension, in: bundle))
+    }
+
+    /// The same, from a file anywhere on disk — see ``MeshLoader/load(url:device:vertexDescriptor:semantics:reportingTo:)``
     /// for why a bundle is not enough.
     public static func load(url: URL) throws -> Rig {
-        try rig(from: MDLAsset(url: url), named: url.lastPathComponent)
+        try rig(from: openAsset(at: url), named: url.lastPathComponent)
     }
 
     /// A rig from one file and its animations from others, all by URL.
     ///
     /// **A clip file's single animation is renamed to the file's own stem**, so
     /// `…/RobotPlayer_Walk.usdc` becomes `RobotPlayer_Walk` — not
-    /// `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`, which is what the exporter called it.
+    /// `root_A_MOD_BL_Walk_F_Femn_Animation_Base_Layer`, which is what the exporter called it. The rest
+    /// is as for the bundle form below.
     public static func load(url: URL,
                             clipURLs: [URL],
-                            reportingTo report: ((String) -> Void)? = nil) throws -> Rig {
-        var rig = try load(url: url)
-        for clipURL in clipURLs {
-            let stem = clipURL.deletingPathExtension().lastPathComponent
-            let loaded = clips(url: clipURL)
-            // **An unreadable file comes back empty rather than throwing.** `MDLAsset(url:)` logs and
-            // returns an empty asset, so a missing clip is a file that contributed nothing — worth
-            // saying out loud, since silence here is a character that simply never plays that move.
-            guard !loaded.isEmpty else {
-                report?("\(stem): no animation in \(clipURL.lastPathComponent)")
-                continue
-            }
-            let named = loaded.count == 1 ? [loaded[0].renamed(to: stem)] : loaded
-            let usable = named.filter { clip in
-                let unbound = rig.jointsNotDrivenBy(clip)
-                guard unbound.count == rig.skeleton.jointCount else { return true }
-                report?("\(stem): clip '\(clip.name)' drives none of this rig's joints — dropped")
-                return false
-            }
-            rig = rig.adding(usable)
-        }
-        return rig
+                            reportingTo report: (Warning) -> Void = { _ in }) throws -> Rig {
+        let rig = try load(url: url)
+        return adding(clipURLs.map { (name: $0.deletingPathExtension().lastPathComponent, url: $0) },
+                      to: rig, reportingTo: report)
     }
 
     /// Loads a rig from one file and its animations from others.
@@ -151,29 +160,55 @@ public nonisolated enum RigLoader {
     ///   wants to ask for `walk`. A file holding several leaves their names alone, since there is
     ///   then no single name the file could mean.
     ///
-    /// Clips that drive none of the rig's joints are **dropped and reported** rather than kept: a
-    /// clip bound to nothing is indistinguishable at runtime from a character standing still, and
-    /// finding that out at load is the difference between a one-line fix and an afternoon.
+    /// **A clip file that cannot be read, holds no animation, or holds a clip that drives none of the
+    /// rig's joints is reported and skipped**, and the rig loads without it: a clip bound to nothing is
+    /// indistinguishable at runtime from a character standing still, and finding that out at load is the
+    /// difference between a one-line fix and an afternoon. Only the base file failing throws.
     public static func load(named name: String,
-                            withExtension fileExtension: String = "usdc",
+                            withExtension fileExtension: String,
                             clipFiles: [String],
-                            bundle: Bundle = .main,
-                            reportingTo report: ((String) -> Void)? = nil) throws -> Rig {
-        var rig = try load(named: name, withExtension: fileExtension, bundle: bundle)
+                            bundle: Bundle,
+                            reportingTo report: (Warning) -> Void = { _ in }) throws -> Rig {
+        let rig = try load(named: name, withExtension: fileExtension, bundle: bundle)
+        var files: [(name: String, url: URL)] = []
         for file in clipFiles {
-            do {
-                let loaded = try clips(named: file, withExtension: fileExtension, bundle: bundle)
-                let named = loaded.count == 1 ? [loaded[0].renamed(to: file)] : loaded
-                let usable = named.filter { clip in
-                    let unbound = rig.jointsNotDrivenBy(clip)
-                    guard unbound.count == rig.skeleton.jointCount else { return true }
-                    report?("\(file): clip '\(clip.name)' drives none of this rig's joints — dropped")
-                    return false
-                }
-                rig = rig.adding(usable)
-            } catch {
-                report?("\(file): \(error)")
+            guard let url = bundle.url(forResource: file, withExtension: fileExtension) else {
+                report(.clipFileFailed(file: file, error: .assetNotFound("\(file).\(fileExtension)")))
+                continue
             }
+            files.append((file, url))
+        }
+        return adding(files, to: rig, reportingTo: report)
+    }
+
+    /// The clips from each file added to `rig` — the part both clip-file loads share, so they report
+    /// the same things the same way.
+    private static func adding(_ files: [(name: String, url: URL)],
+                               to rig: Rig,
+                               reportingTo report: (Warning) -> Void) -> Rig {
+        var rig = rig
+        for file in files {
+            let loaded: [AnimationClip]
+            do {
+                loaded = try clips(url: file.url)
+            } catch let error as RigLoaderError {
+                report(.clipFileFailed(file: file.name, error: error))
+                continue
+            } catch {
+                report(.clipFileFailed(file: file.name, error: .assetNotFound(file.url.path)))
+                continue
+            }
+            guard !loaded.isEmpty else {
+                report(.noAnimation(file: file.name))
+                continue
+            }
+            let named = loaded.count == 1 ? [loaded[0].renamed(to: file.name)] : loaded
+            let usable = named.filter { clip in
+                guard rig.joints(notDrivenBy: clip).count == rig.skeleton.jointCount else { return true }
+                report(.clipDrivesNoJoints(file: file.name, clip: clip.name))
+                return false
+            }
+            rig = rig.adding(usable)
         }
         return rig
     }
@@ -198,24 +233,38 @@ public nonisolated enum RigLoader {
     /// > asset's animations alone. What this avoids is the expensive half — no vertex descriptor and
     /// > no buffer allocator, so nothing is laid out, converted or uploaded to a GPU.
     public static func clips(named name: String,
-                             withExtension fileExtension: String = "usdc",
-                             bundle: Bundle = .main) throws -> [AnimationClip] {
-        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
-            throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
-        }
-        return clips(url: url)
+                             withExtension fileExtension: String,
+                             bundle: Bundle) throws -> [AnimationClip] {
+        try clips(url: url(of: name, withExtension: fileExtension, in: bundle))
     }
 
     /// The same, from a file anywhere on disk.
-    public static func clips(url: URL) -> [AnimationClip] {
-        clips(in: MDLAsset(url: url))
+    public static func clips(url: URL) throws -> [AnimationClip] {
+        try clips(in: openAsset(at: url), named: url.lastPathComponent)
+    }
+
+    private static func url(of name: String, withExtension fileExtension: String, in bundle: Bundle) throws -> URL {
+        guard let url = bundle.url(forResource: name, withExtension: fileExtension) else {
+            throw RigLoaderError.assetNotFound("\(name).\(fileExtension)")
+        }
+        return url
+    }
+
+    /// **A missing file is said here, rather than as "no skeleton" or no clips.** Model I/O opens a
+    /// file that is not there as an empty asset, which is indistinguishable from a file with nothing in
+    /// it — the same reason ``MeshLoader`` checks.
+    private static func openAsset(at url: URL) throws -> MDLAsset {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw RigLoaderError.assetNotFound(url.path)
+        }
+        return MDLAsset(url: url)
     }
 
     /// Pulls the rig out of an already-open asset.
     ///
-    /// Exposed so a caller loading meshes from the same file does not open it twice — the mesh path
-    /// needs a vertex descriptor and a buffer allocator this one has no use for.
-    public static func rig(from asset: MDLAsset, named name: String = "asset") throws -> Rig {
+    /// Internal: Model I/O's types stay out of the engine's public API, and nothing outside it opened
+    /// an asset to hand one in.
+    static func rig(from asset: MDLAsset, named name: String = "asset") throws -> Rig {
         guard let mdlSkeleton = firstSkeleton(in: asset) else {
             throw RigLoaderError.noSkeleton(name)
         }
@@ -237,7 +286,7 @@ public nonisolated enum RigLoader {
 
         let skeleton = try Skeleton(mdlSkeleton, geometryBindTransform: geometryBind ?? matrix_identity_float4x4)
         return Rig(skeleton: skeleton,
-                   clips: clips(in: asset),
+                   clips: try clips(in: asset, named: name),
                    nodeTransform: nodeTransform(of: mdlSkeleton, in: asset))
     }
 
@@ -299,11 +348,15 @@ public nonisolated enum RigLoader {
     /// **From `asset.animations`, which is not part of the object hierarchy.** Named by the last
     /// component of the animation's path, because `/Root/Walk` is where the clip lives and `Walk` is
     /// what a game asks for.
-    static func clips(in asset: MDLAsset) -> [AnimationClip] {
+    static func clips(in asset: MDLAsset, named name: String) throws -> [AnimationClip] {
         guard let container = asset.animations as? MDLObjectContainer else { return [] }
-        return container.objects.compactMap { object in
+        return try container.objects.compactMap { object in
             guard let packed = object as? MDLPackedJointAnimation else { return nil }
-            return AnimationClip(packed)
+            do {
+                return try AnimationClip(packed)
+            } catch let error as AnimationClipError {
+                throw RigLoaderError.malformedClip(name, clip: packed.name, error)
+            }
         }
     }
 }
@@ -322,7 +375,7 @@ nonisolated extension Skeleton {
     /// - Parameter geometryBindTransform: applied to a vertex *before* skinning, so it multiplies in
     ///   on the right of each inverse bind matrix. Identity in every export measured so far, which
     ///   is exactly why it is folded in here rather than left for a game to remember.
-    public init(_ skeleton: MDLSkeleton,
+    init(_ skeleton: MDLSkeleton,
                 geometryBindTransform: simd_float4x4 = matrix_identity_float4x4) throws {
         let rest = skeleton.jointRestTransforms.float4x4Array
         let bind = skeleton.jointBindTransforms.float4x4Array
@@ -344,7 +397,7 @@ nonisolated extension AnimationClip {
     /// **Times arrive in seconds.** Model I/O converts them from the file's time codes using its
     /// `timeCodesPerSecond`, so a clip authored over 24 frames at 24 fps reports a duration of 1 —
     /// nothing here has to know the file's frame rate.
-    public init(_ packed: MDLPackedJointAnimation) {
+    init(_ packed: MDLPackedJointAnimation) throws {
         let joints = packed.jointPaths
         let name = packed.name.split(separator: "/").last.map(String.init) ?? packed.name
 
@@ -352,20 +405,20 @@ nonisolated extension AnimationClip {
         let rotationTimes = packed.rotations.times.map(Float.init)
         let scaleTimes = packed.scales.times.map(Float.init)
 
-        self.init(
+        try self.init(
             name: name,
             jointPaths: joints,
-            translation: JointTrack(times: translationTimes,
+            translation: try JointTrack(times: translationTimes,
                                     values: translationTimes.flatMap {
                                         packed.translations.float3Array(atTime: Double($0))
                                     },
                                     jointCount: joints.count),
-            rotation: JointTrack(times: rotationTimes,
+            rotation: try JointTrack(times: rotationTimes,
                                  values: rotationTimes.flatMap {
                                      packed.rotations.floatQuaternionArray(atTime: Double($0))
                                  },
                                  jointCount: joints.count),
-            scale: JointTrack(times: scaleTimes,
+            scale: try JointTrack(times: scaleTimes,
                               values: scaleTimes.flatMap {
                                   packed.scales.float3Array(atTime: Double($0))
                               },

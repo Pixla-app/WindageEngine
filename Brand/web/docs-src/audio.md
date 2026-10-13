@@ -8,20 +8,22 @@ description: AudioEngine plays positional one-shots and looping sounds tied to a
 
 Every sound is spatialized: you give the listener each frame and a world position for each sound. The engine plays one-shots and loops tied to a place. It has **no music, no buses and no mixing groups**. Those come when a game needs them.
 
-Sixteen one-shots can overlap (`AudioEngine.voiceCount`). Beyond that the oldest voice is reused, because the newest sound is the one that just happened.
+Sixteen one-shots can overlap by default (`AudioEngine.Configuration.voiceCount`). Beyond that the oldest voice is reused, because the newest sound is the one that just happened.
 
 ## Setting it up {#setup}
 
 ```swift
-// your game: nil when there is no output device, and the game runs quiet
-if let audio = AudioEngine() {
-    for sound in ["pickup", "crackle", "step_stone_0", "land_stone"] where !audio.load(sound, bundle: .module) {
-        print("no sound named \(sound)")
-    }
+// your game: with no output device, there is no engine, and the game runs quiet
+let audio: AudioEngine?
+do { audio = try AudioEngine() } catch { audio = nil; print("no audio — \(error)") }
+for sound in ["pickup", "crackle", "step_stone_0", "land_stone"] {
+    do { try audio?.load(sound, bundle: .module) } catch { print(error) }   // "no sound file pickup.wav"
 }
 ```
 
-`load(_:withExtension:bundle:)` decodes a sound and keeps it in memory, with `wav` as the default extension. **`bundle` has no default on purpose.** In an app bundle the sounds are in `.main`, while in a SwiftPM executable `.main` holds nothing and the sounds are in `.module`. `load(_:samples:sampleRate:)` loads mono samples your game generates.
+`AudioEngine()` throws an `AudioEngineError` saying why it could not start. `load(_:withExtension:bundle:)` decodes a sound and keeps it in memory, with `wav` as the default extension, and throws `.soundNotFound` or `.unreadableSound`. **`bundle` has no default on purpose.** In an app bundle the sounds are in `.main`, while in a SwiftPM executable `.main` holds nothing and the sounds are in `.module`. `load(_:samples:sampleRate:)` loads mono samples your game generates.
+
+`AudioEngine(configuration:)` takes the voice count and both spatializers' distance curves (`Configuration.Falloff`: reference distance, maximum distance, rolloff). The defaults are the curves described below.
 
 Move the listener once a frame:
 
@@ -38,7 +40,7 @@ audio.play("impact", at: target, delay: distance / 343)   // sound takes time to
 audio.play("win")                                         // not positioned
 ```
 
-`play(_:at:volume:delay:)` plays a sound at a world position. `delay` is in seconds. At about 343 m/s, an impact 800 m away is heard nearly two and a half seconds after it happens. `play(_:volume:)` plays without a position, for sounds that happen *to* the player.
+`play(_:at:volume:delay:)` plays a sound at a world position. `delay` is in seconds. At about 343 m/s, an impact 800 m away is heard nearly two and a half seconds after it happens. The delay is counted on the audio clock, so it holds while the engine is paused and `stop()` cancels a sound still waiting. `play(_:volume:)` plays without a position, for sounds that happen *to* the player.
 
 ## Loops that belong to a place {#loops}
 
@@ -49,9 +51,9 @@ if let loop = audio.startLoop("crackle", at: position, volume: 0.8) {
 }
 ```
 
-`startLoop(_:at:volume:)` returns an `AudioEngine.Loop` handle, and `stopAllLoops()` and `loopCount` cover the rest. Each loop starts at a different point in its sound, so two braziers playing the same crackle don't sound like one crackle in two places.
+`startLoop(_:at:volume:)` returns an `AudioEngine.Loop` handle — keep it, since a loop nobody holds can only be stopped by `stopAllLoops()` — and `loopCount` covers the rest. Each loop starts at a different point in its sound, so two braziers playing the same crackle don't sound like one crackle in two places.
 
-**Loops get their own spatializer with a different falloff.** One-shots are tuned for a sound heard across a range: full volume out to 8 m, then 90% of the inverse law. Through that curve, a brazier sounds as loud at 8 m as it does up close, and two of them fill a level with fire. Loops use the physical inverse law from `AudioEngine.loopReferenceDistance` (2 m) and measured 1 : 0.250 : 0.100 at 2, 8 and 20 m.
+**Loops get their own spatializer with a different falloff.** One-shots are tuned for a sound heard across a range: full volume out to 8 m, then 90% of the inverse law. Through that curve, a brazier sounds as loud at 8 m as it does up close, and two of them fill a level with fire. Loops use the physical inverse law from 2 m (`Configuration.loopFalloff`) and measured 1 : 0.250 : 0.100 at 2, 8 and 20 m.
 
 A placement can carry a sound in its own space, like its lamp. `Level.carriedSounds(on:)` gives each one's world position, so a brazier moved in the editor takes its crackle with it. When your level changes, **reconcile the loops instead of restarting them**. The sample matches loops by name and position first, and only then by placement index, because copying a placement renumbers every placement after it.
 
@@ -89,7 +91,11 @@ A few details are worth knowing:
 
 ## Volume {#volume}
 
-`masterVolume` scales everything. `ambienceVolume` scales only the loops, so a player who finds a fire too loud doesn't lose their own footsteps turning it down. `PlayerSettings.ambienceVolume` is the matching player setting. Measured: half ambience lowers a loop by 6.02 dB and a one-shot by 0.0.
+`masterVolume` scales everything. `loopVolume` scales only the loops, so a player who finds a fire too loud doesn't lose their own footsteps turning it down. `PlayerSettings.ambienceVolume` is the matching player setting. Measured: half ambience lowers a loop by 6.02 dB and a one-shot by 0.0.
+
+## Pausing and stopping {#lifecycle}
+
+`pause()` holds everything — one-shots, loops and delayed one-shots still waiting — and `resume()` carries on. `stop()` is final: it frees the output device, and a stopped engine plays nothing again.
 
 ## Measuring without listening {#offline}
 

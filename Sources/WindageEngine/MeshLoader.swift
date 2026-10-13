@@ -296,6 +296,6 @@ public nonisolated struct SceneObject: @unchecked Sendable {
     /// centimeters under a scaled parent.
     public init(loaded: LoadedMesh, transform: simd_float4x4) {
         self.mesh = loaded.mesh
-        self.volume = Volume(local: loaded.bounds, transform: transform * loaded.nodeTransform)
+        self.volume = Volume(localBounds: loaded.bounds, transform: transform * loaded.nodeTransform)
     }
 }

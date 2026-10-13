@@ -24,16 +24,16 @@ import simd
 ///
 /// > The extraction rule was met before this moved in: it arrived as working, tested code, with the
 /// > duplication it removes already visible in a second consumer.
-public nonisolated struct Volume {
+public nonisolated struct Volume: Equatable, Sendable {
 
     /// The extent in model space — the thing's own size, before it is placed anywhere.
-    public let local: BoundingBox
+    public let localBounds: BoundingBox
 
     /// Where it is now. For anything on a deck this is recomputed as the deck moves.
     public var transform: simd_float4x4
 
-    public init(local: BoundingBox, transform: simd_float4x4 = matrix_identity_float4x4) {
-        self.local = local
+    public init(localBounds: BoundingBox, transform: simd_float4x4 = matrix_identity_float4x4) {
+        self.localBounds = localBounds
         self.transform = transform
     }
 
@@ -43,7 +43,7 @@ public nonisolated struct Volume {
     /// store its world bounds at init, which was correct only because its transform never changed —
     /// the moment something moves, a stored box is a box where the thing used to be, and a round
     /// passes through a crate that is visibly in the way.
-    public var worldBounds: BoundingBox { local.transformed(by: transform) }
+    public var worldBounds: BoundingBox { localBounds.transformed(by: transform) }
 
     /// The first volume a shot's step passes through, and how far along it.
     ///

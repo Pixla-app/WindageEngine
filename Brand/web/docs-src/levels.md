@@ -68,10 +68,10 @@ Turn a level into world positions against your game's ground:
 
 ```swift
 // your game: the ground is the plane y = 0
-let ground = Level.Ground(heightAt: { _, _ in 0 })
+let ground = Level.Ground(height: { _, _ in 0 })   // ground.height(atX:z:) asks it
 
 let lights = level.resolvedLights(on: ground)     // free-standing first, then carried
-let sounds = level.carriedSounds(on: ground)      // (placement, name, position, volume)
+let sounds = level.carriedSounds(on: ground)      // each a CarriedSoundInWorld: placement, name, position, volume
 let matrix = level.transform(of: level.placements[0], on: ground)
 ```
 
@@ -83,7 +83,7 @@ let matrix = level.transform(of: level.placements[0], on: ground)
 let level = try Level.load(named: "ruins", bundle: .module)
 ```
 
-`Level.load(named:extension:bundle:)` reads **from a bundle, never from an arbitrary path**, so the engine runs the same way sandboxed or not. `Level.decode(from:)` reads data you already have. Both throw `Level.LoadError.unsupportedVersion` for a file written by a newer format, so a newer file can't load with pieces silently missing. `encoded()` writes sorted, pretty-printed JSON, so a save that changes nothing produces no diff.
+`Level.load(named:withExtension:bundle:)` reads **from a bundle, never from an arbitrary path**, so the engine runs the same way sandboxed or not. `Level.decode(from:)` reads data you already have. Every failure is a `LevelError` — `.notFound`, `.unreadable`, `.malformed`, or `.unsupportedVersion` for a file written by a newer format, so a newer file can't load with pieces silently missing. `encoded()` writes sorted, pretty-printed JSON, so a save that changes nothing produces no diff.
 
 A bundle is read-only, so the sample saves edits to its own folder in Application Support. From then on, that copy **shadows** the shipped file. The sample prints which file it loaded, and **⌘⌫** throws the copy away. Do the same in your game, or someone will edit the shipped file and see nothing change.
 
@@ -92,11 +92,11 @@ A bundle is read-only, so the sample saves edits to its own folder in Applicatio
 `LevelEditor` wraps a `Level` and owns everything an edit means. Your game only turns keys and clicks into its calls and draws the result:
 
 ```swift
-var editor = LevelEditor(level: level)
+var editor = LevelEditor(level: level)                 // or level:configuration: for your own steps
 
 editor.select(index)                                   // from your own picking
-editor.move(by: SIMD3(LevelEditor.nudge, 0, 0))        // 0.5 m
-editor.rotate(by: LevelEditor.turn)                    // 15°
+editor.move(by: SIMD3(editor.configuration.nudge, 0, 0))   // 0.5 m
+editor.rotate(by: editor.configuration.turn)           // 15°
 editor.scale(by: 1.25)                                 // clamped to 0.05…100
 editor.duplicate()
 editor.delete()
@@ -104,10 +104,13 @@ editor.undo()
 try editor.save(to: url)                               // clears isDirty
 ```
 
-- **Lamps:** `setLight(_:)` gives the selected placement a lamp, replaces it, or removes it with `nil`. `raiseLight(by:)` moves it in meters of the world, whatever the placement's scale. `brightenLight(by:)` works in ratios, and `LevelEditor.lampBrighten` is a third of a stop.
-- **Adding:** `add(_:at:yaw:)` drops another of one of `level.kinds` at a ground point, bringing its height, scale, tags, surface and lamp. `add(mesh:at:tags:light:)` knows only the mesh.
-- **Undo** is 64 steps deep (`LevelEditor.undoDepth`). An edit that changes nothing records nothing.
-- **`isDirty` is tracked, not inferred**, so undoing back to the original still counts as unsaved.
+- **Lamps:** `setLight(_:)` gives the selected placement a lamp, replaces it, or removes it with `nil`. `raiseLight(by:)` moves it in meters of the world, whatever the placement's scale. `brightenLight(by:)` works in ratios, and the default `configuration.lampBrighten` is a third of a stop.
+- **Adding:** `add(_:at:yaw:)` drops another of one of `editor.kinds()` at a ground point, bringing its height, scale, tags, surface and lamp. `add(mesh:at:tags:light:)` knows only the mesh.
+- **Undo** is 64 steps deep by default (`configuration.undoDepth`). An edit that changes nothing records nothing.
+- **`isDirty` means different from what was saved**: undoing back to the saved level is clean again, and redoing away from it is not.
+- **Saving is atomic**, like `SaveStore`: a crash mid-save leaves the old file.
+
+`LevelEditor.Configuration` holds the steps a key makes — `nudge`, `turn`, `lampRaise`, `lampBrighten` — with the lamp's brightness range and the undo depth, and every default is the value above.
 
 In the sample, **Tab** opens the editor. Click (or space) picks what is under the crosshair, the arrow keys and **q**/**e** move it, **a**/**d** turn it, **-**/**=** scale it, **b** copies it, **l** and **[ ] , .** handle the lamp, **t** and **i** add things, **⌘S** saves and **⌘Z** undoes. See [the sample](sample.html).
 

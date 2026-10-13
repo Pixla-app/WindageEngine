@@ -117,7 +117,7 @@ struct SampleRunTests {
     @Test("Progress survives into a new run")
     func progressPersists() {
         let store = self.store()
-        defer { store.clear() }
+        defer { try? store.clear() }
         var first = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
         first.step(deltaTime: 7, playerAt: SIMD3(0, 0, 0))
         #expect(first.best == 7)
@@ -131,7 +131,7 @@ struct SampleRunTests {
     @Test("Only a faster run replaces the best")
     func bestOnlyImproves() {
         let store = self.store()
-        defer { store.clear() }
+        defer { try? store.clear() }
         var run = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
         run.step(deltaTime: 5, playerAt: SIMD3(0, 0, 0))
         run.restart()
@@ -177,7 +177,7 @@ struct SampleRunEventTests {
 
     @Test("A quiet step reports nothing")
     func quietStep() {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         var run = SampleRun(objectives: [SIMD3(100, 0, 0)], store: store)
         #expect(run.step(deltaTime: 0.1, playerAt: .zero).isEmpty)
     }
@@ -186,7 +186,7 @@ struct SampleRunEventTests {
     /// bare "something was collected" would leave the caller guessing which one.
     @Test("Collecting reports where it happened")
     func collectReportsPosition() {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         var run = SampleRun(objectives: [SIMD3(1, 0, 1), SIMD3(90, 0, 0)], store: store)
         let events = run.step(deltaTime: 0.1, playerAt: .zero)
         #expect(events.collected == [SIMD3(1, 0, 1)])
@@ -195,12 +195,12 @@ struct SampleRunEventTests {
 
     @Test("Winning and losing are each reported once")
     func endingsAreReportedOnce() {
-        let winStore = self.store(); defer { winStore.clear() }
+        let winStore = self.store(); defer { try? winStore.clear() }
         var win = SampleRun(objectives: [SIMD3(0, 0, 0)], store: winStore)
         #expect(win.step(deltaTime: 1, playerAt: .zero).won)
         #expect(win.step(deltaTime: 1, playerAt: .zero).isEmpty, "a finished run kept reporting")
 
-        let loseStore = self.store(); defer { loseStore.clear() }
+        let loseStore = self.store(); defer { try? loseStore.clear() }
         var lose = SampleRun(objectives: [SIMD3(500, 0, 0)], store: loseStore)
         #expect(lose.step(deltaTime: SampleRun.timeLimit + 1, playerAt: .zero).lost)
         #expect(lose.step(deltaTime: 1, playerAt: .zero).isEmpty)
@@ -208,7 +208,7 @@ struct SampleRunEventTests {
 
     @Test("A paused step reports nothing")
     func pausedIsSilent() {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         var run = SampleRun(objectives: [SIMD3(0, 0, 0)], store: store)
         run.togglePause()
         #expect(run.step(deltaTime: 1, playerAt: .zero).isEmpty)
@@ -273,7 +273,7 @@ struct SecondLevelTests {
 
     @Test("Each level keeps its own best time")
     func bestTimesArePerLevel() {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         var one = SampleRun(objectives: [SIMD3(0, 0, 0)], levelName: "COURTYARD", store: store)
         one.step(deltaTime: 5, playerAt: .zero)
         var two = SampleRun(objectives: [SIMD3(0, 0, 0)], levelName: "RUINS", store: store)
@@ -286,12 +286,12 @@ struct SecondLevelTests {
     /// belonged to the only level that existed, and it must survive rather than being thrown away.
     @Test("A version 1 save migrates instead of being lost")
     func v1Migrates() throws {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         let old = """
         {"version":1,"bestSeconds":12.5,"runs":4,"wins":2}
         """
         try Data(old.utf8).write(to: store.url)
-        let progress = try #require(store.load())
+        let progress = try #require(try store.load())
         #expect(progress.version == SampleRun.Progress.currentVersion)
         #expect(progress.best["COURTYARD"] == 12.5)
         #expect(progress.runs == 4)
@@ -301,7 +301,7 @@ struct SecondLevelTests {
     /// And a save written now is v2 — migration runs one way.
     @Test("Saving never writes the old shape back")
     func migrationIsOneWay() throws {
-        let store = self.store(); defer { store.clear() }
+        let store = self.store(); defer { try? store.clear() }
         var progress = SampleRun.Progress()
         progress.best["RUINS"] = 30
         try store.save(progress)

@@ -492,12 +492,21 @@ final class SampleGame: GameLoop {
     }
     private static let progressStore: SaveStore<SampleRun.Progress> = {
         let store = isCheck ? SaveStore<SampleRun.Progress>(container: container, name: "progress") : SampleRun.sharedStore
-        if isCheck { store.clear(); settingsStore.clear() }
+        if isCheck { try? store.clear(); try? settingsStore.clear() }
         return store
     }()
-    private var settings = SampleGame.isCheck
-        ? SampleGame.defaultSettings
-        : SampleGame.settingsStore.load().map(SampleGame.withSampleActions) ?? SampleGame.defaultSettings
+    private var settings = SampleGame.isCheck ? SampleGame.defaultSettings : SampleGame.savedSettings()
+
+    /// The player's saved settings, or the defaults — **said in the log when a file is there and will not
+    /// read**, so a player whose keys reset knows it was the file, not them.
+    private static func savedSettings() -> PlayerSettings {
+        do {
+            return try settingsStore.load().map(withSampleActions) ?? defaultSettings
+        } catch {
+            print("WindageSample: settings could not be read, using the defaults — \(error)")
+            return defaultSettings
+        }
+    }
 
     /// The engine's settings with the sample's own action added — see `InputAction.brace`. **After
     /// loading**, so a key the player gave it is found in the file and kept.
@@ -660,7 +669,7 @@ final class SampleGame: GameLoop {
 
     /// This sample's ground: a plane at zero. What anchors resolve against and carried lights are
     /// placed on.
-    private static let ground = Level.Ground(heightAt: { _, _ in 0 })
+    private static let ground = Level.Ground(height: { _, _ in 0 })
 
     /// Where the placements' lamps were at the last rebuild, so the log can say when one moved.
     private var lastCarriedLights: [SIMD3<Float>] = []
@@ -680,7 +689,7 @@ final class SampleGame: GameLoop {
         let wanted = level.carriedSounds(on: SampleGame.ground)
         var unclaimed = soundLoops
         var kept: [(placement: Int, name: String, position: SIMD3<Float>, loop: AudioEngine.Loop)] = []
-        var waiting: [(placement: Int, name: String, position: SIMD3<Float>, volume: Float)] = []
+        var waiting: [Level.CarriedSoundInWorld] = []
         // Untouched: the same sound in the same place, whatever its placement is numbered now.
         for sound in wanted {
             if let i = unclaimed.firstIndex(where: { $0.name == sound.name && simd_distance($0.position, sound.position) < 1e-4 }) {
@@ -720,13 +729,17 @@ final class SampleGame: GameLoop {
     /// See `WINDAGE_SAMPLE_MEASURE_AUDIO` in main.swift. **The sample's own crackle, through the
     /// engine's own loop path**, with the listener facing it so both ears hear it alike.
     static func measureCrackle() {
-        guard let audio = AudioEngine(offlineSampleRate: 44_100), audio.load("crackle", bundle: .module),
-              audio.load("step_stone_0", bundle: .module) else {
-            print("WindageSample: could not make an offline audio engine")
+        let audio: AudioEngine
+        do {
+            audio = try AudioEngine(offlineSampleRate: 44_100)
+            try audio.load("crackle", bundle: .module)
+            try audio.load("step_stone_0", bundle: .module)
+        } catch {
+            print("WindageSample: could not make an offline audio engine — \(error)")
             return
         }
         audio.updateListener(position: .zero, forward: SIMD3(0, 0, -1), up: SIMD3(0, 1, 0))
-        func rms(_ seconds: Double) -> Float {
+        func rms(_ seconds: Float) -> Float {
             let all = (audio.renderOffline(seconds: seconds) ?? []).flatMap { $0 }
             return (all.reduce(0) { $0 + $1 * $1 } / Float(max(all.count, 1))).squareRoot()
         }
@@ -757,7 +770,7 @@ final class SampleGame: GameLoop {
         // **The ambience setting, measured the same way**: the fire at 2 m should fall 6 dB at half, and a
         // footstep — which is not ambience — should not move.
         for ambience: Float in [1, 0.5] {
-            audio.ambienceVolume = ambience
+            audio.loopVolume = ambience
             print(String(format: "WindageSample: ambience %3.0f%% — crackle at 2 m %.2f dBFS, a walking footstep %.2f dBFS",
                          ambience * 100, dB(crackle(at: 2)), dB(footstep())))
         }
@@ -1306,19 +1319,26 @@ final class SampleGame: GameLoop {
         // exempts an app playing sound from App Nap, and a running `AVAudioEngine` is playing sound
         // whether or not anything is audible, so measuring whether a hidden game is napped needs the
         // sample without one: a game's worst case is the one with nothing playing.
-        audio = ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SILENT"] == nil && !SampleGame.isCheck ? AudioEngine() : nil
+        if ProcessInfo.processInfo.environment["WINDAGE_SAMPLE_SILENT"] == nil && !SampleGame.isCheck {
+            do {
+                audio = try AudioEngine()
+            } catch {
+                audio = nil
+                print("WindageSample: no audio — the game runs, it is just quiet — \(error)")
+            }
+        } else {
+            audio = nil
+            print("WindageSample: no audio — the game runs, it is just quiet")
+        }
         if let audio {
-            // **From this module's bundle, not `.main`.** `AudioEngine.load` defaults to `.main`,
-            // which for a SwiftPM executable is the executable itself and holds no resources — the
-            // sounds live in the target's own bundle.
+            // **From this module's bundle, not `.main`.** For a SwiftPM executable `.main` is the
+            // executable itself and holds no resources — the sounds live in the target's own bundle.
             let feet = SampleLevel.footstepSurfaces.flatMap { surface in
                 (0..<3).map { "step_\(surface)_\($0)" } + ["land_\(surface)"]
             }
-            for sound in ["pickup", "win", "lose", "crackle"] + feet where !audio.load(sound, bundle: .module) {
-                print("WindageSample: no sound named \(sound)")
+            for sound in ["pickup", "win", "lose", "crackle"] + feet {
+                do { try audio.load(sound, bundle: .module) } catch { print("WindageSample: \(error)") }
             }
-        } else {
-            print("WindageSample: no audio — the game runs, it is just quiet")
         }
 
         // **Everything the GPU reads has to be in the residency set.** A buffer or texture that is
@@ -1569,7 +1589,7 @@ final class SampleGame: GameLoop {
             // **Appended to `volumes` in the same breath**, because the two are index-aligned and the
             // shadow passes cull against `volumes`. A lantern missing from it would be drawn and cast
             // nothing, which reads as the cube being broken.
-            volumes.append(Volume(local: mesh.bounds, transform: matrix_identity_float4x4))
+            volumes.append(Volume(localBounds: mesh.bounds, transform: matrix_identity_float4x4))
         }
 
         lanterns = try? TransformHierarchy(
@@ -1688,7 +1708,7 @@ final class SampleGame: GameLoop {
                               emissiveMaps[placement.mesh] ?? []))
             if placement.tags.contains("objective") { objectiveDrawables.append(drawables.count - 1) }
             if let glow = SampleGame.glowStrength[placement.mesh] { glowingDrawables[drawables.count - 1] = glow }
-            let volume = Volume(local: mesh.bounds, transform: transform)
+            let volume = Volume(localBounds: mesh.bounds, transform: transform)
             volumes.append(volume)
             if !placement.tags.contains("ground") { buildings.append(volume.worldBounds) }
             // **The level's own tag decides.** The engine has no idea what "solid" means; this game
@@ -2123,7 +2143,7 @@ final class SampleGame: GameLoop {
 
         // Nudges are along the world axes rather than the camera's, so a number typed into the file
         // afterwards means the same thing as a key pressed here.
-        let d = LevelEditor.nudge
+        let d = editor.configuration.nudge
         switch key {
         case .left: editor.move(by: SIMD3(-d, 0, 0))
         case .right: editor.move(by: SIMD3(d, 0, 0))
@@ -2131,8 +2151,8 @@ final class SampleGame: GameLoop {
         case .down: editor.move(by: SIMD3(0, 0, d))
         case .q: editor.move(by: SIMD3(0, d, 0))             // up
         case .e: editor.move(by: SIMD3(0, -d, 0))            // down
-        case .a: editor.rotate(by: -LevelEditor.turn)
-        case .d: editor.rotate(by: LevelEditor.turn)
+        case .a: editor.rotate(by: -editor.configuration.turn)
+        case .d: editor.rotate(by: editor.configuration.turn)
         case .minus: editor.scale(by: 1 / 1.25)
         case .equal: editor.scale(by: 1.25)
         case .delete, .forwardDelete: editor.delete()
@@ -2144,10 +2164,10 @@ final class SampleGame: GameLoop {
             guard let selected = editor.selected else { return true }
             editor.setLight(selected.light == nil ? newLamp(for: selected.mesh) : nil)
             reportLamp()
-        case .rightBracket: editor.raiseLight(by: LevelEditor.lampRaise); reportLamp()
-        case .leftBracket: editor.raiseLight(by: -LevelEditor.lampRaise); reportLamp()
-        case .period: editor.brightenLight(by: LevelEditor.lampBrighten); reportLamp()
-        case .comma: editor.brightenLight(by: 1 / LevelEditor.lampBrighten); reportLamp()
+        case .rightBracket: editor.raiseLight(by: editor.configuration.lampRaise); reportLamp()
+        case .leftBracket: editor.raiseLight(by: -editor.configuration.lampRaise); reportLamp()
+        case .period: editor.brightenLight(by: editor.configuration.lampBrighten); reportLamp()
+        case .comma: editor.brightenLight(by: 1 / editor.configuration.lampBrighten); reportLamp()
         // Adding: t steps through the kinds of thing this level already has, i drops one.
         case .t:                                             // the next kind to add
             let kinds = addableKinds
@@ -2166,10 +2186,10 @@ final class SampleGame: GameLoop {
     private var addKind = 0
 
     /// What the editor can add here: **one of each kind of thing the level already has** — the
-    /// engine's `Level.kinds` — less the floor and the objectives. An objective crate is a crate *and*
-    /// a marker the run counts; adding the crate alone makes one that glows and can never be taken.
+    /// engine's `LevelEditor.kinds()` — less the floor and the objectives. An objective crate is a
+    /// crate *and* a marker the run counts; adding the crate alone makes one that glows and can never be taken.
     private var addableKinds: [Level.Placement] {
-        level.kinds.filter { !$0.tags.contains("ground") && !$0.tags.contains("objective") }
+        editor.kinds().filter { !$0.tags.contains("ground") && !$0.tags.contains("objective") }
     }
 
     private func kindName(_ kind: Level.Placement) -> String {
@@ -2481,7 +2501,7 @@ final class SampleGame: GameLoop {
     private func applySettings() {
         input.apply(settings)
         audio?.masterVolume = settings.volume
-        audio?.ambienceVolume = settings.ambienceVolume
+        audio?.loopVolume = settings.ambienceVolume
         engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness
     }
 
@@ -3338,7 +3358,7 @@ final class SampleGame: GameLoop {
                 // **The bind pose, widened.** A skinned mesh's bounds are the pose's, not the file's,
                 // and a raised arm leaves the box the loader measured. Half a metre covers this
                 // sample's clips; a game with a vault or a dive computes it from the pose instead.
-                bounds: { Volume(local: mesh.bounds, transform: self.figures[$0].transform)
+                bounds: { Volume(localBounds: mesh.bounds, transform: self.figures[$0].transform)
                     .worldBounds.expanded(by: 0.5) }))
         }
 

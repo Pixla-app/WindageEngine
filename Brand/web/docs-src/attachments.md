@@ -27,9 +27,9 @@ hierarchy.refresh()
 let barrel = hierarchy.worldTransform(of: 2)
 ```
 
-`localTransforms` is a `var`, so move a node by writing its local transform and calling `refresh(attachedTo:)` again. `worldTransforms` holds every result.
+Move a node with `setLocalTransform(_:ofNode:)`, or replace them all with `setLocalTransforms(_:)`, then call `refresh(attachedTo:)` again. `localTransforms` is read-only, so an array of the wrong length can't slip in: `setLocalTransforms(_:)` throws for one, and an index past the end stops at once. `worldTransforms` holds every result.
 
-Every structural mistake — a count mismatch, a node attached to itself, a parent after its child, an unknown node or external — throws a `TransformHierarchy.Fault` when the hierarchy is built, because later it would only be a transform that is quietly wrong.
+Every structural mistake — a count mismatch, a node attached to itself, a parent after its child, an unknown node or external — throws a `TransformHierarchyError` when the hierarchy is built, because later it would only be a transform that is quietly wrong.
 
 ## Attaching to a joint
 
@@ -73,10 +73,10 @@ A joint's frame is not a promise about where the mesh was drawn. In the sample's
 
 ## Volume: an extent with no mesh
 
-A `Volume` is a model-space `BoundingBox` (`local`) and a `transform`. It has no opinion about drawing, so something you only collide with or shoot at does not need a GPU mesh to be hit.
+A `Volume` is a model-space `BoundingBox` (`localBounds`) and a `transform`. It has no opinion about drawing, so something you only collide with or shoot at does not need a GPU mesh to be hit.
 
 ```swift
-volumes.append(Volume(local: mesh.bounds, transform: matrix_identity_float4x4))
+volumes.append(Volume(localBounds: mesh.bounds, transform: matrix_identity_float4x4))
 ```
 
 `worldBounds` is **computed from the transform every time it is read**, never stored, so a volume that moves is hit where it is. Its `worldBounds` are the solids [CharacterController](character-controller.html) collides with, and the boxes the sample [culls](culling.html) against.

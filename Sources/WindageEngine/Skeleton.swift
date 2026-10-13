@@ -5,7 +5,7 @@
 
 import simd
 
-public enum SkeletonError: Error, CustomStringConvertible, Sendable {
+public nonisolated enum SkeletonError: Error, CustomStringConvertible, Sendable, Equatable {
     case emptySkeleton
     case transformCountMismatch(joints: Int, rest: Int, bind: Int)
     case missingParent(joint: String, parent: String)

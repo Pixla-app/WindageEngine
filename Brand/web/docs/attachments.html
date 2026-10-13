@@ -42,8 +42,8 @@
                                        localTransforms: [hull, turretMount, barrelMount])
 hierarchy.refresh()
 <span class="k">let</span> barrel = hierarchy.worldTransform(of: 2)</pre>
-<p><code>localTransforms</code> is a <code>var</code>, so move a node by writing its local transform and calling <code>refresh(attachedTo:)</code> again. <code>worldTransforms</code> holds every result.</p>
-<p>Every structural mistake — a count mismatch, a node attached to itself, a parent after its child, an unknown node or external — throws a <code>TransformHierarchy.Fault</code> when the hierarchy is built, because later it would only be a transform that is quietly wrong.</p>
+<p>Move a node with <code>setLocalTransform(_:ofNode:)</code>, or replace them all with <code>setLocalTransforms(_:)</code>, then call <code>refresh(attachedTo:)</code> again. <code>localTransforms</code> is read-only, so an array of the wrong length can't slip in: <code>setLocalTransforms(_:)</code> throws for one, and an index past the end stops at once. <code>worldTransforms</code> holds every result.</p>
+<p>Every structural mistake — a count mismatch, a node attached to itself, a parent after its child, an unknown node or external — throws a <code>TransformHierarchyError</code> when the hierarchy is built, because later it would only be a transform that is quietly wrong.</p>
 <h2 id="attaching-to-a-joint">Attaching to a joint</h2>
 <p>A rig is already a hierarchy, resolved by <code>SkeletonPose</code> (see <a href="skeletons.html">skeletons</a>). What it cannot do is reach outside itself, and a thing in a hand is exactly that: its parent is a joint, inside a pose, placed by a character's world transform.</p>
 <p><code>.external(_:)</code> handles it. The node keeps <strong>the grip, authored once</strong>, as its local transform, and takes its parent's world transform from the array you hand to <code>refresh(attachedTo:)</code>. How many externals there will be is declared up front, so an out-of-range index is a load-time error rather than an object drawn at the origin in a frame nobody saw.</p>
@@ -69,8 +69,8 @@ lanterns = <span class="k">try</span>? TransformHierarchy(
 <h3 id="a-grip-is-a-number-you-set-by-looking">A grip is a number you set by looking</h3>
 <p>A joint's frame is not a promise about where the mesh was drawn. In the sample's figure, a grip worked out from the bind pose sits in the hand with the arm down, and floats above the head with the arm raised, because the drawn limb stops short of where the arithmetic says. Set the grip by looking at the character in the poses it will be in.</p>
 <h2 id="volume-an-extent-with-no-mesh">Volume: an extent with no mesh</h2>
-<p>A <code>Volume</code> is a model-space <code>BoundingBox</code> (<code>local</code>) and a <code>transform</code>. It has no opinion about drawing, so something you only collide with or shoot at does not need a GPU mesh to be hit.</p>
-<pre class="code-swift">volumes.append(Volume(local: mesh.bounds, transform: matrix_identity_float4x4))</pre>
+<p>A <code>Volume</code> is a model-space <code>BoundingBox</code> (<code>localBounds</code>) and a <code>transform</code>. It has no opinion about drawing, so something you only collide with or shoot at does not need a GPU mesh to be hit.</p>
+<pre class="code-swift">volumes.append(Volume(localBounds: mesh.bounds, transform: matrix_identity_float4x4))</pre>
 <p><code>worldBounds</code> is <strong>computed from the transform every time it is read</strong>, never stored, so a volume that moves is hit where it is. Its <code>worldBounds</code> are the solids <a href="character-controller.html">CharacterController</a> collides with, and the boxes the sample <a href="culling.html">culls</a> against.</p>
 <p>Two hit tests run over an array of volumes and return the nearest <code>(index, distance)</code>, or nil:</p>
 <ul><li><code>Volume.firstHit(segmentFrom:to:against:)</code> — the segment a shot covers in one step. A round moves several meters a step, so testing only where it ended lets it pass through anything thinner.</li><li><code>Volume.firstHit(origin:direction:against:maxDistance:)</code> — a ray, for ranging or picking. The sample's editor picks with it:</li></ul>

@@ -54,7 +54,7 @@ The planes are extracted from the matrix rows (Gribb–Hartmann). The textbook f
 `mayIntersect` takes a `BoundingBox` in **world** space. A `LoadedMesh`'s `bounds` are in the mesh's own space, so transform them first. `BoundingBox.transformed(by:)` re-derives the box from all eight corners, which stays correct under rotation. A `Volume` does this for you:
 
 ```swift
-let volume = Volume(local: mesh.bounds, transform: transform)
+let volume = Volume(localBounds: mesh.bounds, transform: transform)
 let box = volume.worldBounds
 ```
 
@@ -63,7 +63,7 @@ Remember the mesh's `nodeTransform` belongs inside the transform — see [meshes
 **A skinned mesh's bounds are its bind pose.** An arm raised at runtime leaves the box, and a culling test against it deletes the character's shadow at exactly the moment it moves. Widen it with `expanded(by:)`; the sample uses half a meter for its figures:
 
 ```swift
-bounds: { Volume(local: mesh.bounds, transform: self.figures[$0].transform)
+bounds: { Volume(localBounds: mesh.bounds, transform: self.figures[$0].transform)
     .worldBounds.expanded(by: 0.5) }
 ```
 

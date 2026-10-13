@@ -78,15 +78,34 @@ struct LevelTests {
         let json = """
         {"formatVersion":999,"name":"future","settings":{},"placements":[],"markers":[]}
         """
-        #expect(throws: Level.LoadError.unsupportedVersion(found: 999, supported: Level.currentVersion)) {
+        #expect(throws: LevelError.unsupportedVersion(found: 999, supported: Level.currentVersion)) {
             try Level.decode(from: Data(json.utf8))
+        }
+        // **Even when it would not decode as this format**: "written by a newer build" is the true
+        // answer, where "malformed" would send someone looking for damage.
+        let reshaped = #"{"formatVersion": 2, "placements": "now an object of some kind"}"#
+        #expect(throws: LevelError.unsupportedVersion(found: 2, supported: Level.currentVersion)) {
+            try Level.decode(from: Data(reshaped.utf8))
         }
     }
 
     @Test("A missing level names itself in the error")
     func missingLevelIsNamed() {
-        #expect(throws: Level.LoadError.notFound("nope")) {
+        #expect(throws: LevelError.notFound("nope")) {
             try Level.load(named: "nope", bundle: .module)
+        }
+    }
+
+    /// **Every failure is a `LevelError`**, so a game catching that one type has them all. A decode
+    /// failure used to escape as a `DecodingError`, which `LoadError` did not mention.
+    @Test("Data that is not a level is a LevelError too")
+    func malformedDataIsALevelError() {
+        for json in ["not json at all", #"{"name": "no version"}"#,
+                     #"{"formatVersion": 1, "placements": [{"position": [0, 0, 0]}]}"#] {
+            #expect(performing: { try Level.decode(from: Data(json.utf8)) }, throws: { error in
+                guard case .malformed = error as? LevelError else { return false }
+                return true
+            })
         }
     }
 
@@ -118,7 +137,7 @@ struct LevelAnchorTests {
 
     /// A slope: ground falls one metre per metre of +x.
     private let slope = Level.Ground(
-        heightAt: { x, _ in -x },
+        height: { x, _ in -x },
         footprintCorners: { $0 == "hab" ? [SIMD2(-10, 0), SIMD2(10, 0)] : [] })
 
     private let level = Level(name: "anchors")
@@ -209,7 +228,7 @@ struct LevelAnchorTests {
         {"formatVersion": 1, "name": "BAD", "settings": {}, "placements": [], "markers": [],
          "sky": {"zenith": [0.5, 0.5]}}
         """
-        #expect(throws: (any Error).self) { try Level.decode(from: Data(json.utf8)) }
+        #expect(throws: LevelError.self) { try Level.decode(from: Data(json.utf8)) }
     }
 
     /// A wider sun is both softer *and* stronger, because it is more sky. Deriving the irradiance
@@ -272,7 +291,7 @@ struct PlacementTransformTests {
         let corners: [SIMD2<Float>] = [SIMD2(-1, -4), SIMD2(-1, 1), SIMD2(9, -4), SIMD2(9, 1)]
         let sampled = SampledPoints()
         let ground = Level.Ground(
-            heightAt: { x, z in sampled.add(SIMD2(x, z)); return 0.1 * x - 0.05 * z },
+            height: { x, z in sampled.add(SIMD2(x, z)); return 0.1 * x - 0.05 * z },
             footprintCorners: { _ in corners })
         let placement = Level.Placement(mesh: "long", position: SIMD3(20, 0, -5), yaw: 0.6,
                                         scale: 1.5, anchor: .beddedFootprint)
@@ -292,7 +311,7 @@ struct PlacementTransformTests {
     func sitsOnLowestDrawnCorner() {
         let corners: [SIMD2<Float>] = [SIMD2(-1, -4), SIMD2(-1, 1), SIMD2(9, -4), SIMD2(9, 1)]
         let height: @Sendable (Float, Float) -> Float = { x, z in 0.1 * x - 0.3 * z }
-        let ground = Level.Ground(heightAt: height, footprintCorners: { _ in corners })
+        let ground = Level.Ground(height: height, footprintCorners: { _ in corners })
         let placement = Level.Placement(mesh: "long", position: SIMD3(0, 0, 0), yaw: 0.8,
                                         anchor: .beddedFootprint)
         let level = Level(name: "slope", placements: [placement])
@@ -306,7 +325,7 @@ struct PlacementTransformTests {
 
     @Test("transform(of:on:) puts the placement where worldPosition says")
     func transformUsesTheAnchor() {
-        let ground = Level.Ground(heightAt: { _, _ in 3 })
+        let ground = Level.Ground(height: { _, _ in 3 })
         let placement = Level.Placement(mesh: "box", position: SIMD3(4, 0.5, -2), yaw: 1, scale: 2)
         let level = Level(name: "raised", placements: [placement])
         let m = level.transform(of: placement, on: ground)
@@ -325,7 +344,7 @@ private final class SampledPoints: @unchecked Sendable {
 @Suite("Lights carried by placements")
 struct CarriedLightTests {
 
-    private let flat = Level.Ground(heightAt: { _, _ in 0 })
+    private let flat = Level.Ground(height: { _, _ in 0 })
 
     private func brazier(at position: SIMD3<Float>, yaw: Float = 0, scale: Float = 1) -> Level.Placement {
         Level.Placement(mesh: "brazier", position: position, yaw: yaw, scale: scale,
@@ -457,7 +476,15 @@ struct SurfaceTests {
 @Suite("Sounds carried by placements")
 struct CarriedSoundTests {
 
-    private let flat = Level.Ground(heightAt: { _, _ in 0 })
+    private let flat = Level.Ground(height: { _, _ in 0 })
+
+    /// The one initializer takes every field; `sound` used to be settable only after the fact.
+    @Test("A placement is made with its sound")
+    func madeWithItsSound() {
+        let crackle = Level.CarriedSound(name: "crackle", offset: SIMD3(0, 1, 0))
+        let brazier = Level.Placement(mesh: "brazier", position: .zero, surface: "metal", sound: crackle)
+        #expect(brazier.sound == crackle && brazier.surface == "metal")
+    }
 
     @Test("A carried sound is in the world where its placement puts it, and moves with it")
     func placedAndMoved() {

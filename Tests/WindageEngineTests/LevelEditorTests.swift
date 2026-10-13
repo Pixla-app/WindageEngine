@@ -147,6 +147,49 @@ struct LevelEditorTests {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// **Dirty means "different from what was saved"**, and an undo back to the saved level is not.
+    /// It used to stay dirty, and an editor that claims unsaved changes when there are none trains
+    /// people to ignore it.
+    @Test("Undo back to what was saved is clean, and redo away from it is not")
+    func undoToTheSavedStateIsClean() throws {
+        var editor = self.editor()
+        editor.select(1)
+        editor.move(by: SIMD3(0, 0, 7))
+        editor.undo()
+        #expect(!editor.isDirty, "back where it was opened")
+        editor.redo()
+        #expect(editor.isDirty)
+
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("editor-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try editor.save(to: url)
+        editor.move(by: SIMD3(1, 0, 0))
+        #expect(editor.isDirty)
+        editor.undo()
+        #expect(!editor.isDirty, "back to what was saved")
+        editor.undo()
+        #expect(editor.isDirty, "before the save is not what is on disk")
+        editor.redo()
+        #expect(!editor.isDirty)
+        // A new edit from an earlier state is a different level, even where it repeats one.
+        editor.undo()
+        editor.move(by: SIMD3(0, 0, 7))
+        #expect(editor.isDirty)
+    }
+
+    @Test("The steps a key makes are the editor's configuration")
+    func configuredSteps() {
+        var editor = LevelEditor(level: self.editor().level,
+                                 configuration: .init(nudge: 2, undoDepth: 1))
+        editor.select(0)
+        editor.duplicate()
+        #expect(editor.selected?.position == SIMD3(4, 0, 4), "a copy lands two nudges away")
+        editor.move(by: SIMD3(1, 0, 0))
+        editor.undo()
+        #expect(!editor.canUndo, "only one step is remembered")
+    }
+
     // MARK: - The selection's lamp
 
     private let lamp = PunctualLight(position: SIMD3(0, 1.5, 0), color: SIMD3(40, 28, 16), range: 12)
@@ -175,7 +218,7 @@ struct LevelEditorTests {
         editor.setLight(PunctualLight(position: SIMD3(0.5, 1.5, 0), color: SIMD3(1, 1, 1), range: 5))
         editor.move(by: SIMD3(3, 0, 0))
         editor.rotate(by: .pi / 2)
-        let ground = Level.Ground(heightAt: { _, _ in 0 })
+        let ground = Level.Ground(height: { _, _ in 0 })
         let before = editor.level.carriedLights(on: ground).first { $0.placement == 0 }!.light.position
         #expect(abs(before.x - 3) < 1e-4 && abs(before.z + 0.5) < 1e-4,
                 "turned a quarter, the lamp's +x offset should point along -z: \(before)")
@@ -191,7 +234,7 @@ struct LevelEditorTests {
         editor.raiseLight(by: 0.5)
         #expect(abs(editor.level.placements[1].light!.position.y - 1.75) < 1e-5,
                 "a 0.5 m raise on a placement at scale 2 is a 0.25 offset")
-        let ground = Level.Ground(heightAt: { _, _ in 0 })
+        let ground = Level.Ground(height: { _, _ in 0 })
         let world = editor.level.carriedLights(on: ground).first { $0.placement == 1 }!.light.position.y
         #expect(abs(world - 3.5) < 1e-4, "1.75 in the placement's space, doubled, is 3.5 m up")
     }
@@ -201,12 +244,12 @@ struct LevelEditorTests {
         var editor = self.editor()
         editor.select(0)
         editor.setLight(lamp)
-        for _ in 0..<3 { editor.brightenLight(by: LevelEditor.lampBrighten) }
+        for _ in 0..<3 { editor.brightenLight(by: editor.configuration.lampBrighten) }
         let c = editor.level.placements[0].light!.color
         #expect(abs(c.x - 80) < 1e-2, "three thirds of a stop should double 40 to 80, got \(c.x)")
         #expect(abs(c.y / c.x - 28.0 / 40) < 1e-5 && abs(c.z / c.x - 16.0 / 40) < 1e-5, "the hue moved")
-        for _ in 0..<200 { editor.brightenLight(by: 1 / LevelEditor.lampBrighten) }
-        #expect(abs(editor.level.placements[0].light!.color.max() - LevelEditor.lampIntensityRange.lowerBound) < 1e-4)
+        for _ in 0..<200 { editor.brightenLight(by: 1 / editor.configuration.lampBrighten) }
+        #expect(abs(editor.level.placements[0].light!.color.max() - editor.configuration.lampIntensityRange.lowerBound) < 1e-4)
     }
 
     @Test("Lamp edits on a placement without a lamp change nothing and dirty nothing")
@@ -224,7 +267,7 @@ struct LevelEditorTests {
         var editor = self.editor()
         editor.add(mesh: "brazier", at: SIMD3(1, 0, 1), light: lamp)
         #expect(editor.selected?.light == lamp)
-        #expect(editor.level.carriedLights(on: Level.Ground(heightAt: { _, _ in 0 })).contains { $0.placement == editor.selection })
+        #expect(editor.level.carriedLights(on: Level.Ground(height: { _, _ in 0 })).contains { $0.placement == editor.selection })
     }
 
     // MARK: - Adding by kind
@@ -244,7 +287,7 @@ struct LevelEditorTests {
     /// Where a thing is and which way it faces do not make it a different kind; its lamp does.
     @Test("A level's kinds are one of each thing, ignoring where each is")
     func kinds() {
-        let kinds = mixedLevel.kinds
+        let kinds = LevelEditor(level: mixedLevel).kinds()
         #expect(kinds.map(\.mesh) == ["box", "step", "brazier", "brazier"],
                 "\(kinds.map(\.mesh)) — two crates in different places and turns are one kind, a lit brazier and a cold one are two")
         #expect(kinds.allSatisfy { $0.position.x == 0 && $0.position.z == 0 && $0.yaw == 0 })
@@ -255,13 +298,13 @@ struct LevelEditorTests {
     @Test("Adding a kind brings everything but the place, and undoes")
     func addAKind() {
         var editor = LevelEditor(level: mixedLevel)
-        let brazier = editor.level.kinds[2]
+        let brazier = editor.kinds()[2]
         editor.add(brazier, at: SIMD2(7, -3))
         let added = editor.selected!
         #expect(added.position == SIMD3(7, 0, -3))
         #expect(added.tags == ["solid"] && added.surface == "metal" && added.scale == 1)
         #expect(added.light == brazier.light)
-        let lamps = editor.level.carriedLights(on: Level.Ground(heightAt: { _, _ in 0 }))
+        let lamps = editor.level.carriedLights(on: Level.Ground(height: { _, _ in 0 }))
         #expect(lamps.contains { $0.placement == editor.selection && abs($0.light.position.x - 7) < 1e-4 },
                 "the added brazier should light where it stands")
         editor.undo()
