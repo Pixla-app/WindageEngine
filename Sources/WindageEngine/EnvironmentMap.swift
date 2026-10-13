@@ -124,11 +124,11 @@ public final class EnvironmentMap {
                     // face half a texel towards one edge, which shows up as a seam between faces.
                     let u = (Float(x) + 0.5) / Float(size)
                     let v = (Float(y) + 0.5) / Float(size)
-                    let colour = radiance(direction(face: face, u: u, v: v))
+                    let color = radiance(direction(face: face, u: u, v: v))
                     let index = base + (y * size + x) * 4
-                    faces[index] = Float16(colour.x)
-                    faces[index + 1] = Float16(colour.y)
-                    faces[index + 2] = Float16(colour.z)
+                    faces[index] = Float16(color.x)
+                    faces[index + 1] = Float16(color.y)
+                    faces[index + 2] = Float16(color.z)
                     faces[index + 3] = 1
                 }
             }

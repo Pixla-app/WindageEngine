@@ -36,7 +36,7 @@ public final class ParticleRenderer {
     /// alignment.
     struct Instance {
         var positionAndHalfSize: SIMD4<Float>
-        var colourAndCoverage: SIMD4<Float>
+        var colorAndCoverage: SIMD4<Float>
     }
 
     struct Frame {
@@ -175,9 +175,9 @@ public final class ParticleRenderer {
         for particle in system.particles where particle.isAlive {
             guard count < capacity else { break }
             let look = system.appearance(of: particle)
-            let lit = system.recipes[particle.recipe].glows ? look.colour : look.colour * matterLight
+            let lit = system.recipes[particle.recipe].glows ? look.color : look.color * matterLight
             instances[count] = Instance(positionAndHalfSize: SIMD4(particle.position, look.size * 0.5),
-                                        colourAndCoverage: SIMD4(lit, look.coverage))
+                                        colorAndCoverage: SIMD4(lit, look.coverage))
             count += 1
         }
         guard count > 0 else { return 0 }

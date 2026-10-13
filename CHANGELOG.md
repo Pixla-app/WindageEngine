@@ -12,6 +12,33 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.26.0] — 2026-10-12
+
+**Public names are US English.** The people writing games against this engine read and type these names, and
+nearly all of them write US English. Doc comments keep the old spelling for now; they are swept when the
+documentation is published.
+
+### Changed
+
+- `colour` → **`color`**: `PunctualLight.color` and `init(position:color:range:cone:)`, `ParticleRecipe.color`
+  and its initializer's `color:`, `EngineMark.draw(…color:)`.
+- `centre` → **`center`**: `BoundingBox.center`, `HUDRenderer.ring(center:…)`,
+  `CharacterController.Surroundings.Turn.center`, `Footprint.center` and `Footprint(center:…)`.
+- `unitsPerMetre` → **`unitsPerMeter`**: `AssetOrientation.unitsPerMeter`, its initializer and
+  `read(from:unitsPerMeter:)`.
+- **Level files write a light's `color`**, and still read `colour`, so every existing level opens. The
+  sample's own levels are converted.
+
+### Changed — breaking
+
+- **`ParticleSystem.appearance(of:)`'s tuple is labelled `color`.** A tuple label cannot have two names, so
+  this is the one rename with no alias.
+
+### Deprecated
+
+- **Every old name above still works for this one release**, forwarding with a fix-it (`Deprecated.swift`).
+  They are removed in the next.
+
 ## [0.25.0] — 2026-10-12
 
 **Level of detail.** A mesh gets simpler versions of itself when it loads, and a copy draws the coarsest one

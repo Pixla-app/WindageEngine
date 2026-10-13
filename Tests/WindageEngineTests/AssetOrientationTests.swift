@@ -28,7 +28,7 @@ struct AssetOrientationTests {
     /// 176 units tall in a Z-up file is a person: 1.76 m, standing up the Y axis.
     @Test("Z-up centimetres becomes Y-up metres")
     func zUpCentimetresIsCorrected() {
-        let orientation = AssetOrientation(upAxis: .z, unitsPerMetre: 100)
+        let orientation = AssetOrientation(upAxis: .z, unitsPerMeter: 100)
         let headTop = place(SIMD3(0, 0, 176), orientation)
         #expect(abs(headTop.y - 1.76) < 1e-4, "the asset did not end up standing up the Y axis")
         #expect(abs(headTop.x) < 1e-5 && abs(headTop.z) < 1e-5)
@@ -39,7 +39,7 @@ struct AssetOrientationTests {
     /// pinned here rather than left to whichever one was tried first.
     @Test("The Z-up turn is the one that does not mirror the asset front to back")
     func zUpTurnsTheRightWay() {
-        let orientation = AssetOrientation(upAxis: .z, unitsPerMetre: 1)
+        let orientation = AssetOrientation(upAxis: .z, unitsPerMeter: 1)
         // In a Z-up file, -Y is the direction a character faces.
         let facing = place(SIMD3(0, -1, 0), orientation)
         #expect(abs(facing.z - 1) < 1e-5, "the quarter turn went the wrong way")
@@ -50,13 +50,13 @@ struct AssetOrientationTests {
 
     @Test("Scale alone, for an asset that is already Y-up")
     func scaleWithoutRotation() {
-        let orientation = AssetOrientation(upAxis: .y, unitsPerMetre: 100)
+        let orientation = AssetOrientation(upAxis: .y, unitsPerMeter: 100)
         #expect(simd_distance(place(SIMD3(0, 176, 0), orientation), SIMD3(0, 1.76, 0)) < 1e-4)
     }
 
     @Test("X-up stands up too")
     func xUpIsCorrected() {
-        let orientation = AssetOrientation(upAxis: .x, unitsPerMetre: 1)
+        let orientation = AssetOrientation(upAxis: .x, unitsPerMeter: 1)
         #expect(simd_distance(place(SIMD3(2, 0, 0), orientation), SIMD3(0, 2, 0)) < 1e-4)
     }
 
@@ -87,7 +87,7 @@ struct AssetOrientationTests {
         for index in 0..<asset.count { descend(asset.object(at: index)) }
         #expect(abs(height - 176) < 1e-3, "the asset is in its own units, unconverted")
 
-        let orientation = AssetOrientation.read(from: asset, unitsPerMetre: height / 1.76)
+        let orientation = AssetOrientation.read(from: asset, unitsPerMeter: height / 1.76)
         #expect(orientation.upAxis == .z)
         let top = place(SIMD3(0, 0, height), orientation)
         #expect(abs(top.y - 1.76) < 1e-3)

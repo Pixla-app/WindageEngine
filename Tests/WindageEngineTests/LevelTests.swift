@@ -204,7 +204,7 @@ struct LevelAnchorTests {
     }
 
     @Test("A colour that is not three numbers is refused")
-    func malformedColourIsRejected() {
+    func malformedColorIsRejected() {
         let json = """
         {"formatVersion": 1, "name": "BAD", "settings": {}, "placements": [], "markers": [],
          "sky": {"zenith": [0.5, 0.5]}}
@@ -329,7 +329,7 @@ struct CarriedLightTests {
 
     private func brazier(at position: SIMD3<Float>, yaw: Float = 0, scale: Float = 1) -> Level.Placement {
         Level.Placement(mesh: "brazier", position: position, yaw: yaw, scale: scale,
-                        light: PunctualLight(position: SIMD3(0, 1.8, 0), colour: SIMD3(60, 36, 18), range: 14))
+                        light: PunctualLight(position: SIMD3(0, 1.8, 0), color: SIMD3(60, 36, 18), range: 14))
     }
 
     @Test("A carried light sits at its offset from the placement")
@@ -370,7 +370,7 @@ struct CarriedLightTests {
     @Test("A carried spot's direction turns with the placement and ignores its scale")
     func coneTurns() {
         var post = Level.Placement(mesh: "post", position: .zero, yaw: .pi / 2, scale: 3)
-        post.light = PunctualLight(position: SIMD3(0, 4, 0), colour: SIMD3(repeating: 100), range: 20,
+        post.light = PunctualLight(position: SIMD3(0, 4, 0), color: SIMD3(repeating: 100), range: 20,
                                    cone: .init(direction: SIMD3(1, 0, 0), innerAngle: 0.2, outerAngle: 0.4))
         let light = Level(name: "l", placements: [post]).resolvedLights(on: flat)[0]
         let direction = light.cone!.direction
@@ -383,7 +383,7 @@ struct CarriedLightTests {
 
     @Test("Free-standing lights come first, then carried ones in placement order")
     func order() {
-        let sun = PunctualLight(position: SIMD3(0, 9, 0), colour: SIMD3(repeating: 1), range: 30)
+        let sun = PunctualLight(position: SIMD3(0, 9, 0), color: SIMD3(repeating: 1), range: 30)
         let level = Level(name: "l", lights: [sun],
                           placements: [brazier(at: SIMD3(1, 0, 0)),
                                        Level.Placement(mesh: "box", position: .zero),

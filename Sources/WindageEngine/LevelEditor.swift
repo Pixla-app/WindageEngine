@@ -177,11 +177,11 @@ public nonisolated struct LevelEditor {
     /// The colour keeps its hue: every channel scales together.
     public mutating func brightenLight(by factor: Float) {
         guard let light = selected?.light, factor > 0, factor != 1 else { return }
-        let intensity = max(light.colour.max(), 1e-6)
+        let intensity = max(light.color.max(), 1e-6)
         let wanted = min(max(intensity * factor, LevelEditor.lampIntensityRange.lowerBound),
                          LevelEditor.lampIntensityRange.upperBound)
         guard wanted != intensity else { return }
-        edit { $0.light!.colour *= wanted / intensity }
+        edit { $0.light!.color *= wanted / intensity }
     }
 
     private mutating func edit(_ change: (inout Level.Placement) -> Void) {

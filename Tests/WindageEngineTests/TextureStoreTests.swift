@@ -41,12 +41,12 @@ struct TextureStoreTests {
     /// The same image genuinely can be wanted both ways — a map used as colour on one material and
     /// as a mask on another — so the cache key has to carry the decision, not just the file.
     @Test("Colour and data readings of one file are different textures")
-    func cacheKeyIncludesTheColourDecision() throws {
+    func cacheKeyIncludesTheColorDecision() throws {
         guard let store = try makeStore() else { return }
-        let colour = try store.texture(.url(try mapURL), isColor: true)
+        let color = try store.texture(.url(try mapURL), isColor: true)
         let data = try store.texture(.url(try mapURL), isColor: false)
-        #expect(colour !== data)
-        #expect(colour.pixelFormat != data.pixelFormat, "one of these was not decoded as sRGB")
+        #expect(color !== data)
+        #expect(color.pixelFormat != data.pixelFormat, "one of these was not decoded as sRGB")
     }
 
     @Test("Mipmaps are generated")

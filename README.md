@@ -1367,7 +1367,7 @@ game that asked to keep time hidden.
 
 A round thing's box is the square round it, and a turned footprint of that box turns the square with
 it: a 4 m turntable held a body up 0.2 m on air at four corners 0.83 m past its rim. **A footprint can
-be a disc** — `Footprint(centre:radius:)`, or `Footprint(discOf:)` for the disc a round mesh's box
+be a disc** — `Footprint(center:radius:)`, or `Footprint(discOf:)` for the disc a round mesh's box
 holds; which meshes are round is the game's to know, since a box cannot say. The body's square against
 a disc is a rounded square: square on, the body's flat face meets the disc and stops, as at a wall; off
 centre by more than its half-width, its corner meets the curve and it slides round. Standing, headroom

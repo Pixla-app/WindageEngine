@@ -17,9 +17,9 @@ struct FrustumTests {
         return Frustum(viewProjection: projection)   // camera at the origin, looking down -Z
     }
 
-    private func box(at centre: SIMD3<Float>, size: Float = 1) -> BoundingBox {
-        BoundingBox(minimum: centre - SIMD3(repeating: size / 2),
-                    maximum: centre + SIMD3(repeating: size / 2))
+    private func box(at center: SIMD3<Float>, size: Float = 1) -> BoundingBox {
+        BoundingBox(minimum: center - SIMD3(repeating: size / 2),
+                    maximum: center + SIMD3(repeating: size / 2))
     }
 
     @Test("Something straight ahead is visible")

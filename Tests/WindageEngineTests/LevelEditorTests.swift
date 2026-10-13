@@ -149,7 +149,7 @@ struct LevelEditorTests {
 
     // MARK: - The selection's lamp
 
-    private let lamp = PunctualLight(position: SIMD3(0, 1.5, 0), colour: SIMD3(40, 28, 16), range: 12)
+    private let lamp = PunctualLight(position: SIMD3(0, 1.5, 0), color: SIMD3(40, 28, 16), range: 12)
 
     @Test("A lamp can be given, and taken away, and both undo")
     func giveAndTakeALamp() {
@@ -172,7 +172,7 @@ struct LevelEditorTests {
     func lampTravelsWithItsPlacement() {
         var editor = self.editor()
         editor.select(0)
-        editor.setLight(PunctualLight(position: SIMD3(0.5, 1.5, 0), colour: SIMD3(1, 1, 1), range: 5))
+        editor.setLight(PunctualLight(position: SIMD3(0.5, 1.5, 0), color: SIMD3(1, 1, 1), range: 5))
         editor.move(by: SIMD3(3, 0, 0))
         editor.rotate(by: .pi / 2)
         let ground = Level.Ground(heightAt: { _, _ in 0 })
@@ -202,11 +202,11 @@ struct LevelEditorTests {
         editor.select(0)
         editor.setLight(lamp)
         for _ in 0..<3 { editor.brightenLight(by: LevelEditor.lampBrighten) }
-        let c = editor.level.placements[0].light!.colour
+        let c = editor.level.placements[0].light!.color
         #expect(abs(c.x - 80) < 1e-2, "three thirds of a stop should double 40 to 80, got \(c.x)")
         #expect(abs(c.y / c.x - 28.0 / 40) < 1e-5 && abs(c.z / c.x - 16.0 / 40) < 1e-5, "the hue moved")
         for _ in 0..<200 { editor.brightenLight(by: 1 / LevelEditor.lampBrighten) }
-        #expect(abs(editor.level.placements[0].light!.colour.max() - LevelEditor.lampIntensityRange.lowerBound) < 1e-4)
+        #expect(abs(editor.level.placements[0].light!.color.max() - LevelEditor.lampIntensityRange.lowerBound) < 1e-4)
     }
 
     @Test("Lamp edits on a placement without a lamp change nothing and dirty nothing")
@@ -230,7 +230,7 @@ struct LevelEditorTests {
     // MARK: - Adding by kind
 
     private var mixedLevel: Level {
-        let lamp = PunctualLight(position: SIMD3(0, 1.8, 0), colour: SIMD3(60, 36, 18), range: 14)
+        let lamp = PunctualLight(position: SIMD3(0, 1.8, 0), color: SIMD3(60, 36, 18), range: 14)
         return Level(name: "mixed", placements: [
             Level.Placement(mesh: "box", position: SIMD3(1, 0, 1), scale: 2, tags: ["solid"], surface: "wood"),
             Level.Placement(mesh: "step", position: SIMD3(4, -0.7, 4), anchor: .absolute, tags: ["solid"], surface: "stone"),

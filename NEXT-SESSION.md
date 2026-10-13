@@ -67,6 +67,14 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-12 — public names in US English (0.26.0)
+
+`color`, `center`, `unitsPerMeter` throughout the public API; the British names forward, deprecated, for this
+one release (`Deprecated.swift`) — **delete that file in the next release.** Level files write a light's
+`color` and still read `colour`; the sample's levels are converted. Renamed in code only: **doc comments are
+still British, to be swept when the docs are published** (owner, 2026-10-12). 598 tests (2 new: old levels
+open, old names forward); 20 walks and 5 frames as recorded.
+
 ## Done 2026-10-12 — level of detail (0.25.0)
 
 **`MeshDetail`**: up to ten tiers of a loaded mesh, each with its own vertices and normals recomputed from its
@@ -401,7 +409,7 @@ No test: the activity is the operating system's, and the measurement is the chec
 
 ## Done 2026-09-11 — round solids are round (0.13.1)
 
-**`Footprint.radius`**, `Footprint(centre:radius:)`, `Footprint(discOf:)`; a disc collided as a rounded
+**`Footprint.radius`**, `Footprint(center:radius:)`, `Footprint(discOf:)`; a disc collided as a rounded
 square against the body's square (slabs and corner circles, entering at the first). The sample marks
 `turntable` round (`SampleGame.roundMeshes`). Six tests; three fail with discs as their squares. A box
 body meets a column face on and **stops** — honest, pinned by a test.
@@ -1706,7 +1714,7 @@ below, never in this list.
    lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
 
 3. **Lines and rings that are as smooth as fills.** 0.21.0 feathered `HUDRenderer.fill(polygon:)` because the
-   HUD has no multisampling and the W came out stair-stepped. `line(from:to:)` and `ring(centre:…)` are drawn
+   HUD has no multisampling and the W came out stair-stepped. `line(from:to:)` and `ring(center:…)` are drawn
    as bare quads in the same pipeline, so every diagonal line and every ring edge is still aliased — and a
    game's HUD is mostly those: a reticle, a mil ladder, a chevron, a scope's surround. Draw them through the
    same rim and feather rather than a second antialiasing path. **Proved by** a recorded frame holding a

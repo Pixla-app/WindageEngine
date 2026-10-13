@@ -3,7 +3,7 @@
   "groundSurface" : "dirt",
   "lights" : [
     {
-      "colour" : [
+      "color" : [
         1.0,
         0.74,
         0.44
@@ -24,7 +24,7 @@
       "range" : 26
     },
     {
-      "colour" : [
+      "color" : [
         0.55,
         0.78,
         1.0
@@ -45,7 +45,7 @@
       "range" : 16
     },
     {
-      "colour" : [
+      "color" : [
         1.0,
         0.55,
         0.28
@@ -715,7 +715,7 @@
     {
       "anchor" : "absolute",
       "light" : {
-        "colour" : [
+        "color" : [
           1.0,
           0.6,
           0.3
@@ -751,7 +751,7 @@
     {
       "anchor" : "absolute",
       "light" : {
-        "colour" : [
+        "color" : [
           1.0,
           0.86,
           0.52

@@ -98,10 +98,10 @@ public nonisolated struct CharacterController: Sendable {
         /// **Positive the way a placement's yaw is**, and the way a camera's is — turning left, seen
         /// from above anticlockwise — so a view turned by it turns with the thing underfoot.
         public struct Turn: Sendable, Equatable {
-            public var centre: SIMD2<Float>
+            public var center: SIMD2<Float>
             public var radians: Float
-            public init(about centre: SIMD2<Float>, by radians: Float) {
-                self.centre = centre
+            public init(about center: SIMD2<Float>, by radians: Float) {
+                self.center = center
                 self.radians = radians
             }
         }
@@ -123,7 +123,7 @@ public nonisolated struct CharacterController: Sendable {
         /// Only a turn **about the vertical**, which is every turn a level placement has. A tilted box
         /// has no rectangular plan, and keeps its world box.
         public struct Footprint: Sendable, Equatable {
-            public var centre: SIMD2<Float>
+            public var center: SIMD2<Float>
             /// Half its size along its own x and z, before it is turned.
             public var halfSize: SIMD2<Float>
             /// Positive the way a placement's yaw is (``Level/turned(_:by:)``).
@@ -133,15 +133,15 @@ public nonisolated struct CharacterController: Sendable {
             /// corners is standing on air: 0.83 m past the rim of a 4 m turntable.
             public var radius: Float?
 
-            public init(centre: SIMD2<Float>, halfSize: SIMD2<Float>, yaw: Float) {
-                self.centre = centre
+            public init(center: SIMD2<Float>, halfSize: SIMD2<Float>, yaw: Float) {
+                self.center = center
                 self.halfSize = halfSize
                 self.yaw = yaw
             }
 
             /// A disc. Turning it changes nothing, so it has no yaw.
-            public init(centre: SIMD2<Float>, radius: Float) {
-                self.centre = centre
+            public init(center: SIMD2<Float>, radius: Float) {
+                self.center = center
                 self.halfSize = SIMD2(radius, radius)
                 self.yaw = 0
                 self.radius = radius
@@ -152,7 +152,7 @@ public nonisolated struct CharacterController: Sendable {
             /// a thing is round is the game's to know; a box cannot say.
             public init?(discOf volume: Volume) {
                 guard let plan = Footprint(of: volume) else { return nil }
-                self.init(centre: plan.centre, radius: min(plan.halfSize.x, plan.halfSize.y))
+                self.init(center: plan.center, radius: min(plan.halfSize.x, plan.halfSize.y))
             }
 
             /// The plan of a volume whose transform turns it about the vertical — scaled, turned and
@@ -169,7 +169,7 @@ public nonisolated struct CharacterController: Sendable {
                       abs(x.x * z.x + x.z * z.z) <= level * across * along else { return nil }
                 let local = volume.local
                 let middle = m * SIMD4((local.minimum + local.maximum) / 2, 1)
-                self.centre = SIMD2(middle.x, middle.z)
+                self.center = SIMD2(middle.x, middle.z)
                 self.halfSize = SIMD2((local.maximum.x - local.minimum.x) / 2 * across,
                                       (local.maximum.z - local.minimum.z) / 2 * along)
                 // Local +x lands on (cos, −sin) turned by yaw — Level.transform(yaw:scale:at:).
@@ -558,7 +558,7 @@ public nonisolated struct CharacterController: Sendable {
                 // where they are — one displacement, so a turn goes through collision like a slide.
                 let turn = world.turns[solid]
                 let moved = SIMD2(feet.x + carry.x, feet.z + carry.z)
-                let round = turn.centre + Level.turned(moved - turn.centre, by: turn.radians)
+                let round = turn.center + Level.turned(moved - turn.center, by: turn.radians)
                 carry.x = round.x - feet.x
                 carry.z = round.y - feet.z
                 turned = turn.radians
@@ -923,7 +923,7 @@ public nonisolated struct CharacterController: Sendable {
         if world.turns.indices.contains(index), world.turns[index].radians != 0 {
             let turn = world.turns[index]
             let moved = SIMD2(position.x + going.x, position.z + going.z)
-            let round = turn.centre + Level.turned(moved - turn.centre, by: turn.radians)
+            let round = turn.center + Level.turned(moved - turn.center, by: turn.radians)
             going.x = round.x - position.x
             going.z = round.y - position.z
         }
@@ -935,7 +935,7 @@ public nonisolated struct CharacterController: Sendable {
     /// A solid as the ground plane sees it: its centre, its own two axes and half its size along each.
     /// A plain box's axes are the world's.
     private struct Plan {
-        var centre: SIMD2<Float>
+        var center: SIMD2<Float>
         var across: SIMD2<Float>
         var along: SIMD2<Float>
         var half: SIMD2<Float>
@@ -947,15 +947,15 @@ public nonisolated struct CharacterController: Sendable {
     private func plan(of index: Int, in world: Surroundings) -> Plan {
         if world.footprints.indices.contains(index), let footprint = world.footprints[index] {
             if let radius = footprint.radius {
-                return Plan(centre: footprint.centre, across: SIMD2(1, 0), along: SIMD2(0, 1),
+                return Plan(center: footprint.center, across: SIMD2(1, 0), along: SIMD2(0, 1),
                             half: SIMD2(radius, radius), isSquare: false, radius: radius)
             }
             let c = cos(footprint.yaw), s = sin(footprint.yaw)
-            return Plan(centre: footprint.centre, across: SIMD2(c, -s), along: SIMD2(s, c),
+            return Plan(center: footprint.center, across: SIMD2(c, -s), along: SIMD2(s, c),
                         half: footprint.halfSize, isSquare: false)
         }
         let box = world.solids[index]
-        return Plan(centre: SIMD2(box.minimum.x + box.maximum.x, box.minimum.z + box.maximum.z) / 2,
+        return Plan(center: SIMD2(box.minimum.x + box.maximum.x, box.minimum.z + box.maximum.z) / 2,
                     across: SIMD2(1, 0), along: SIMD2(0, 1),
                     half: SIMD2(box.maximum.x - box.minimum.x, box.maximum.z - box.minimum.z) / 2,
                     isSquare: true)
@@ -979,14 +979,14 @@ public nonisolated struct CharacterController: Sendable {
         if let radius = plan.radius {
             // The disc's centre against the body's square: how far outside the square it is (or, inside,
             // how far in from its nearest side, as a negative), and the radius less that.
-            let q = abs(position - plan.centre), r = tuning.radius
+            let q = abs(position - plan.center), r = tuning.radius
             let outside = simd_max(q - r, .zero)
             let beyond = simd_length_squared(outside) > 0 ? simd_length(outside) : max(q.x - r, q.y - r)
             return radius - beyond
         }
         var least = Float.greatestFiniteMagnitude
         for axis in separatingAxes(plan) {
-            least = min(least, reach(plan, on: axis) - abs(simd_dot(position - plan.centre, axis)))
+            least = min(least, reach(plan, on: axis) - abs(simd_dot(position - plan.center, axis)))
         }
         return least
     }
@@ -1001,11 +1001,11 @@ public nonisolated struct CharacterController: Sendable {
     private func contact(from position: SIMD2<Float>, along delta: SIMD2<Float>, with plan: Plan,
                          clearance: Float) -> (fraction: Float, leaving: Float, face: SIMD2<Float>)? {
         if let radius = plan.radius {
-            return contact(from: position - plan.centre, along: delta, disc: radius + clearance)
+            return contact(from: position - plan.center, along: delta, disc: radius + clearance)
         }
         var enter = -Float.greatestFiniteMagnitude, leave = Float.greatestFiniteMagnitude
         var face = SIMD2<Float>.zero
-        let offset = position - plan.centre
+        let offset = position - plan.center
         for axis in separatingAxes(plan) {
             let span = reach(plan, on: axis) + clearance
             let apart = simd_dot(offset, axis), closing = simd_dot(delta, axis)

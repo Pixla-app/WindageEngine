@@ -21,7 +21,7 @@ struct ShadowAtlasTests {
                       at position: SIMD3<Float> = .zero,
                       outer: Float = 30,
                       range: Float = 20) -> PunctualLight {
-        PunctualLight(position: position, colour: SIMD3(repeating: 10), range: range,
+        PunctualLight(position: position, color: SIMD3(repeating: 10), range: range,
                       cone: PunctualLight.Cone(direction: direction,
                                                innerAngle: radians_from_degrees(outer * 0.6),
                                                outerAngle: radians_from_degrees(outer)))
@@ -32,7 +32,7 @@ struct ShadowAtlasTests {
     /// shadowing one direction of six.
     @Test("A light with no cone gets no shadow projection")
     func pointLightsHaveNoSingleProjection() {
-        let point = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 10)
+        let point = PunctualLight(position: .zero, color: SIMD3(repeating: 10), range: 10)
         #expect(ShadowAtlas.viewProjection(for: point) == nil)
         #expect(ShadowAtlas.viewProjection(for: spot(pointing: SIMD3(0, -1, 0))) != nil)
     }
@@ -64,8 +64,8 @@ struct ShadowAtlasTests {
             return SIMD2(clip.x / clip.w, clip.y / clip.w)
         }
         // Straight down the axis, five metres away.
-        let centre = project(SIMD3(0, 1, 0))
-        #expect(abs(centre.x) < 1e-4 && abs(centre.y) < 1e-4, "the axis is not in the middle")
+        let center = project(SIMD3(0, 1, 0))
+        #expect(abs(center.x) < 1e-4 && abs(center.y) < 1e-4, "the axis is not in the middle")
 
         // At the cone's outer edge, which must still be inside the map.
         let edgeAngle = radians_from_degrees(Float(30))

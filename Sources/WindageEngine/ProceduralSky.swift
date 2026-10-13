@@ -119,7 +119,7 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = ProceduralSky()
-        func colour(_ key: CodingKeys, _ or: SIMD3<Float>) throws -> SIMD3<Float> {
+        func color(_ key: CodingKeys, _ or: SIMD3<Float>) throws -> SIMD3<Float> {
             guard let values = try container.decodeIfPresent([Float].self, forKey: key) else { return or }
             guard values.count == 3 else {
                 throw DecodingError.dataCorruptedError(
@@ -129,14 +129,14 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
             return SIMD3(values[0], values[1], values[2])
         }
         self.init(
-            zenith: try colour(.zenith, fallback.zenith),
-            horizon: try colour(.horizon, fallback.horizon),
-            ground: try colour(.ground, fallback.ground),
+            zenith: try color(.zenith, fallback.zenith),
+            horizon: try color(.horizon, fallback.horizon),
+            ground: try color(.ground, fallback.ground),
             sunPitchDegrees: try container.decodeIfPresent(Float.self, forKey: .sunPitch)
                 ?? fallback.sunPitchDegrees,
             sunYawDegrees: try container.decodeIfPresent(Float.self, forKey: .sunYaw)
                 ?? fallback.sunYawDegrees,
-            sunRadiance: try colour(.sunRadiance, fallback.sunRadiance),
+            sunRadiance: try color(.sunRadiance, fallback.sunRadiance),
             sunAngularRadius: try container.decodeIfPresent(Float.self, forKey: .sunAngularRadius)
                 ?? fallback.sunAngularRadius)
     }

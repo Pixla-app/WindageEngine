@@ -52,8 +52,8 @@ struct EngineMarkTests {
             + "  <desc>\(description) Generated from EngineMark.outline — see Brand/README.md.</desc>\n"
     }
 
-    static func hex(_ colour: UIColor) -> String {
-        let c = SIMD3(colour.srgb.x, colour.srgb.y, colour.srgb.z) * 255
+    static func hex(_ color: UIColor) -> String {
+        let c = SIMD3(color.srgb.x, color.srgb.y, color.srgb.z) * 255
         return String(format: "#%02X%02X%02X", Int(c.x.rounded()), Int(c.y.rounded()), Int(c.z.rounded()))
     }
 

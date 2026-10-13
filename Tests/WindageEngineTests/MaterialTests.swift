@@ -70,7 +70,7 @@ struct MaterialTests {
     /// Colour maps are encoded for eyes; everything else holds numbers. Decoding a roughness map as
     /// sRGB bends every value — 0.5 arrives as 0.21 and the whole scene looks wet.
     @Test("Only the colour slots are sRGB")
-    func onlyColourSlotsAreColour() {
+    func onlyColorSlotsAreColor() {
         #expect(TextureSlot.baseColor.isColor)
         #expect(TextureSlot.emissive.isColor)
         for slot in [TextureSlot.normal, .metallic, .roughness, .ambientOcclusion] {

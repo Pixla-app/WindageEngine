@@ -21,7 +21,7 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
         self.maximum = maximum
     }
 
-    public var centre: SIMD3<Float> { (minimum + maximum) * 0.5 }
+    public var center: SIMD3<Float> { (minimum + maximum) * 0.5 }
     public var size: SIMD3<Float> { maximum - minimum }
 
     /// The box containing this one after a transform.

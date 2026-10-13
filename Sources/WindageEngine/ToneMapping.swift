@@ -89,8 +89,8 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
     /// A game can also call it: picking an interface colour that matches a tone-mapped scene means
     /// running the scene's own curve, and doing it by eye against a screenshot goes stale the moment
     /// the exposure moves.
-    public func apply(_ colour: SIMD3<Float>) -> SIMD3<Float> {
-        let exposed = colour * exposure
+    public func apply(_ color: SIMD3<Float>) -> SIMD3<Float> {
+        let exposed = color * exposure
         switch curve {
         case .clamp:
             return simd_clamp(exposed, .zero, .one)

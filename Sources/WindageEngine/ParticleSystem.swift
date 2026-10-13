@@ -36,7 +36,7 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
 
     /// Colour, **linear and unbounded**. Above 1 is how a spark reads as hot rather than as orange
     /// paint: the scene is HDR and the tone map rolls it towards white.
-    public var colour: SIMD3<Float>
+    public var color: SIMD3<Float>
     /// Opacity at birth.
     public var opacity: Float = 1
     /// How opacity falls over a lifetime: `(1 − t)^fade`. 1 is linear; 2 holds on and then goes,
@@ -54,7 +54,7 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
 
     public init(count: Int, speed: Float, spread: Float, lifetime: Float, size: Float,
                 growth: Float = 0, gravity: Float = -6.5, drag: Float = 2.4,
-                colour: SIMD3<Float>, opacity: Float = 1, fade: Float = 1, glows: Bool = false) {
+                color: SIMD3<Float>, opacity: Float = 1, fade: Float = 1, glows: Bool = false) {
         self.count = max(0, count)
         self.speed = speed
         self.spread = spread
@@ -63,7 +63,7 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
         self.growth = growth
         self.gravity = gravity
         self.drag = drag
-        self.colour = colour
+        self.color = color
         self.opacity = opacity
         self.fade = fade
         self.glows = glows
@@ -190,11 +190,11 @@ public nonisolated struct ParticleSystem: Sendable {
 
     /// How a particle looks at its current age: its colour **premultiplied** by opacity, and its
     /// coverage — zero for anything that glows. See ``ParticleRecipe/glows``.
-    public func appearance(of particle: Particle) -> (colour: SIMD3<Float>, coverage: Float, size: Float) {
+    public func appearance(of particle: Particle) -> (color: SIMD3<Float>, coverage: Float, size: Float) {
         let r = recipes[particle.recipe]
         let t = particle.progress
         let opacity = r.opacity * pow(max(0, 1 - t), r.fade)
-        return (r.colour * opacity, r.glows ? 0 : opacity, particle.size * (1 + r.growth * t))
+        return (r.color * opacity, r.glows ? 0 : opacity, particle.size * (1 + r.growth * t))
     }
 
     /// A deterministic 0…1 from a seed and an index.

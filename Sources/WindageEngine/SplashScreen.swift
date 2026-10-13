@@ -133,7 +133,7 @@ public nonisolated struct SplashScreen: Sendable {
 
         let ink = foreground.withAlpha(foreground.srgb.w * alpha)
         let mark = viewport.x * markWidthFraction
-        let centre = viewport * 0.5
+        let center = viewport * 0.5
         let gap = mark * 0.3
 
         // The name as the lockup sets it: the first word large, the rest small and tracked out beneath.
@@ -148,12 +148,12 @@ public nonisolated struct SplashScreen: Sendable {
         let leadWidth = leadLines.map { SplashScreen.width(of: $0, pointSize: leadPoint, tracking: leadTracking, in: hud) }.max() ?? 0
 
         let total = (leadLines.isEmpty ? 0 : leadWidth + gap) + mark + gap + nameWidth
-        var x = centre.x - total / 2
+        var x = center.x - total / 2
 
         if !leadLines.isEmpty {
             // Right-aligned against the mark, the block centred on the mark's height.
             let line = leadPoint * 1.2
-            let firstBaseline = centre.y - line * Float(leadLines.count) / 2 + leadPoint * 0.95
+            let firstBaseline = center.y - line * Float(leadLines.count) / 2 + leadPoint * 0.95
             for (index, words) in leadLines.enumerated() {
                 let width = SplashScreen.width(of: words, pointSize: leadPoint, tracking: leadTracking, in: hud)
                 SplashScreen.set(words, into: hud, x: x + leadWidth - width, y: firstBaseline + line * Float(index),
@@ -162,13 +162,13 @@ public nonisolated struct SplashScreen: Sendable {
             x += leadWidth + gap
         }
 
-        EngineMark.draw(into: hud, x: x, y: centre.y - mark / 2, height: mark, colour: ink)
+        EngineMark.draw(into: hud, x: x, y: center.y - mark / 2, height: mark, color: ink)
         x += mark + gap
 
         // Capitals stand about seven tenths of their point size above the baseline; the two lines are
         // centred together on the mark.
         let block = large * 0.72 + small * 0.55 + small * 0.72
-        let firstBaseline = centre.y - block / 2 + large * 0.72
+        let firstBaseline = center.y - block / 2 + large * 0.72
         _ = hud.text(first, x: x, y: firstBaseline, pointSize: large, color: ink)
         let secondBaseline = firstBaseline + small * 0.55 + small * 0.72
         SplashScreen.set(second, into: hud, x: x + mark * 0.02, y: secondBaseline,

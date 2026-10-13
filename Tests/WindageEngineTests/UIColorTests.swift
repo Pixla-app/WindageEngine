@@ -33,9 +33,9 @@ struct UIColorTests {
     @Test("Authored colour survives the trip to the screen and back")
     func roundTripsExactly() {
         for hex: UInt32 in [0x00C2FF, 0xFF8C3B, 0x007499, 0x000000, 0xFFFFFF, 0x0B1016] {
-            let colour = UIColor(hex: hex)
-            let returned = SIMD3(encode(colour.linear.x), encode(colour.linear.y), encode(colour.linear.z))
-            let authored = SIMD3(colour.srgb.x, colour.srgb.y, colour.srgb.z)
+            let color = UIColor(hex: hex)
+            let returned = SIMD3(encode(color.linear.x), encode(color.linear.y), encode(color.linear.z))
+            let authored = SIMD3(color.srgb.x, color.srgb.y, color.srgb.z)
             #expect(simd_length(returned - authored) < 1e-5,
                     "hex \(String(hex, radix: 16)) did not survive the round trip")
         }

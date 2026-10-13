@@ -46,20 +46,20 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
 
     /// How many of the asset's units make a metre — 1 for an asset already in metres, 100 for one in
     /// centimetres.
-    public var unitsPerMetre: Float
+    public var unitsPerMeter: Float
 
     /// An asset already in this engine's space: Y-up, metres.
     public static let identity = AssetOrientation()
 
-    public init(upAxis: UpAxis = .y, unitsPerMetre: Float = 1) {
+    public init(upAxis: UpAxis = .y, unitsPerMeter: Float = 1) {
         self.upAxis = upAxis
-        self.unitsPerMetre = unitsPerMetre
+        self.unitsPerMeter = unitsPerMeter
     }
 
     /// The correction, to be applied **before** the model matrix that places the object:
     /// `model * orientation.transform`.
     public var transform: matrix_float4x4 {
-        let scale = unitsPerMetre != 0 ? 1 / unitsPerMetre : 1
+        let scale = unitsPerMeter != 0 ? 1 / unitsPerMeter : 1
         var result = rotation
         // Uniform, so it commutes with the rotation and can simply scale the basis columns.
         result.columns.0 *= scale
@@ -88,8 +88,8 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
     ///
     /// - Parameter unitsPerMetre: measure it once — load the asset, read the height of its bounding
     ///   box, and divide by how tall the thing actually is. A person is about 1.75 m.
-    public static func read(from asset: MDLAsset, unitsPerMetre: Float = 1) -> AssetOrientation {
-        AssetOrientation(upAxis: upAxis(of: asset), unitsPerMetre: unitsPerMetre)
+    public static func read(from asset: MDLAsset, unitsPerMeter: Float = 1) -> AssetOrientation {
+        AssetOrientation(upAxis: upAxis(of: asset), unitsPerMeter: unitsPerMeter)
     }
 
     /// The dominant axis of the asset's up vector.

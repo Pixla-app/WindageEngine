@@ -69,12 +69,12 @@ struct EnvironmentMapTests {
     /// or rotates it** — invisible on a smooth gradient and a hard seam the moment the sky has a sun
     /// in it.
     @Test("The six faces point the six ways and agree at their centres")
-    func faceCentresAreTheAxes() {
+    func faceCentersAreTheAxes() {
         let expected: [SIMD3<Float>] = [SIMD3(1, 0, 0), SIMD3(-1, 0, 0), SIMD3(0, 1, 0),
                                         SIMD3(0, -1, 0), SIMD3(0, 0, 1), SIMD3(0, 0, -1)]
         for face in 0..<6 {
-            let centre = EnvironmentMap.direction(face: face, u: 0.5, v: 0.5)
-            #expect(simd_distance(centre, expected[face]) < 1e-5, "face \(face)")
+            let center = EnvironmentMap.direction(face: face, u: 0.5, v: 0.5)
+            #expect(simd_distance(center, expected[face]) < 1e-5, "face \(face)")
         }
     }
 

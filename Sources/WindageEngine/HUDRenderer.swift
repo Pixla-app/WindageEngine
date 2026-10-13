@@ -212,9 +212,9 @@ public final class HUDRenderer {
         clear.w = 0
         for i in points.indices {
             let j = (i + 1) % points.count
-            for (position, colour) in [(placed[i], solid), (placed[j], solid), (outside[j], clear),
+            for (position, color) in [(placed[i], solid), (placed[j], solid), (outside[j], clear),
                                        (placed[i], solid), (outside[j], clear), (outside[i], clear)] {
-                vertices.append(Vertex(position: position, uv: font.whiteTexelUV, color: colour))
+                vertices.append(Vertex(position: position, uv: font.whiteTexelUV, color: color))
             }
         }
     }
@@ -376,7 +376,7 @@ public final class HUDRenderer {
     /// With a large enough outer radius this is a circular vignette, which is how a scope's sight
     /// picture gets its surround. Drawn as a strip of quads rather than a triangle fan so it needs
     /// no index buffer and no separate primitive type: the whole interface stays one draw call.
-    public func ring(centre: SIMD2<Float>,
+    public func ring(center: SIMD2<Float>,
                      innerRadius: Float,
                      outerRadius: Float,
                      segments: Int = 96,
@@ -391,10 +391,10 @@ public final class HUDRenderer {
             let d1 = SIMD2(cos(a1), sin(a1))
 
             let corners = [
-                centre + d0 * innerRadius,
-                centre + d1 * innerRadius,
-                centre + d1 * outerRadius,
-                centre + d0 * outerRadius
+                center + d0 * innerRadius,
+                center + d1 * innerRadius,
+                center + d1 * outerRadius,
+                center + d0 * outerRadius
             ].map(toDevice)
 
             for corner in [corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]] {

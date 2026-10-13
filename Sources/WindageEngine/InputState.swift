@@ -199,13 +199,13 @@ public final class InputState {
     }
 
     private func observeControllers() {
-        let centre = NotificationCenter.default
+        let center = NotificationCenter.default
         connectionObservers = [
-            centre.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { note in
+            center.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { note in
                 let name = (note.object as? GCController)?.vendorName ?? "Controller"
                 NSLog("\(Engine.name): \(name) connected")
             },
-            centre.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { note in
+            center.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { note in
                 let name = (note.object as? GCController)?.vendorName ?? "Controller"
                 NSLog("\(Engine.name): \(name) disconnected")
             }

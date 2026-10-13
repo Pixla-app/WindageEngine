@@ -163,9 +163,9 @@ public nonisolated struct ClusteredLights: Sendable {
 
         for (lightIndex, light) in lights.enumerated() {
             let viewPosition4 = viewMatrix * SIMD4(light.position, 1)
-            let centre = SIMD3(viewPosition4.x, viewPosition4.y, viewPosition4.z)
+            let center = SIMD3(viewPosition4.x, viewPosition4.y, viewPosition4.z)
             let radius = light.range
-            let depth = -centre.z
+            let depth = -center.z
 
             // Slices the sphere spans. A light behind the camera still reaches forwards if its radius
             // carries it past the near plane, which is why this clamps rather than rejects.
@@ -182,7 +182,7 @@ public nonisolated struct ClusteredLights: Sendable {
                         // sharper, and getting it wrong drops light a player can see. Same asymmetry
                         // as everywhere else — a cluster that keeps a light it did not need costs one
                         // iteration of a loop.
-                        guard simd_distance_squared(box.closestPoint(to: centre), centre)
+                        guard simd_distance_squared(box.closestPoint(to: center), center)
                                 <= radius * radius else { continue }
                         buckets[grid.index(tileX: tileX, tileY: tileY, slice: slice)]
                             .append(UInt32(lightIndex))

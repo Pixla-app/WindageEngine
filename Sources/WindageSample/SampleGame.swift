@@ -274,7 +274,7 @@ final class SampleGame: GameLoop {
     /// into one `float4` and there is no padding for the two sides to disagree about.
     private struct PackedLight {
         var positionAndRange: SIMD4<Float> = .zero
-        var colourAndAngleOffset: SIMD4<Float> = .zero
+        var colorAndAngleOffset: SIMD4<Float> = .zero
         var directionAndAngleScale: SIMD4<Float> = .zero
         /// xy atlas offset, z scale, **w whether this light has a map at all**.
         var shadowTile: SIMD4<Float> = .zero
@@ -295,7 +295,7 @@ final class SampleGame: GameLoop {
             // term exactly 1 everywhere. One code path, no branch, and nothing that behaves
             // differently depending on which kind of lamp a level happens to hold.
             let cone = light.cone
-            colourAndAngleOffset = SIMD4(light.colour, cone?.angleOffset ?? 1)
+            colorAndAngleOffset = SIMD4(light.color, cone?.angleOffset ?? 1)
             directionAndAngleScale = SIMD4(cone?.direction ?? SIMD3(0, -1, 0), cone?.angleScale ?? 0)
         }
     }
@@ -314,7 +314,7 @@ final class SampleGame: GameLoop {
         var materialParams: SIMD4<Float>
         /// The level's sun, in radiance. **`w` unused** — a `float4` so neither side has to reason
         /// about the padding after a `float3`.
-        var sunColour: SIMD4<Float>
+        var sunColor: SIMD4<Float>
         /// What this surface emits, in radiance: the material's own emission times whatever the game
         /// wants of it right now. **`w` unused**, for the same padding reason.
         var emissive: SIMD4<Float>
@@ -326,7 +326,7 @@ final class SampleGame: GameLoop {
              sunDirection: SIMD3<Float>,
              material: Material,
              specularLOD: Float,
-             sunColour: SIMD3<Float>,
+             sunColor: SIMD3<Float>,
              emissive: SIMD3<Float>) {
             self.viewProjection = viewProjection
             self.model = model
@@ -335,7 +335,7 @@ final class SampleGame: GameLoop {
             self.sunDirection = sunDirection
             self.materialBaseColor = material.baseColor
             self.materialParams = SIMD4(material.metallic, material.roughness, specularLOD, 0)
-            self.sunColour = SIMD4(sunColour, 0)
+            self.sunColor = SIMD4(sunColor, 0)
             // **The game's value, not the material's times the game's.** Multiplying them was the
             // first attempt and it silently produced nothing: an OBJ material's emission is always
             // zero — Model I/O reads neither `Ke` nor `map_Ke` — so a crate the game wanted lit was
@@ -512,13 +512,13 @@ final class SampleGame: GameLoop {
         // **Rising, not falling** — gravity is per recipe, and heat lifts an ember. Well above 1 in
         // colour so it reads as hot, and tiny, because a spark the size of a coin is a firefly.
         ParticleRecipe(count: 1, speed: 0.9, spread: 0.35, lifetime: 1.6, size: 0.07,
-                       gravity: 1.4, drag: 0.9, colour: SIMD3(5.0, 1.1, 0.12), fade: 1.5, glows: true),
+                       gravity: 1.4, drag: 0.9, color: SIMD3(5.0, 1.1, 0.12), fade: 1.5, glows: true),
         // The crate's own green, thrown outward and falling back: a moment, not a firework.
         ParticleRecipe(count: 48, speed: 4.5, spread: 2.2, lifetime: 0.9, size: 0.12,
-                       gravity: -7, drag: 1.8, colour: SIMD3(0.5, 5.0, 2.2), glows: true),
+                       gravity: -7, drag: 1.8, color: SIMD3(0.5, 5.0, 2.2), glows: true),
         // **Matter**: it covers what is behind it, spreads as it thins, and does not glow.
         ParticleRecipe(count: 14, speed: 0.6, spread: 1.4, lifetime: 0.9, size: 0.35, growth: 1.8,
-                       gravity: -1, drag: 3, colour: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
+                       gravity: -1, drag: 3, color: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
     ], capacity: 1024)
     private let particleRenderer: ParticleRenderer?
     /// Where a stream of embers comes from.
@@ -1380,10 +1380,10 @@ final class SampleGame: GameLoop {
         // **The material names no texture, and that is normal.** The tool builds the colour map in
         // memory, so there is no file for the exporter to reference; it is written beside the model
         // instead and bound by name.
-        let colourMap = baseURL.deletingLastPathComponent()
+        let colorMap = baseURL.deletingLastPathComponent()
             .appendingPathComponent("\(stem)_ColorMap.png")
-        if let textures, FileManager.default.fileExists(atPath: colourMap.path),
-           let texture = try? textures.texture(.url(colourMap), isColor: true) {
+        if let textures, FileManager.default.fileExists(atPath: colorMap.path),
+           let texture = try? textures.texture(.url(colorMap), isColor: true) {
             figureMaps = Array(repeating: texture, count: mesh.mesh.submeshes.count)
         } else {
             figureMaps = resolveBaseColorMaps(of: mesh, named: stem)
@@ -1764,7 +1764,7 @@ final class SampleGame: GameLoop {
             let taken = run.collected.indices.contains(slot) && run.collected[slot]
             guard !taken else { continue }
             lights.append(PunctualLight(position: position + SIMD3(0, 0.6, 0),
-                                        colour: SIMD3(0.6, 6.0, 2.6), range: 4.5))
+                                        color: SIMD3(0.6, 6.0, 2.6), range: 4.5))
         }
         // **A lamp per lantern, seeded from where the lantern already is.** `rebuildLights` runs
         // again every time an objective is collected, and a light that spent one frame at the world
@@ -1774,7 +1774,7 @@ final class SampleGame: GameLoop {
             let at = drawables[index].transform.columns.3
             lanternLights.append(lights.count)
             lights.append(PunctualLight(position: SIMD3(at.x, at.y, at.z),
-                                        colour: SIMD3(1.0, 0.72, 0.42) * 26, range: 6.5))
+                                        color: SIMD3(1.0, 0.72, 0.42) * 26, range: 6.5))
         }
 
         // **The budget is only used for the report now.** Clustering removed the per-draw limit; what
@@ -2142,7 +2142,7 @@ final class SampleGame: GameLoop {
     private func kindName(_ kind: Level.Placement) -> String {
         // The lamp's brightness in the name, because two braziers whose lamps differ are two kinds —
         // and a palette that shows "brazier with its lamp" twice cannot be told apart.
-        kind.mesh + (kind.light.map { String(format: " with a lamp at %.0f", $0.colour.max()) } ?? "")
+        kind.mesh + (kind.light.map { String(format: " with a lamp at %.0f", $0.color.max()) } ?? "")
             // **"scale", not "×"**: the HUD's font is printable ASCII, and a "×" is silently dropped —
             // the line read "box at 2.4" the first time it was drawn.
             + (kind.scale == 1 ? "" : String(format: ", scale %.1f", kind.scale))
@@ -2184,7 +2184,7 @@ final class SampleGame: GameLoop {
     /// the crate, and its shadow cube sees nothing but walls.
     private func newLamp(for mesh: String) -> PunctualLight {
         let top = meshes[mesh]?.bounds.maximum.y ?? 1
-        return PunctualLight(position: SIMD3(0, top + 0.6, 0), colour: SIMD3(1, 0.72, 0.42) * 45, range: 12)
+        return PunctualLight(position: SIMD3(0, top + 0.6, 0), color: SIMD3(1, 0.72, 0.42) * 45, range: 12)
     }
 
     /// Says where the selection's lamp is **in the world** — through the level's own resolution, the
@@ -2197,7 +2197,7 @@ final class SampleGame: GameLoop {
         }
         print(String(format: "WindageSample: lamp on %@ #%d at (%.2f, %.2f, %.2f), intensity %.1f, range %.0f",
                      placement.mesh, index, lamp.position.x, lamp.position.y, lamp.position.z,
-                     lamp.colour.max(), lamp.range))
+                     lamp.color.max(), lamp.range))
     }
 
     /// Steps through the tone map curves, so the difference can be looked at rather than argued
@@ -2242,9 +2242,9 @@ final class SampleGame: GameLoop {
             case .brightness: ("Brightness", String(format: "%+.2f stops", settings.brightness))
             case .reset: ("Reset to defaults", "")
             }
-            let colour = selected ? gold : white
-            _ = hud.text((selected ? "> " : "  ") + label, x: left + size, y: y, pointSize: size, color: colour)
-            _ = hud.text(value, x: left + width * 0.58, y: y, pointSize: size, color: colour)
+            let color = selected ? gold : white
+            _ = hud.text((selected ? "> " : "  ") + label, x: left + size, y: y, pointSize: size, color: color)
+            _ = hud.text(value, x: left + width * 0.58, y: y, pointSize: size, color: color)
             y += line
         }
 
@@ -2589,16 +2589,16 @@ final class SampleGame: GameLoop {
     /// it stands and from its world box (nil inside it). **Measured here, not asked of the controller**
     /// — the gap between two convex outlines that do not overlap, the least of each one's corners to
     /// the other's edges.
-    private func nearestTurnedSolid() -> (name: String, yaw: Float, centre: SIMD2<Float>, gap: Float, boxGap: Float?)? {
+    private func nearestTurnedSolid() -> (name: String, yaw: Float, center: SIMD2<Float>, gap: Float, boxGap: Float?)? {
         let r = body.tuning.radius, at = SIMD2(body.feet.x, body.feet.z)
         let square = [SIMD2<Float>(-r, -r), SIMD2(r, -r), SIMD2(r, r), SIMD2(-r, r)].map { at + $0 }
-        var best: (name: String, yaw: Float, centre: SIMD2<Float>, gap: Float, boxGap: Float?)?
+        var best: (name: String, yaw: Float, center: SIMD2<Float>, gap: Float, boxGap: Float?)?
         for (index, footprint) in surroundings.footprints.enumerated() {
             guard let footprint, abs(sin(2 * footprint.yaw)) > 0.01,
-                  simd_distance(footprint.centre, at) < 3 + simd_length(footprint.halfSize) else { continue }
+                  simd_distance(footprint.center, at) < 3 + simd_length(footprint.halfSize) else { continue }
             let h = footprint.halfSize
             let outline = [SIMD2(-h.x, -h.y), SIMD2(h.x, -h.y), SIMD2(h.x, h.y), SIMD2(-h.x, h.y)]
-                .map { footprint.centre + Level.turned($0, by: footprint.yaw) }
+                .map { footprint.center + Level.turned($0, by: footprint.yaw) }
             let box = surroundings.solids[index]
             let boxOutline = [SIMD2(box.minimum.x, box.minimum.z), SIMD2(box.maximum.x, box.minimum.z),
                               SIMD2(box.maximum.x, box.maximum.z), SIMD2(box.minimum.x, box.maximum.z)]
@@ -2606,7 +2606,7 @@ final class SampleGame: GameLoop {
             guard best == nil || gap < best!.gap else { continue }
             let inBox = at.x + r > box.minimum.x && at.x - r < box.maximum.x
                 && at.y + r > box.minimum.z && at.y - r < box.maximum.z
-            best = (level.placements[solidPlacements[index]].mesh, footprint.yaw, footprint.centre,
+            best = (level.placements[solidPlacements[index]].mesh, footprint.yaw, footprint.center,
                     gap, inBox ? nil : SampleGame.gap(between: square, and: boxOutline))
         }
         return best
@@ -2677,7 +2677,7 @@ final class SampleGame: GameLoop {
                                      turntableAngle * 180 / .pi, feetAngle, simd_length(offset), camera.yaw * 180 / .pi))
                     }
                     if let slider = sliders.first, body.pinnedBy != nil || simd_distance(
-                        SIMD2(volumes[slider.drawable].worldBounds.centre.x, volumes[slider.drawable].worldBounds.centre.z),
+                        SIMD2(volumes[slider.drawable].worldBounds.center.x, volumes[slider.drawable].worldBounds.center.z),
                         SIMD2(body.feet.x, body.feet.z)) < 3 {
                         let box = volumes[slider.drawable].worldBounds
                         let speed = (body.feet.x - previousFeet.x) / Float(engine.timestep.step)
@@ -2689,7 +2689,7 @@ final class SampleGame: GameLoop {
                     }
                     if let near = nearestTurnedSolid() {
                         print(String(format: "WindageSample:     %@ turned %.1f° at (%.2f, %.2f): %.3f m from it, %@",
-                                     near.name, near.yaw * 180 / .pi, near.centre.x, near.centre.y, near.gap,
+                                     near.name, near.yaw * 180 / .pi, near.center.x, near.center.y, near.gap,
                                      near.boxGap.map { String(format: "%.3f m from its box", $0) } ?? "inside its box"))
                     }
                     if !lifts.isEmpty {
@@ -3089,7 +3089,7 @@ final class SampleGame: GameLoop {
                                     sunDirection: sunDirection,
                                     material: drawable.mesh.material(forSubmesh: 0),
                                     specularLOD: environmentLOD,
-                                    sunColour: sunIrradiance,
+                                    sunColor: sunIrradiance,
                                     emissive: emissive)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: index))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
@@ -3106,7 +3106,7 @@ final class SampleGame: GameLoop {
                                     sunDirection: sunDirection,
                                     material: box.material(forSubmesh: 0),
                                     specularLOD: environmentLOD,
-                                    sunColour: sunIrradiance,
+                                    sunColor: sunIrradiance,
                                     emissive: .zero)
             uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot))
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
@@ -3122,7 +3122,7 @@ final class SampleGame: GameLoop {
                                     sunDirection: sunDirection,
                                     material: figureMesh?.material(forSubmesh: 0) ?? Material(),
                                     specularLOD: environmentLOD,
-                                    sunColour: sunIrradiance,
+                                    sunColor: sunIrradiance,
                                     // **Times three, and that is the game's call.** A PNG cannot hold
                                     // a value above 1, so an emissive map alone can never be brighter
                                     // than white — and a seam that is exactly white does not read as
@@ -3218,8 +3218,8 @@ final class SampleGame: GameLoop {
         guard let shadowAtlas else { return [] }
         let candidates = lightSet.lights.enumerated()
             .filter { $0.element.cone != nil }
-            .sorted { PunctualLight.luminance($0.element.colour) * $0.element.range
-                    > PunctualLight.luminance($1.element.colour) * $1.element.range }
+            .sorted { PunctualLight.luminance($0.element.color) * $0.element.range
+                    > PunctualLight.luminance($1.element.color) * $1.element.range }
             .prefix(shadowAtlas.tileCount)
 
         return candidates.enumerated().compactMap { tile, entry in
@@ -3237,8 +3237,8 @@ final class SampleGame: GameLoop {
         guard let shadowCubes else { return [] }
         return lightSet.lights.enumerated()
             .filter { $0.element.cone == nil }
-            .sorted { PunctualLight.luminance($0.element.colour) * $0.element.range
-                    > PunctualLight.luminance($1.element.colour) * $1.element.range }
+            .sorted { PunctualLight.luminance($0.element.color) * $0.element.range
+                    > PunctualLight.luminance($1.element.color) * $1.element.range }
             .prefix(shadowCubes.lightCount)
             .enumerated()
             .map { slice, entry in
@@ -3614,7 +3614,7 @@ final class SampleGame: GameLoop {
         if isEditing {
             let what = editor.selected.map {
                 "\($0.mesh)  yaw \(Int($0.yaw * 180 / .pi))°  scale \(String(format: "%.2f", $0.scale))"
-                    + ($0.light.map { String(format: "  lamp %.0f", $0.colour.max()) } ?? "")
+                    + ($0.light.map { String(format: "  lamp %.0f", $0.color.max()) } ?? "")
             }
             let kinds = addableKinds
             let adding = kinds.isEmpty ? "" : "   i adds \(kindName(kinds[min(addKind, kinds.count - 1)]))"

@@ -1036,27 +1036,27 @@ struct CharacterHeadroomTests {
 struct CharacterPlatformTests {
 
     /// A 3 m square slab, its top at `top`, centred at `centre` on the ground plane.
-    private func slab(top: Float, centre: SIMD2<Float> = .zero) -> BoundingBox {
-        BoundingBox(minimum: SIMD3(centre.x - 1.5, top - 0.5, centre.y - 1.5),
-                    maximum: SIMD3(centre.x + 1.5, top, centre.y + 1.5))
+    private func slab(top: Float, center: SIMD2<Float> = .zero) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(center.x - 1.5, top - 0.5, center.y - 1.5),
+                    maximum: SIMD3(center.x + 1.5, top, center.y + 1.5))
     }
 
     /// Steps a body on a slab that moves by `velocity` each second, with `others` still around it.
     /// Returns the slab's final top and centre.
     @discardableResult
-    private func ride(_ c: inout CharacterController, from top: Float, centre: SIMD2<Float> = .zero,
+    private func ride(_ c: inout CharacterController, from top: Float, center: SIMD2<Float> = .zero,
                       velocity: SIMD3<Float>, seconds: Float, _ input: MovementInput = MovementInput(),
-                      others: [BoundingBox] = []) -> (top: Float, centre: SIMD2<Float>) {
-        var top = top, centre = centre
+                      others: [BoundingBox] = []) -> (top: Float, center: SIMD2<Float>) {
+        var top = top, center = center
         for _ in 0..<Int((seconds / step).rounded()) {
             let delta = velocity * step
             top += delta.y
-            centre += SIMD2(delta.x, delta.z)
-            var world = CharacterController.Surroundings(solids: [slab(top: top, centre: centre)] + others)
+            center += SIMD2(delta.x, delta.z)
+            var world = CharacterController.Surroundings(solids: [slab(top: top, center: center)] + others)
             world.motion = [delta]
             c.step(yaw: 0, input: input, deltaTime: step, in: world)
         }
-        return (top, centre)
+        return (top, center)
     }
 
     private func standing(on top: Float) -> CharacterController {
@@ -1097,18 +1097,18 @@ struct CharacterPlatformTests {
     func ridingIsNotWalking() {
         var c = standing(on: 0.3)
         var strides = 0
-        var top: Float = 0.3, centre = SIMD2<Float>(0, 0)
+        var top: Float = 0.3, center = SIMD2<Float>(0, 0)
         for _ in 0..<240 {
             let delta = SIMD3<Float>(2, 0.5, 0) * step
             top += delta.y
-            centre += SIMD2(delta.x, delta.z)
-            var world = CharacterController.Surroundings(solids: [slab(top: top, centre: centre)])
+            center += SIMD2(delta.x, delta.z)
+            var world = CharacterController.Surroundings(solids: [slab(top: top, center: center)])
             world.motion = [delta]
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world)
             strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
         }
         #expect(strides == 0 && c.headBob == .zero, "\(strides) footsteps riding a platform standing still")
-        #expect(abs(c.feet.x - centre.x) < 1e-3, "carried across with it")
+        #expect(abs(c.feet.x - center.x) < 1e-3, "carried across with it")
     }
 
     @Test("Walking on a moving platform is walking relative to it")
@@ -1116,7 +1116,7 @@ struct CharacterPlatformTests {
         var c = standing(on: 0.3)
         // The platform slides +x at 1 m/s; the body walks −z at 6 m/s for a quarter second.
         let end = ride(&c, from: 0.3, velocity: SIMD3(1, 0, 0), seconds: 0.25, MovementInput(forward: 1))
-        #expect(abs(c.feet.x - end.centre.x) < 1e-3, "kept the platform's sideways motion")
+        #expect(abs(c.feet.x - end.center.x) < 1e-3, "kept the platform's sideways motion")
         #expect(abs(c.feet.z + 1.5) < 0.01, "walked its own 1.5 m on top of it: z \(c.feet.z)")
     }
 
@@ -1148,8 +1148,8 @@ struct CharacterTurntableTests {
 
     /// A square table 4 m across, top at 0.2 m, its centre at `centre`. The box stays axis-aligned —
     /// as a turned solid's world bounds do — which is all the controller ever sees of it.
-    private func table(at centre: SIMD2<Float>) -> BoundingBox {
-        BoundingBox(minimum: SIMD3(centre.x - 2, 0, centre.y - 2), maximum: SIMD3(centre.x + 2, 0.2, centre.y + 2))
+    private func table(at center: SIMD2<Float>) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(center.x - 2, 0, center.y - 2), maximum: SIMD3(center.x + 2, 0.2, center.y + 2))
     }
 
     /// Stands a body on the table at `offset` from its centre, then turns the table at `rate`
@@ -1157,28 +1157,28 @@ struct CharacterTurntableTests {
     /// centre where it ended, and the total turn reported.
     private func ride(offset: SIMD2<Float>, rate: Float, seconds: Float, slide: SIMD2<Float> = .zero,
                       _ input: MovementInput = MovementInput()) -> (CharacterController, SIMD2<Float>, Float, Int) {
-        var centre = SIMD2<Float>(1, -3)
-        var c = CharacterController(feet: SIMD3(centre.x + offset.x, 0.2, centre.y + offset.y))
-        let still = CharacterController.Surroundings(solids: [table(at: centre)])
+        var center = SIMD2<Float>(1, -3)
+        var c = CharacterController(feet: SIMD3(center.x + offset.x, 0.2, center.y + offset.y))
+        let still = CharacterController.Surroundings(solids: [table(at: center)])
         for _ in 0..<30 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: still) }
         var total: Float = 0, strides = 0
         for _ in 0..<Int((seconds / step).rounded()) {
             let moved = slide * step
-            centre += moved
-            var world = CharacterController.Surroundings(solids: [table(at: centre)])
+            center += moved
+            var world = CharacterController.Surroundings(solids: [table(at: center)])
             world.motion = [SIMD3(moved.x, 0, moved.y)]
-            world.turns = [.init(about: centre, by: rate * step)]
+            world.turns = [.init(about: center, by: rate * step)]
             c.step(yaw: 0, input: input, deltaTime: step, in: world)
             total += c.turned
             strides += c.events.filter { if case .stride = $0 { true } else { false } }.count
         }
-        return (c, centre, total, strides)
+        return (c, center, total, strides)
     }
 
     @Test("A quarter turn carries the feet a quarter turn round the centre, at the same radius")
     func quarterTurn() {
-        let (c, centre, total, strides) = ride(offset: SIMD2(1.2, 0), rate: .pi / 2, seconds: 1)
-        let now = SIMD2(c.feet.x, c.feet.z) - centre
+        let (c, center, total, strides) = ride(offset: SIMD2(1.2, 0), rate: .pi / 2, seconds: 1)
+        let now = SIMD2(c.feet.x, c.feet.z) - center
         let expected = Level.turned(SIMD2(1.2, 0), by: .pi / 2)
         #expect(simd_distance(now, expected) < 1e-3, "feet at \(now) from the centre, expected \(expected)")
         #expect(abs(simd_length(now) - 1.2) < 1e-3, "the radius changed: \(simd_length(now))")
@@ -1187,17 +1187,17 @@ struct CharacterTurntableTests {
     }
 
     @Test("At the centre the feet stay put, and the turn is still reported")
-    func atTheCentre() {
-        let (c, centre, total, _) = ride(offset: .zero, rate: 1, seconds: 0.5)
-        #expect(simd_distance(SIMD2(c.feet.x, c.feet.z), centre) < 1e-4)
+    func atTheCenter() {
+        let (c, center, total, _) = ride(offset: .zero, rate: 1, seconds: 0.5)
+        #expect(simd_distance(SIMD2(c.feet.x, c.feet.z), center) < 1e-4)
         #expect(abs(total - 0.5) < 1e-4)
     }
 
     /// A deck that sails and swings at once: the body keeps its place on it.
     @Test("A table that slides and turns at once keeps the body where it was on it")
     func slideAndTurn() {
-        let (c, centre, total, _) = ride(offset: SIMD2(0, 1.5), rate: 0.6, seconds: 1, slide: SIMD2(0.8, -0.4))
-        let now = SIMD2(c.feet.x, c.feet.z) - centre
+        let (c, center, total, _) = ride(offset: SIMD2(0, 1.5), rate: 0.6, seconds: 1, slide: SIMD2(0.8, -0.4))
+        let now = SIMD2(c.feet.x, c.feet.z) - center
         // **Against the turn the table made, not the one reported** — measured against the reported
         // turn, this passed with the turning carry switched off, because both were zero.
         let expected = Level.turned(SIMD2(0, 1.5), by: 0.6)
@@ -1220,29 +1220,29 @@ struct CharacterTurntableTests {
 @Suite("Character controller — leaving something that moves")
 struct CharacterLeavingPlatformTests {
 
-    private func slab(top: Float, centre: SIMD2<Float> = .zero, half: Float = 1.5) -> BoundingBox {
-        BoundingBox(minimum: SIMD3(centre.x - half, top - 0.5, centre.y - half),
-                    maximum: SIMD3(centre.x + half, top, centre.y + half))
+    private func slab(top: Float, center: SIMD2<Float> = .zero, half: Float = 1.5) -> BoundingBox {
+        BoundingBox(minimum: SIMD3(center.x - half, top - 0.5, center.y - half),
+                    maximum: SIMD3(center.x + half, top, center.y + half))
     }
 
     /// The highest the feet get above where they left, jumping from a slab moving at `velocity`.
     private func jumpApex(from velocity: SIMD3<Float>) -> (apex: Float, landedX: Float) {
-        var top: Float = 1, centre = SIMD2<Float>(0, 0)
+        var top: Float = 1, center = SIMD2<Float>(0, 0)
         var c = CharacterController(feet: SIMD3(0, top, 0))
         func world(_ delta: SIMD3<Float>) -> CharacterController.Surroundings {
-            var w = CharacterController.Surroundings(solids: [slab(top: top, centre: centre, half: 20)])
+            var w = CharacterController.Surroundings(solids: [slab(top: top, center: center, half: 20)])
             w.motion = [delta]
             return w
         }
         // Ride a moment, so the ground's speed is known, then jump and keep riding it underneath.
         for _ in 0..<30 {
-            let d = velocity * step; top += d.y; centre += SIMD2(d.x, d.z)
+            let d = velocity * step; top += d.y; center += SIMD2(d.x, d.z)
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(d))
         }
         let takeoff = c.feet.y
         var apex: Float = 0
         for i in 0..<120 {
-            let d = velocity * step; top += d.y; centre += SIMD2(d.x, d.z)
+            let d = velocity * step; top += d.y; center += SIMD2(d.x, d.z)
             c.step(yaw: 0, input: MovementInput(), jump: i < 2, deltaTime: step, in: world(d))
             if !c.isGrounded { apex = max(apex, c.feet.y - takeoff) }
         }
@@ -1271,13 +1271,13 @@ struct CharacterLeavingPlatformTests {
 
     @Test("Walking off the edge of a moving platform falls away at its speed")
     func stepOffKeepsSpeed() {
-        var centre = SIMD2<Float>(0, 0)
+        var center = SIMD2<Float>(0, 0)
         var c = CharacterController(feet: SIMD3(1.2, 1, 0))
         var airborneX: [Float] = []
         for _ in 0..<120 {
             let d = SIMD3<Float>(0, 0, -1.5) * step
-            centre += SIMD2(d.x, d.z)
-            var w = CharacterController.Surroundings(solids: [slab(top: 1, centre: centre)])
+            center += SIMD2(d.x, d.z)
+            var w = CharacterController.Surroundings(solids: [slab(top: 1, center: center)])
             w.motion = [d]
             c.step(yaw: -.pi / 2, input: MovementInput(forward: 0.3), deltaTime: step, in: w)   // walk off +x
             if !c.isGrounded { airborneX.append(c.feet.z) }
@@ -1291,13 +1291,13 @@ struct CharacterLeavingPlatformTests {
     /// radius where the feet left.
     @Test("A jump from a turning table leaves along the tangent, at the rim's speed")
     func jumpFromTurntable() {
-        let rate: Float = .pi / 2, centre = SIMD2<Float>(1, -3)
-        let table = BoundingBox(minimum: SIMD3(centre.x - 2, 0, centre.y - 2), maximum: SIMD3(centre.x + 2, 0.2, centre.y + 2))
-        var c = CharacterController(feet: SIMD3(centre.x + 1.2, 0.2, centre.y))
+        let rate: Float = .pi / 2, center = SIMD2<Float>(1, -3)
+        let table = BoundingBox(minimum: SIMD3(center.x - 2, 0, center.y - 2), maximum: SIMD3(center.x + 2, 0.2, center.y + 2))
+        var c = CharacterController(feet: SIMD3(center.x + 1.2, 0.2, center.y))
         var world = CharacterController.Surroundings(solids: [table])
-        world.turns = [.init(about: centre, by: rate * step)]
+        world.turns = [.init(about: center, by: rate * step)]
         for _ in 0..<60 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world) }
-        let radius = SIMD2(c.feet.x, c.feet.z) - centre
+        let radius = SIMD2(c.feet.x, c.feet.z) - center
         c.step(yaw: 0, input: MovementInput(), jump: true, deltaTime: step, in: world)
         #expect(!c.isGrounded, "did not leave the table")
         let speed = simd_length(c.airVelocity)
@@ -1333,7 +1333,7 @@ struct CharacterTurnedSolidTests {
     private var crate: (box: BoundingBox, plan: Footprint) {
         let a = half * root2
         return (BoundingBox(minimum: SIMD3(-a, 0, -a), maximum: SIMD3(a, 1.5, a)),
-                Footprint(centre: .zero, halfSize: SIMD2(half, half), yaw: .pi / 4))
+                Footprint(center: .zero, halfSize: SIMD2(half, half), yaw: .pi / 4))
     }
 
     private func world(_ box: BoundingBox, _ plan: Footprint?) -> CharacterController.Surroundings {
@@ -1417,7 +1417,7 @@ struct CharacterTurnedSolidTests {
         // the diagonals. At (1.1, 1.1) the body is inside the box and clear of the slab.
         let a = root2
         let slab = BoundingBox(minimum: SIMD3(-a, 0, -a), maximum: SIMD3(a, 0.3, a))
-        let plan = Footprint(centre: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
+        let plan = Footprint(center: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
         func drop(_ w: CharacterController.Surroundings) -> Float {
             var c = CharacterController(feet: SIMD3(1.1, 1, 1.1))
             for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w) }
@@ -1436,7 +1436,7 @@ struct CharacterTurnedSolidTests {
         // A 2 m beam at 45°, its underside at 1.5 m: low enough to hold a standing body down.
         let a = root2
         let beam = BoundingBox(minimum: SIMD3(-a, 1.5, -a), maximum: SIMD3(a, 1.8, a))
-        let plan = Footprint(centre: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
+        let plan = Footprint(center: .zero, halfSize: SIMD2(1, 1), yaw: .pi / 4)
         func heldDown(at x: Float, _ z: Float, _ w: CharacterController.Surroundings) -> Bool {
             var c = CharacterController(feet: SIMD3(x, 0, z))
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
@@ -1450,7 +1450,7 @@ struct CharacterTurnedSolidTests {
     @Test("A footprint that is not turned collides exactly as the box does")
     func unturnedMatchesTheBox() {
         let box = BoundingBox(minimum: SIMD3(1, 0, -1), maximum: SIMD3(3, 1.5, 2))
-        let plan = Footprint(centre: SIMD2(2, 0.5), halfSize: SIMD2(1, 1.5), yaw: 0)
+        let plan = Footprint(center: SIMD2(2, 0.5), halfSize: SIMD2(1, 1.5), yaw: 0)
         for start in [SIMD2<Float>(-2, 0), SIMD2(-2, 1.9), SIMD2(-2, 2.25)] {
             let a = walk(from: start, yaw: -.pi / 2 + 0.3, seconds: 2, in: world(box, plan)).feet
             let b = walk(from: start, yaw: -.pi / 2 + 0.3, seconds: 2, in: world(box, nil)).feet
@@ -1467,13 +1467,13 @@ struct CharacterTurnedSolidTests {
         if let f {
             // The local middle (1, 0.5, 0) scaled and turned: 1.5 along (cos 0.8, −sin 0.8).
             let expected = SIMD2<Float>(6, -3) + Level.turned(SIMD2(1.5, 0), by: 0.8)
-            #expect(simd_distance(f.centre, expected) < 1e-5, "centre \(f.centre), expected \(expected)")
+            #expect(simd_distance(f.center, expected) < 1e-5, "center \(f.center), expected \(expected)")
             #expect(simd_distance(f.halfSize, SIMD2(1.5, 0.75)) < 1e-5)
             #expect(abs(f.yaw - 0.8) < 1e-5)
             // Every corner of the plan inside the volume's world box, and touching it.
             let world = placed.worldBounds
             for sx: Float in [-1, 1] { for sz: Float in [-1, 1] {
-                let corner = f.centre + Level.turned(SIMD2(sx * f.halfSize.x, sz * f.halfSize.y), by: f.yaw)
+                let corner = f.center + Level.turned(SIMD2(sx * f.halfSize.x, sz * f.halfSize.y), by: f.yaw)
                 #expect(corner.x >= world.minimum.x - 1e-4 && corner.x <= world.maximum.x + 1e-4
                         && corner.y >= world.minimum.z - 1e-4 && corner.y <= world.maximum.z + 1e-4)
             } }
@@ -1617,11 +1617,11 @@ struct CharacterPushedTests {
         var c = CharacterController(feet: SIMD3(Level.turned(SIMD2(2.5, 0), by: 0.6).x, 0,
                                                 Level.turned(SIMD2(2.5, 0), by: 0.6).y))
         func arm(_ a: Float) -> (BoundingBox, Footprint) {
-            let centre = pivot + Level.turned(SIMD2(2, 0), by: a)
-            let plan = Footprint(centre: centre, halfSize: SIMD2(2, 0.2), yaw: a)
+            let center = pivot + Level.turned(SIMD2(2, 0), by: a)
+            let plan = Footprint(center: center, halfSize: SIMD2(2, 0.2), yaw: a)
             let reach = Level.turned(SIMD2(2, 0), by: a), side = Level.turned(SIMD2(0, 0.2), by: a)
             let ex = abs(reach.x) + abs(side.x), ez = abs(reach.y) + abs(side.y)
-            return (BoundingBox(minimum: SIMD3(centre.x - ex, 0, centre.y - ez), maximum: SIMD3(centre.x + ex, 1, centre.y + ez)), plan)
+            return (BoundingBox(minimum: SIMD3(center.x - ex, 0, center.y - ez), maximum: SIMD3(center.x + ex, 1, center.y + ez)), plan)
         }
         var deepest: Float = -1
         for _ in 0..<120 {
@@ -1632,7 +1632,7 @@ struct CharacterPushedTests {
             w.turns = [.init(about: pivot, by: rate * step)]
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             // How far the body's square is into the arm, on the arm's own axes (the body's corners).
-            let local = Level.turned(SIMD2(c.feet.x, c.feet.z) - plan.centre, by: -angle)
+            let local = Level.turned(SIMD2(c.feet.x, c.feet.z) - plan.center, by: -angle)
             let reachAcross = r * (abs(cos(angle)) + abs(sin(angle)))
             deepest = max(deepest, min(2 + reachAcross - abs(local.x), 0.2 + reachAcross - abs(local.y)))
         }
@@ -1694,10 +1694,10 @@ struct CharacterRoundSolidTests {
         let yaw: Float = -3 * .pi / 4                  // walking along (+x, +z)
         let oneStep = CharacterController.Tuning().walkSpeed * step
         let rim = 2 + r * root2
-        let round = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(centre: .zero, radius: 2)))
+        let round = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(center: .zero, radius: 2)))
         #expect(round.map { $0 <= rim + 1e-3 && $0 >= rim - oneStep - 1e-3 } ?? false,
                 "rose at \(String(describing: round)) m out, the rim is \(rim)")
-        let square = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(centre: .zero, halfSize: SIMD2(2, 2), yaw: 0)))
+        let square = whereItRises(from: start, yaw: yaw, in: world(table, Footprint(center: .zero, halfSize: SIMD2(2, 2), yaw: 0)))
         let corner = (2 + r) * root2
         #expect(square.map { $0 <= corner + 1e-3 && $0 >= corner - oneStep - 1e-3 } ?? false,
                 "its square rose it at \(String(describing: square)) m, its corner is \(corner)")
@@ -1711,12 +1711,12 @@ struct CharacterRoundSolidTests {
             for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(table, plan)) }
             return c.feet.y
         }
-        #expect(drop(Footprint(centre: .zero, radius: 2)) == 0, "stood on air past the rim")
-        #expect(abs(drop(Footprint(centre: .zero, halfSize: SIMD2(2, 2), yaw: 0)) - 0.2) < 1e-4,
+        #expect(drop(Footprint(center: .zero, radius: 2)) == 0, "stood on air past the rim")
+        #expect(abs(drop(Footprint(center: .zero, halfSize: SIMD2(2, 2), yaw: 0)) - 0.2) < 1e-4,
                 "its square should have held it up — the test is not testing anything")
         // Just inside the rim it stands: the corner at 1.98 m.
         var c = CharacterController(feet: SIMD3(1.1, 1, 1.1))
-        for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(table, Footprint(centre: .zero, radius: 2))) }
+        for _ in 0..<120 { c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: world(table, Footprint(center: .zero, radius: 2))) }
         #expect(abs(c.feet.y - 0.2) < 1e-4)
     }
 
@@ -1727,7 +1727,7 @@ struct CharacterRoundSolidTests {
     func stopsAtAColumn() {
         var c = CharacterController(feet: SIMD3(-3, 0, 0))
         for _ in 0..<120 {
-            c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, Footprint(centre: .zero, radius: 0.5)))
+            c.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, Footprint(center: .zero, radius: 0.5)))
         }
         let out = -c.feet.x
         #expect(out >= 0.5 + r - 0.001 && out <= 0.5 + r + 0.002 && abs(c.feet.z) < 1e-5, "stopped at \(c.feet)")
@@ -1739,7 +1739,7 @@ struct CharacterRoundSolidTests {
     /// body's nature, and the type's notes say so.
     @Test("Walking at a column off centre slides round it")
     func slidesRoundAColumn() {
-        let plan = Footprint(centre: .zero, radius: 0.5)
+        let plan = Footprint(center: .zero, radius: 0.5)
         var held = CharacterController(feet: SIMD3(-3, 0, 0.2))
         for _ in 0..<240 { held.step(yaw: -.pi / 2, input: MovementInput(forward: 1), deltaTime: step, in: world(column, plan)) }
         #expect(abs(held.feet.x + 0.5 + r) < 0.003, "0.2 m off centre, face on, it should stop at the column: \(held.feet)")
@@ -1767,7 +1767,7 @@ struct CharacterRoundSolidTests {
         for _ in 0..<360 {
             x += step
             let box = BoundingBox(minimum: SIMD3(x - 0.5, 0, -0.5), maximum: SIMD3(x + 0.5, 3, 0.5))
-            var w = world(box, Footprint(centre: SIMD2(x, 0), radius: 0.5))
+            var w = world(box, Footprint(center: SIMD2(x, 0), radius: 0.5))
             w.motion = [SIMD3(step, 0, 0)]
             c.step(yaw: 0, input: MovementInput(), deltaTime: step, in: w)
             let q = abs(SIMD2(c.feet.x - x, c.feet.z)), out = simd_max(q - r, .zero)
@@ -1784,7 +1784,7 @@ struct CharacterRoundSolidTests {
         let placed = Volume(local: local, transform: Level.transform(yaw: 0.7, scale: 1.5, at: SIMD3(-5, 0, 5)))
         let disc = Footprint(discOf: placed)
         #expect(disc?.radius == 3)
-        #expect(disc.map { simd_distance($0.centre, SIMD2(-5, 5)) < 1e-5 } ?? false)
+        #expect(disc.map { simd_distance($0.center, SIMD2(-5, 5)) < 1e-5 } ?? false)
         let tilt: Float = 0.3
         let tilted = matrix_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, cos(tilt), sin(tilt), 0),
                                                SIMD4(0, -sin(tilt), cos(tilt), 0), SIMD4(0, 0, 0, 1)))

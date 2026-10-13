@@ -12,11 +12,11 @@ private let step: Float = 1.0 / 120
 /// Three recipes shaped like the ones the simulation was tuned against: something thrown hard that
 /// falls, something slow that hangs, and light that neither falls nor lingers.
 private let dirt = ParticleRecipe(count: 24, speed: 7.5, spread: 2.6, lifetime: 1.1, size: 0.7,
-                                  colour: SIMD3(0.34, 0.30, 0.25), opacity: 0.85, fade: 2)
+                                  color: SIMD3(0.34, 0.30, 0.25), opacity: 0.85, fade: 2)
 private let dust = ParticleRecipe(count: 3, speed: 1.6, spread: 0.9, lifetime: 1.3, size: 0.4,
-                                  growth: 1.6, colour: SIMD3(0.52, 0.49, 0.44), opacity: 0.35)
+                                  growth: 1.6, color: SIMD3(0.52, 0.49, 0.44), opacity: 0.35)
 private let flash = ParticleRecipe(count: 8, speed: 2.2, spread: 1.1, lifetime: 0.06, size: 0.22,
-                                   gravity: 0, drag: 0, colour: SIMD3(4, 2.9, 1.4), glows: true)
+                                   gravity: 0, drag: 0, color: SIMD3(4, 2.9, 1.4), glows: true)
 
 private func system(capacity: Int = 256) -> ParticleSystem {
     ParticleSystem(recipes: [dirt, dust, flash], capacity: capacity)
@@ -161,7 +161,7 @@ struct ParticleSystemTests {
         let glow = s.live.first { $0.recipe == 2 }!
         let matter = s.live.first { $0.recipe == 1 }!
         #expect(s.appearance(of: glow).coverage == 0)
-        #expect(s.appearance(of: glow).colour.x > 1, "a spark should be brighter than white")
+        #expect(s.appearance(of: glow).color.x > 1, "a spark should be brighter than white")
         #expect(s.appearance(of: matter).coverage > 0)
     }
 
@@ -183,7 +183,7 @@ struct ParticleSystemTests {
         var s = system()
         s.burst(1, at: .zero, seed: 1)
         let look = s.appearance(of: s.live[0])
-        #expect(simd_distance(look.colour, dust.colour * look.coverage) < 1e-6)
+        #expect(simd_distance(look.color, dust.color * look.coverage) < 1e-6)
     }
 
     /// The renderer's instance is two `float4`s; the shader reads exactly that.

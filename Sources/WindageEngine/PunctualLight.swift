@@ -16,7 +16,7 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
     /// Colour times brightness, unbounded — **radiant intensity, not a colour.** A lamp is far
     /// brighter than white paper, which is what the HDR target and ``ToneMapping`` are for.
-    public var colour: SIMD3<Float>
+    public var color: SIMD3<Float>
 
     /// Metres at which this light has fallen to nothing.
     ///
@@ -66,11 +66,11 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     }
 
     public init(position: SIMD3<Float>,
-                colour: SIMD3<Float>,
+                color: SIMD3<Float>,
                 range: Float,
                 cone: Cone? = nil) {
         self.position = position
-        self.colour = colour
+        self.color = color
         self.range = range
         self.cone = cone
     }
@@ -96,7 +96,9 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     // holding a colour and an intensity in your head at once, and adjusting one changes the other.
 
     private enum CodingKeys: String, CodingKey {
-        case position, colour, intensity, range, direction, innerAngle, outerAngle
+        case position, color, intensity, range, direction, innerAngle, outerAngle
+        /// The key levels were written with before 0.26.0, still read so every old level opens. Never written.
+        case colour
     }
 
     public init(from decoder: Decoder) throws {
@@ -129,7 +131,7 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
         }
 
         self.init(position: try triple(.position, .zero),
-                  colour: try triple(.colour, SIMD3(repeating: 1)) * intensity,
+                  color: try triple(container.contains(.color) ? .color : .colour, SIMD3(repeating: 1)) * intensity,
                   range: try container.decodeIfPresent(Float.self, forKey: .range) ?? 8,
                   cone: cone)
     }
@@ -140,9 +142,9 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
         // Split back out so a saved level reads the way a written one does: the brightest channel
         // carries the intensity and the colour is normalised against it.
-        let intensity = max(colour.max(), 1e-6)
-        let normalised = colour / intensity
-        try container.encode([normalised.x, normalised.y, normalised.z], forKey: .colour)
+        let intensity = max(color.max(), 1e-6)
+        let normalised = color / intensity
+        try container.encode([normalised.x, normalised.y, normalised.z], forKey: .color)
         try container.encode(intensity, forKey: .intensity)
         try container.encode(range, forKey: .range)
 
@@ -200,15 +202,15 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// floodlight at ten, and the floodlight was the one dropped. Weighting by luminance costs a dot
     /// product and makes the ordering mean what it claims.
     public func influence(at point: SIMD3<Float>) -> Float {
-        attenuation(at: point) * PunctualLight.luminance(colour)
+        attenuation(at: point) * PunctualLight.luminance(color)
     }
 
     /// Rec. 709 luminance: how bright a colour looks, rather than how large its numbers are.
     ///
     /// Green carries most of it and blue almost none, which is why a blue lamp of the same numeric
     /// magnitude as a green one is the one to drop first.
-    public static func luminance(_ colour: SIMD3<Float>) -> Float {
-        simd_dot(colour, SIMD3(0.2126, 0.7152, 0.0722))
+    public static func luminance(_ color: SIMD3<Float>) -> Float {
+        simd_dot(color, SIMD3(0.2126, 0.7152, 0.0722))
     }
 
     /// Whether this light reaches any part of a box.
@@ -234,15 +236,15 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
         // The standard cone-sphere test: how far the sphere's centre lies outside the cone's surface,
         // measured perpendicular to it, against the radius.
-        let centre = (bounds.minimum + bounds.maximum) / 2
+        let center = (bounds.minimum + bounds.maximum) / 2
         let radius = simd_length(bounds.maximum - bounds.minimum) / 2
-        let toCentre = centre - position
-        let alongAxis = simd_dot(toCentre, cone.direction)
+        let toCenter = center - position
+        let alongAxis = simd_dot(toCenter, cone.direction)
 
         // Behind the lamp, or past the end of its reach.
         if alongAxis < -radius || alongAxis > range + radius { return false }
 
-        let perpendicular = max(simd_length_squared(toCentre) - alongAxis * alongAxis, 0)
+        let perpendicular = max(simd_length_squared(toCenter) - alongAxis * alongAxis, 0)
         let sinOuter = sin(cone.outerAngle)
         let distanceOutsideCone = cone.cosOuter * sqrt(perpendicular) - alongAxis * sinOuter
         return distanceOutsideCone <= radius
@@ -297,7 +299,7 @@ public nonisolated struct LightSet: Sendable {
             // sort a light that matters to the bottom of the list and out of the budget.
             .map { (light: $0,
                     influence: $0.radialAttenuation(at: bounds.closestPoint(to: $0.position))
-                             * PunctualLight.luminance($0.colour)) }
+                             * PunctualLight.luminance($0.color)) }
             .sorted { $0.influence > $1.influence }
             .prefix(budget)
             .map(\.light)

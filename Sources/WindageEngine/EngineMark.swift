@@ -103,8 +103,8 @@ public nonisolated enum EngineMark {
 
     /// Fills the mark with its top-left corner at `x, y` and the given height, in `colour`.
     @MainActor
-    public static func draw(into hud: HUDRenderer, x: Float, y: Float, height: Float, colour: UIColor) {
-        guard height > 0, colour.srgb.w > 0 else { return }
-        hud.fill(polygon: outline.map { SIMD2(x, y) + $0 * height }, color: colour)
+    public static func draw(into hud: HUDRenderer, x: Float, y: Float, height: Float, color: UIColor) {
+        guard height > 0, color.srgb.w > 0 else { return }
+        hud.fill(polygon: outline.map { SIMD2(x, y) + $0 * height }, color: color)
     }
 }

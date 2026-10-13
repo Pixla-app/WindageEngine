@@ -212,8 +212,8 @@ public nonisolated struct ShadowCascades {
             // crawling as the camera moves: the sampling grid now advances in texel steps rather
             // than sliding continuously.
             let texelWorldSize = (2 * extent) / Float(resolution)
-            let centreX = (focusInLight.x / texelWorldSize).rounded() * texelWorldSize
-            let centreY = (focusInLight.y / texelWorldSize).rounded() * texelWorldSize
+            let centerX = (focusInLight.x / texelWorldSize).rounded() * texelWorldSize
+            let centerY = (focusInLight.y / texelWorldSize).rounded() * texelWorldSize
 
             let near = -lightDepthRange
             let far = lightDepthRange
@@ -224,8 +224,8 @@ public nonisolated struct ShadowCascades {
             projection.columns.0.x = 1 / extent
             projection.columns.1.y = 1 / extent
             projection.columns.2.z = 1 / (far - near)
-            projection.columns.3.x = -centreX / extent
-            projection.columns.3.y = -centreY / extent
+            projection.columns.3.x = -centerX / extent
+            projection.columns.3.y = -centerY / extent
             projection.columns.3.z = 1 + near / (far - near)
             projection.columns.3.w = 1
 

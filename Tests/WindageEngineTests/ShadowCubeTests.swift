@@ -112,12 +112,12 @@ struct ShadowCubeTests {
 
     @Test("a corner of a face is further away than its centre, and stores less depth")
     func cornersAreFurther() {
-        let centre = ShadowCubes.normalizedDepth(majorAxis: 5, nearPlane: ShadowCubeTests.near)
+        let center = ShadowCubes.normalizedDepth(majorAxis: 5, nearPlane: ShadowCubeTests.near)
         // The corner direction (1,1,1)*5 has the same major axis, so the same depth — which is the
         // whole point: the major axis, not the length, is what a face's projection divides by.
         let corner = ShadowCubes.normalizedDepth(majorAxis: abs(SIMD3<Float>(5, 5, 5)).max(),
                                                  nearPlane: ShadowCubeTests.near)
-        #expect(abs(centre - corner) < 1e-9)
+        #expect(abs(center - corner) < 1e-9)
         // And it really is further away in space, by root three.
         #expect(abs(simd_length(SIMD3<Float>(5, 5, 5)) / 5 - Float(3).squareRoot()) < 1e-5)
     }

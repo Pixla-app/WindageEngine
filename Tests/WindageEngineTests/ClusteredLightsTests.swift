@@ -159,7 +159,7 @@ struct ClusteredLightsAssignmentTests {
     @Test("A small light reaches only the clusters around it")
     func smallLightIsLocal() {
         // Straight ahead, 10 m away, 2 m range.
-        let light = PunctualLight(position: SIMD3(0, 0, -10), colour: SIMD3(repeating: 10), range: 2)
+        let light = PunctualLight(position: SIMD3(0, 0, -10), color: SIMD3(repeating: 10), range: 2)
         let clustered = assign([light])
 
         let occupied = clustered.ranges.count { $0.y > 0 }
@@ -168,13 +168,13 @@ struct ClusteredLightsAssignmentTests {
 
         // And it is in the cluster it sits in.
         let slice = grid.slice(forViewDepth: 10)
-        let centre = grid.index(tileX: grid.tilesX / 2, tileY: grid.tilesY / 2, slice: slice)
-        #expect(lightsIn(clustered, cluster: centre).contains(0))
+        let center = grid.index(tileX: grid.tilesX / 2, tileY: grid.tilesY / 2, slice: slice)
+        #expect(lightsIn(clustered, cluster: center).contains(0))
     }
 
     @Test("A light behind the camera reaches nothing")
     func behindTheCameraIsSkipped() {
-        let behind = PunctualLight(position: SIMD3(0, 0, 20), colour: SIMD3(repeating: 10), range: 3)
+        let behind = PunctualLight(position: SIMD3(0, 0, 20), color: SIMD3(repeating: 10), range: 3)
         #expect(assign([behind]).indices.isEmpty)
     }
 
@@ -182,13 +182,13 @@ struct ClusteredLightsAssignmentTests {
     /// a dark band at the bottom of the screen every time the player backs into a light.
     @Test("A light behind the camera whose radius reaches forward is kept")
     func spillFromBehindIsKept() {
-        let close = PunctualLight(position: SIMD3(0, 0, 1), colour: SIMD3(repeating: 10), range: 6)
+        let close = PunctualLight(position: SIMD3(0, 0, 1), color: SIMD3(repeating: 10), range: 6)
         #expect(!assign([close]).indices.isEmpty)
     }
 
     @Test("A light far past the clustered range reaches nothing")
     func beyondRangeIsSkipped() {
-        let distant = PunctualLight(position: SIMD3(0, 0, -400), colour: SIMD3(repeating: 10), range: 5)
+        let distant = PunctualLight(position: SIMD3(0, 0, -400), color: SIMD3(repeating: 10), range: 5)
         #expect(assign([distant]).indices.isEmpty)
     }
 
@@ -196,7 +196,7 @@ struct ClusteredLightsAssignmentTests {
     /// though the player never moved.
     @Test("Lights are clustered in view space, not world space")
     func viewMatrixIsApplied() {
-        let light = PunctualLight(position: SIMD3(0, 0, -10), colour: SIMD3(repeating: 10), range: 2)
+        let light = PunctualLight(position: SIMD3(0, 0, -10), color: SIMD3(repeating: 10), range: 2)
         #expect(!assign([light]).indices.isEmpty)
 
         // Walk the camera 100 m past it and the same light is behind.
@@ -208,7 +208,7 @@ struct ClusteredLightsAssignmentTests {
     func rangesAreConsistent() {
         let lights = (0..<12).map {
             PunctualLight(position: SIMD3(Float($0) - 6, 0, -8),
-                          colour: SIMD3(repeating: 10), range: 3)
+                          color: SIMD3(repeating: 10), range: 3)
         }
         let clustered = assign(lights)
         var total = 0
@@ -227,7 +227,7 @@ struct ClusteredLightsAssignmentTests {
     func manyLightsStayLocal() {
         let lights = (0..<64).map {
             PunctualLight(position: SIMD3(Float($0 % 8) * 4 - 16, 0, -Float($0 / 8) * 5 - 5),
-                          colour: SIMD3(repeating: 10), range: 3)
+                          color: SIMD3(repeating: 10), range: 3)
         }
         // The production grid, because localisation is a property of how finely the frustum is cut —
         // the coarse grid the other tests use to stay fast would understate it.
@@ -251,7 +251,7 @@ struct ClusteredLightsAssignmentTests {
     @Test("The index list is truncated rather than allowed to overflow")
     func indicesAreBounded() {
         let lights = (0..<40).map { _ in
-            PunctualLight(position: SIMD3(0, 0, -10), colour: SIMD3(repeating: 10), range: 60)
+            PunctualLight(position: SIMD3(0, 0, -10), color: SIMD3(repeating: 10), range: 60)
         }
         let clustered = ClusteredLights(lights: lights, grid: grid, viewMatrix: matrix_identity_float4x4,
                                         fovY: fovY, aspectRatio: aspect, maximumIndices: 100)

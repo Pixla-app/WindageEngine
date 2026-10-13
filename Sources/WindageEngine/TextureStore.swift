@@ -99,15 +99,15 @@ public final class TextureStore {
     public init?(device: MTLDevice) {
         self.device = device
         self.loader = MTKTextureLoader(device: device)
-        guard let white = TextureStore.makePixel(device: device, colour: SIMD4(255, 255, 255, 255),
+        guard let white = TextureStore.makePixel(device: device, color: SIMD4(255, 255, 255, 255),
                                                  label: "White 1×1"),
-              let normal = TextureStore.makePixel(device: device, colour: SIMD4(128, 128, 255, 255),
+              let normal = TextureStore.makePixel(device: device, color: SIMD4(128, 128, 255, 255),
                                                   label: "Flat Normal 1×1") else { return nil }
         self.white = white
         self.flatNormal = normal
     }
 
-    private static func makePixel(device: MTLDevice, colour: SIMD4<UInt8>, label: String) -> MTLTexture? {
+    private static func makePixel(device: MTLDevice, color: SIMD4<UInt8>, label: String) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
         descriptor.usage = .shaderRead
@@ -116,7 +116,7 @@ public final class TextureStore {
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.label = label
-        var pixel = colour
+        var pixel = color
         withUnsafeBytes(of: &pixel) { bytes in
             texture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
                             withBytes: bytes.baseAddress!, bytesPerRow: 4)

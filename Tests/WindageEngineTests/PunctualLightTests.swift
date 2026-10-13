@@ -12,9 +12,9 @@ import simd
 struct PunctualLightTests {
 
     private func lamp(at position: SIMD3<Float>,
-                      colour: SIMD3<Float> = SIMD3(repeating: 10),
+                      color: SIMD3<Float> = SIMD3(repeating: 10),
                       range: Float = 10) -> PunctualLight {
-        PunctualLight(position: position, colour: colour, range: range)
+        PunctualLight(position: position, color: color, range: range)
     }
 
     /// **The range has to be a real edge.** A light still contributing where it is cut off draws a
@@ -58,7 +58,7 @@ struct PunctualLightTests {
 
     @Test("A light with no range lights nothing")
     func zeroRangeIsHarmless() {
-        let dead = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 0)
+        let dead = PunctualLight(position: .zero, color: SIMD3(repeating: 10), range: 0)
         #expect(dead.attenuation(at: SIMD3(1, 0, 0)) == 0)
         #expect(dead.attenuation(at: .zero) == 0)
     }
@@ -67,8 +67,8 @@ struct PunctualLightTests {
     /// one metre outranked a floodlight at ten — and the floodlight was the one dropped.
     @Test("Influence weighs brightness, not only distance")
     func influenceAccountsForBrightness() {
-        let candle = lamp(at: SIMD3(1, 0, 0), colour: SIMD3(repeating: 0.3), range: 40)
-        let floodlight = lamp(at: SIMD3(10, 0, 0), colour: SIMD3(repeating: 400), range: 40)
+        let candle = lamp(at: SIMD3(1, 0, 0), color: SIMD3(repeating: 0.3), range: 40)
+        let floodlight = lamp(at: SIMD3(10, 0, 0), color: SIMD3(repeating: 400), range: 40)
         #expect(candle.attenuation(at: .zero) > floodlight.attenuation(at: .zero),
                 "the candle should be the nearer of the two")
         #expect(floodlight.influence(at: .zero) > candle.influence(at: .zero),
@@ -94,8 +94,8 @@ struct PunctualLightTests {
         #expect(light.reaches(wall), "one end of the wall is plainly lit")
         #expect(light.influence(at: wall.closestPoint(to: light.position)) > 0)
 
-        let centre = (wall.minimum + wall.maximum) / 2
-        #expect(light.influence(at: centre) == 0, "the centre is out of range, which is the trap")
+        let center = (wall.minimum + wall.maximum) / 2
+        #expect(light.influence(at: center) == 0, "the centre is out of range, which is the trap")
     }
 }
 
@@ -105,7 +105,7 @@ struct LightSetTests {
     private func lamps(_ count: Int, spacing: Float = 1) -> [PunctualLight] {
         (0..<count).map {
             PunctualLight(position: SIMD3(Float($0) * spacing, 0, 0),
-                          colour: SIMD3(repeating: 10), range: 100)
+                          color: SIMD3(repeating: 10), range: 100)
         }
     }
 
@@ -120,8 +120,8 @@ struct LightSetTests {
 
     @Test("Lights out of range are not returned at all")
     func outOfRangeIsDropped() {
-        let near = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 5)
-        let far = PunctualLight(position: SIMD3(100, 0, 0), colour: SIMD3(repeating: 10), range: 5)
+        let near = PunctualLight(position: .zero, color: SIMD3(repeating: 10), range: 5)
+        let far = PunctualLight(position: SIMD3(100, 0, 0), color: SIMD3(repeating: 10), range: 5)
         let set = LightSet(lights: [near, far], budget: 4)
         #expect(set.affecting(SIMD3(1, 0, 0)) == [near])
         #expect(set.affecting(SIMD3(500, 0, 0)).isEmpty)
@@ -138,8 +138,8 @@ struct LightSetTests {
     @Test("A box is lit by anything that reaches any part of it")
     func boxSelection() {
         let wall = BoundingBox(minimum: SIMD3(-20, 0, -0.5), maximum: SIMD3(20, 3, 0.5))
-        let atEnd = PunctualLight(position: SIMD3(19, 1, 0), colour: SIMD3(repeating: 10), range: 5)
-        let miles = PunctualLight(position: SIMD3(500, 1, 0), colour: SIMD3(repeating: 10), range: 5)
+        let atEnd = PunctualLight(position: SIMD3(19, 1, 0), color: SIMD3(repeating: 10), range: 5)
+        let miles = PunctualLight(position: SIMD3(500, 1, 0), color: SIMD3(repeating: 10), range: 5)
         let set = LightSet(lights: [atEnd, miles], budget: 4)
         #expect(set.affecting(wall) == [atEnd])
     }
@@ -177,7 +177,7 @@ struct SpotLightTests {
                       inner: Float = 15, outer: Float = 30,
                       at position: SIMD3<Float> = .zero,
                       range: Float = 20) -> PunctualLight {
-        PunctualLight(position: position, colour: SIMD3(repeating: 10), range: range,
+        PunctualLight(position: position, color: SIMD3(repeating: 10), range: range,
                       cone: PunctualLight.Cone(direction: direction,
                                                innerAngle: radians_from_degrees(inner),
                                                outerAngle: radians_from_degrees(outer)))
@@ -187,7 +187,7 @@ struct SpotLightTests {
     /// angular expression evaluates to exactly 1 with a scale of 0 and an offset of 1.
     @Test("A light with no cone is lit in every direction")
     func noConeLightsEverything() {
-        let point = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 20)
+        let point = PunctualLight(position: .zero, color: SIMD3(repeating: 10), range: 20)
         for direction in [SIMD3<Float>(1, 0, 0), SIMD3(0, -1, 0), SIMD3(-0.4, 0.8, 0.3)] {
             #expect(point.angularAttenuation(at: direction * 5) == 1)
         }
@@ -234,7 +234,7 @@ struct SpotLightTests {
 
     @Test("A degenerate direction does not produce NaN")
     func degenerateDirection() {
-        let light = PunctualLight(position: .zero, colour: SIMD3(repeating: 10), range: 10,
+        let light = PunctualLight(position: .zero, color: SIMD3(repeating: 10), range: 10,
                                   cone: PunctualLight.Cone(direction: .zero, innerAngle: 0.2,
                                                            outerAngle: 0.5))
         let value = light.attenuation(at: SIMD3(0, -3, 0))
@@ -302,9 +302,32 @@ struct SpotLightTests {
     /// **No direction means no cone**, so an existing level's lamps keep radiating everywhere.
     @Test("A light with no direction stays a point light")
     func noDirectionMeansPoint() throws {
-        let json = #"{"position": [0, 2, 0], "colour": [1, 1, 1], "intensity": 10, "range": 6}"#
+        let json = #"{"position": [0, 2, 0], "color": [1, 1, 1], "intensity": 10, "range": 6}"#
         let light = try JSONDecoder().decode(PunctualLight.self, from: Data(json.utf8))
         #expect(light.cone == nil)
         #expect(light.angularAttenuation(at: SIMD3(0, 5, 0)) == 1)
+    }
+
+    /// **Levels written before 0.26.0 say `colour`**, and every one of them still has to open.
+    @Test("A level's light written as colour still reads, and is written back as color")
+    func theOldColorKeyStillReads() throws {
+        let json = #"{"position": [0, 2, 0], "colour": [1, 0.5, 0.25], "intensity": 8, "range": 6}"#
+        let light = try JSONDecoder().decode(PunctualLight.self, from: Data(json.utf8))
+        #expect(simd_distance(light.color, SIMD3(8, 4, 2)) < 1e-5)
+        let written = String(decoding: try JSONEncoder().encode(light), as: UTF8.self)
+        #expect(written.contains("\"color\"") && !written.contains("colour"), "\(written)")
+    }
+
+    /// The British names forward for one release, so a game that upgrades gets warnings, not errors.
+    @available(*, deprecated)
+    @Test("The deprecated British names still reach the same values")
+    func theOldNamesForward() {
+        var light = PunctualLight(position: .zero, colour: SIMD3(1, 2, 3), range: 4)
+        #expect(light.color == SIMD3(1, 2, 3))
+        light.colour = SIMD3(4, 5, 6)
+        #expect(light.color == SIMD3(4, 5, 6))
+        let box = BoundingBox(minimum: .zero, maximum: SIMD3(2, 4, 6))
+        #expect(box.centre == box.center)
+        #expect(AssetOrientation(unitsPerMetre: 100).unitsPerMeter == 100)
     }
 }
