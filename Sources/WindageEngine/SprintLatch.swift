@@ -10,20 +10,20 @@
 /// on a keyboard stays hold, since a little finger resting there costs nothing.
 ///
 /// Extracted from `InputState` so the rule is testable without a controller plugged in.
-public nonisolated struct SprintLatch: Sendable {
+nonisolated struct SprintLatch: Sendable {
 
     private(set) var isEngaged = false
     private var wasPressed = false
 
     /// Below this, the player is not meaningfully pushing forward and the latch expires.
-    public static let forwardThreshold: Float = 0.1
+    static let forwardThreshold: Float = 0.1
 
     /// Call once per frame.
     ///
     /// - Parameters:
     ///   - buttonPressed: current state of the sprint button, not an edge.
     ///   - forwardInput: forward movement axis, used to expire the latch.
-    public mutating func update(buttonPressed: Bool, forwardInput: Float) {
+    mutating func update(buttonPressed: Bool, forwardInput: Float) {
         // Edge, not level: a button held down across sixty frames must toggle once, not sixty
         // times — which would leave the state effectively random.
         if buttonPressed && !wasPressed {
@@ -38,7 +38,7 @@ public nonisolated struct SprintLatch: Sendable {
         }
     }
 
-    public mutating func disengage() {
+    mutating func disengage() {
         isEngaged = false
         wasPressed = false
     }

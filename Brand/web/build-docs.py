@@ -318,7 +318,7 @@ GUIDE = {
     "MovementInput": "character-controller", "TransformHierarchy": "attachments", "SceneObject": "attachments",
     "Level": "levels", "LevelEditor": "levels", "AudioEngine": "audio", "InputState": "input",
     "InputBindings": "input", "KeyCode": "input", "PadBindings": "input", "PadButton": "input",
-    "PlayerSettings": "input", "StickResponse": "input", "SprintLatch": "input", "SaveStore": "saving",
+    "PlayerSettings": "input", "StickResponse": "input", "SaveStore": "saving",
     "SplashScreen": "splash", "EngineMark": "mark",
 }
 

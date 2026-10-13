@@ -12,6 +12,15 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.28.0] — 2026-10-13
+
+**`SprintLatch` is internal.** It was public, but a game could neither make one nor read it; stick-click sprint
+latching reaches games through `InputState`, as it always did.
+
+### Removed
+
+- **`SprintLatch` from the public API.** Nothing changes for a game using `InputState`.
+
 ## [0.27.1] — 2026-10-13
 
 **The documentation, complete and in US English.** Nothing compiled changes.
