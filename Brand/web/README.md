@@ -27,7 +27,7 @@ This is launch-day copy, and four things in it are ahead of the facts. Fix each 
   that license is in effect. Today's `LICENSE` grants nothing. Until it does, the button reads "Follow
   development" and the footer drops the license line.
 - **The package URL.** There is no public repository, so the docs show `https://…/WindageEngine.git`.
-- **The numbers.** 636 tests, 20 walk runs and 5 recorded frames are 0.22.0's. They move every release;
+- **The numbers.** 645 tests, 20 walk runs and 5 recorded frames are 0.27.0's (measured 2026-10-13). They move every release;
   check them against `swift test`, `Tools/walks.py` and `Tools/frames.py` when publishing.
 - **The imagery.** Every picture is the sample's placeholder art, and taken before 0.22.0 strewed debris through it. A launch wants a scene built to be looked
   at, and the showcase that the product concept had is left out until a title built on the engine has been

@@ -122,6 +122,7 @@
       <div class="module"><h3>Levels</h3><p>A versioned level format, and an editor you use inside your running game.</p><code>Level · LevelEditor</code></div>
       <div class="module"><h3>Sound, input, settings</h3><p>Positional audio, keys and pads a player rebinds, settings that save.</p><code>AudioEngine · InputBindings</code></div>
       <div class="module"><h3>Many copies</h3><p>Instanced drawing: a wood of trees or a field of debris in one draw per kind.</p><code>InstanceBatches · InstanceBuffer</code></div>
+      <div class="module"><h3>Detail by distance</h3><p>Simpler versions of every mesh, made when it loads; each copy draws the one its distance earns.</p><code>MeshDetail</code></div>
     </div>
   </section>
 
@@ -140,7 +141,7 @@
     <h2 id="checked">How it's checked</h2>
     <p class="lead">On every change, before it's called done.</p>
     <div class="checks">
-      <div class="check"><strong>636</strong><h3>Tests</h3><p>Each new one shown to fail with its feature switched off.</p><code>swift test</code></div>
+      <div class="check"><strong>645</strong><h3>Tests</h3><p>Each new one shown to fail with its feature switched off.</p><code>swift test</code></div>
       <div class="check"><strong>20</strong><h3>Scripted walks</h3><p>The sample played by script, invisibly — one course of them at four step rates.</p><code>python3 Tools/walks.py</code></div>
       <div class="check"><strong>5</strong><h3>Recorded frames</h3><p>Drawn with no window and compared pixel by pixel against the last good one.</p><code>python3 Tools/frames.py</code></div>
     </div>
