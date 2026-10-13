@@ -1,0 +1,189 @@
+# Public API audit before 1.0 — 2026-10-13
+
+Every public declaration in `Sources/WindageEngine`, reviewed for what would be a mistake to freeze at 1.0
+(after which a change to a public name, signature or behavior needs a 2.0). **Nothing here has been changed
+yet; the owner decides what is.** 132 findings: **12 MUST**, 72 SHOULD, 48 CONSIDER.
+
+- **MUST** — clearly wrong to freeze: a crash path, a name collision, one game's design baked in, or names
+  that break the Swift guidelines everywhere they're called.
+- **SHOULD** — a real inconsistency or gap.
+- **CONSIDER** — a judgment call.
+
+"Used by" says who calls it today, which is who a fix touches.
+
+## The 12 MUST
+
+| # | Where | What's wrong | Fix | Used by |
+|---|---|---|---|---|
+| 1 | `InputBindings.Action` | A closed list of eight actions including `brace` (one sniper game's verb). A game can't add reload, use or weapon swap, and `isFiring`/`isAiming` can't be rebound. | An open action type: the engine's movement and posture actions built in, games add their own. | Coldkeel, sample |
+| 2 | `InputState` `isFiring`, `isSteadying`, brace, R3 magnification | One sniper game's control scheme built into the engine. | Move to that game's bindings on top of #1; keep only generic held/pressed/axis reads. | Coldkeel, sample |
+| 3 | `Camera.walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` | Per-game tuning as fixed engine constants, also the character controller's defaults. | Instance properties or a `Camera.Tuning`. | Coldkeel, sample |
+| 4 | `Camera.position/yaw/pitch` | Settable past the limits the camera promises (pitch clamped, yaw wrapped). | Clamp/wrap on set. | Coldkeel, sample |
+| 5 | `Math.swift` free functions | `matrix4x4_translation(_:_:_:)`, `matrix_perspective_right_hand_reverse_z`, `radians_from_degrees`… are C-style names from Apple's template; every game calls them. | Swift names, e.g. `simd_float4x4(translation:)`, `Float.radians(fromDegrees:)`. | Coldkeel, sample, Worldra |
+| 6 | `matrix_without_scale(_:)` | Same naming problem. | `withoutScale` on the matrix type. | sample |
+| 7 | `UIColor` | Same name as UIKit's `UIColor`: ambiguous the moment a file imports UIKit, and blocks an iPad/iOS target. | Rename, e.g. `InterfaceColor`. | Coldkeel, sample |
+| 8 | `TransformHierarchy.localTransforms` | Settable to an array of the wrong length, which then crashes. | Read-only plus a checked setter. | engine |
+| 9 | `SkeletonPose.set(to:)` | A playhead built for another skeleton crashes instead of failing clearly. | Check the binding matches, with a clear message. | sample |
+| 10 | `JointTrack` / `AnimationClip` inits | Accept data of the wrong shape; it crashes later, far from the cause. | Validate in the init (throwing). | engine |
+| 11 | `PunctualLight.Cone` angles and direction | Settable past the init's checks; an inner angle larger than the outer one lights everything but the cone. | Re-apply the checks on set. | sample |
+| 12 | `ShadowMap.Batch` | Two kinds of batch in one struct; one kind's `mesh` is a `fatalError` trap. | Hide the fields, or make it an enum of the two kinds. | Coldkeel, Worldra, sample |
+
+## What the 72 SHOULD come to
+
+Most are one of these, repeated across files; the full lines follow below.
+
+- **One idea, several names:** time spans (`deltaTime`, `seconds`, `step`, Float vs Double), viewport
+  (`width/height`, `viewportSize`, `viewport`), `fovY:` vs `fovyRadians:`, `extension:` vs `withExtension:`,
+  shadow slots (`tile` vs `slice`), bias labels, `allocations` typed two ways.
+- **Settable state that breaks things** (particle recipes, deadzones, the sky's sun direction, level format
+  version, footprints).
+- **Per-game tuning frozen as constants** (shadow bias, audio distances, editor key steps, HUD vertex limit,
+  stick curves, level-of-detail constants).
+- **Failures you can't see:** initializers that return `nil` without saying why, errors printed instead of
+  thrown, error types that don't cover what's actually thrown, inconsistent error naming.
+- **Public only for tests** (shader-cube helpers, HUD geometry helpers, instance-buffer growth, font atlas
+  internals) — should be internal.
+- **Concurrency/conformance gaps** — value types missing `Sendable`/`Equatable`, mixed main-actor isolation.
+
+## All findings, by area
+
+### Input and the character
+[MUST] InputBindings.swift:132 — `Action` is a closed enum including `brace`; titles can't add actions; fire/aim can't be rebound — open action identity with engine statics, titles add their own — Coldkeel, sample
+[MUST] InputState.swift:281,296,337,339,343 — `isFiring`, `isSteadying`, brace, R3 magnification are one sniper scheme in engine API — move to that title's bindings over the generic layer — Coldkeel, sample
+[MUST] Camera.swift:64-71 — `walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` are fixed statics, also `CharacterController.Tuning` defaults — instance properties or `Camera.Tuning` — Coldkeel, sample
+[MUST] Camera.swift:48-54 — `position/yaw/pitch` settable past the documented clamp/wrap — `didSet` clamp/wrap or setter — Coldkeel, sample
+[SHOULD] InputState.swift:175-176 — deadzones unvalidated; negative gives NaN movement — clamp in `didSet`, guard `StickResponse.shaped` — sample
+[SHOULD] InputState.swift:70,171,175 — `PlayerSettings` applied half by InputState, half by the caller — `InputState.apply(_:)` — sample
+[SHOULD] StickResponse.swift:21-22 — response exponents are fixed statics — `InputState` properties with these defaults — engine
+[SHOULD] InputState.swift:219,238,247,388 — raw `UInt16`/`UInt` key codes beside the public `KeyCode` — take `KeyCode`/`NSEvent.ModifierFlags` — Coldkeel, sample
+[SHOULD] InputBindings.swift:62,69 — raw modifier bit masks — typed flags — sample
+[SHOULD] InputState.swift:328 — crouch can only be toggled; no `standUp()` (brace has `releaseBrace()`) — add one — Coldkeel, sample
+[SHOULD] CharacterController.swift:83,95,119 — `Surroundings` keeps four parallel arrays in lock-step by index — one `Solid` struct — sample
+[SHOULD] CharacterController.swift:134 — `Footprint.radius` settable, inconsistent with shape — `let` fields or a shape enum — sample
+[SHOULD] CharacterController.swift:384,376,454 — `slideLeft`, `height`, `isHeldDown` misleading — `slideTimeRemaining`, `eyeHeight`, `isCrouchForced` — sample
+[SHOULD] CharacterController.swift:540-543, Camera.swift:19 — Bool labels not phrased as assertions (`jump:`, `crouching:`, `sprint`) — `isJumpHeld:`, `isCrouching:`, `isSprinting` — Coldkeel, sample
+[SHOULD] InputBindings.swift:304 vs CharacterController.swift:510 — `headBob` means two things — `headBobAmount` (keep old decode key) — sample
+[SHOULD] InputState.swift:191 — `padMenuPressed` naming and placement — `wasPadMenuPressed` or `PadButton.menu` — sample
+[SHOULD] InputState.swift:117,260,368,547 — `consumeScroll/Next/Steps/PendingLook` inconsistent; `pendingNext` public — `consumeLook()`, private `pendingNext` — Coldkeel, sample
+[SHOULD] CharacterController.swift:401 — `Event` will grow; adding a case breaks switches — decide cases now or require `default` — sample
+[SHOULD] Camera.swift:45 — `Camera` lacks `Equatable` — add — Coldkeel, sample
+[SHOULD] CharacterController.swift (various) — units in some names, not others; `Turn.radians` vs `Footprint.yaw` — one convention — sample
+[CONSIDER] InputState.swift:132,140 — `init()` starts global controller discovery; a second instance stops the first's — explicit `start()/stop()` — Coldkeel, sample
+[CONSIDER] InputState.swift:283,380 — trigger thresholds fixed at 0.5 — configurable — Coldkeel
+[CONSIDER] InputState.swift:101 — `scrollNotch` static — instance var — engine
+[CONSIDER] InputBindings.swift:172 — `Outcome` shared by two types but nested in one — top-level `BindingOutcome` — sample
+[CONSIDER] InputBindings.swift:136, PadBindings.swift:21 — English display strings in engine API — leave names to the game or localize — sample
+[CONSIDER] InputBindings.swift:16-17 — `KeyCode` has two inits and magic numbers — named statics — sample
+[CONSIDER] Camera.swift:166,177 — `wrapAngle`/`shortestAngle` hang off `Camera` — free math helpers — Coldkeel, sample
+[CONSIDER] CharacterController.swift:364 — no `teleport(to:)`; respawn resets tuning silently — add it — sample
+
+### World, animation, audio, saving
+[MUST] TransformHierarchy.swift:166 — `matrix_without_scale(_:)` C-style name — member `withoutScale` — sample
+[MUST] TransformHierarchy.swift:88 — `localTransforms` settable to wrong count, then crashes — `private(set)` plus checked setter — engine
+[MUST] SkeletonPose.swift:79,101 — no check the playhead matches the skeleton; traps — precondition with message — sample
+[MUST] AnimationClip.swift:89,141 — inits accept malformed data; traps later — validate (throwing) — engine
+[SHOULD] RigLoader.swift:102,160,202 — `bundle: .main` default, which AudioEngine removed as wrong for SwiftPM — drop — sample
+[SHOULD] Level.swift:611 — `extension:` vs everyone else's `withExtension:` — rename — Coldkeel, sample
+[SHOULD] Level.swift:586 — `LoadError` doesn't cover decode/file errors that are actually thrown — add cases, wrap — Coldkeel, sample
+[SHOULD] TransformHierarchy.swift:54 — error named `Fault`; error naming/placement varies — one convention — engine
+[SHOULD] Skeleton.swift:8, RigLoader.swift:10 — errors main-actor while their throwers are nonisolated — mark nonisolated — engine
+[SHOULD] Level.swift:144,292 — duplicate inits kept for binary compatibility that doesn't apply; `sound` missing from init — one memberwise init — Coldkeel, sample
+[SHOULD] Level.swift:51 — `formatVersion` settable, can write a file the same build refuses — `private(set)` — engine
+[SHOULD] Level.swift:506,514 — tuples returned; can't grow without breaking — named structs — sample
+[SHOULD] Level.swift:344 — offset is `offset` for sounds, `position` for carried lamps — one name — sample
+[SHOULD] Level.swift:447 — `Ground.heightAt` unlabeled closure (`heightAt(x, z)`) — `height(atX:z:)` — Coldkeel, sample
+[SHOULD] LevelEditor.swift:44-157 — one tool's key steps as public statics — editor configuration in init — sample
+[SHOULD] LevelEditor.swift:230 — `save(to:)` not atomic, unlike `SaveStore` — `.atomic` — engine
+[SHOULD] LevelEditor.swift:28 — not `Sendable` — add — sample
+[SHOULD] Volume.swift:27 — not `Sendable`/`Equatable` — add — Coldkeel, Brinewake, sample
+[SHOULD] AudioEngine.swift:63,70,140,157 — failures printed, `nil`/`false` returned — throw `AudioEngineError` — Coldkeel, sample
+[SHOULD] AudioEngine.swift:39-99 — one-shot distance curve tuned for a long-range shot, plus public tuning statics — `AudioEngine.Configuration` — Coldkeel, sample
+[SHOULD] AudioEngine.swift:253,279 — time is Float here, Double there; `delay` ignores pause and can't be cancelled — one time type; schedule on the audio clock — Coldkeel, sample
+[SHOULD] AudioEngine.swift:318 — `ambienceVolume` controls "loops" — one name — sample
+[SHOULD] RigLoader.swift:122,161 — warnings as free strings through a non-Sendable closure — structured warnings — sample
+[SHOULD] RigLoader.swift:111,200,210 — missing file reported as "no skeleton"; URL and bundle forms disagree — throw `assetNotFound` in both — sample
+[SHOULD] RigLoader.swift:218,325,347 — Model I/O types in public API, used by nobody outside — internal — engine
+[SHOULD] AnimationClip.swift:171 — `time(_:looping:)` reads as a property — `wrappedTime(_:looping:)` — engine
+[CONSIDER] RigLoader.swift:65 — `jointsNotDrivenBy(_:)` — `joints(notDrivenBy:)` — engine
+[CONSIDER] AnimationClip.swift:209 — `AnimationBinding` public but engine-built; `clipJoint` is an array — internal or `clipJointIndices` — engine
+[CONSIDER] SkeletonPose.swift:133 — `refresh()` has no reason to be public — internal — engine
+[CONSIDER] SkeletonPose.swift:79-122 — three `set(...)` overloads with unrelated labels — consistent names — sample
+[CONSIDER] Volume.swift:30 — `local` beside `worldBounds` — `localBounds` — Coldkeel, Brinewake, sample
+[CONSIDER] Level.swift:206 — legacy `sunPitch`/`sunYaw` migration frozen into behavior — drop with a format bump, or document — sample
+[CONSIDER] Level.swift:98 — `kinds` is O(n²) editor policy as a property — method or move to the editor — sample
+[CONSIDER] LevelEditor.swift:205-218 — undo/redo mark dirty even back at the saved state; edits placements only — settle before freezing — sample
+[CONSIDER] LevelEditor.swift:171,178 — key-step helpers shaped by the sample; `metres` parameter name — keep `setLight(_:)`, drop helpers — sample
+[CONSIDER] AudioEngine.swift:187 — discarding a `Loop` makes it unstoppable — remove `@discardableResult` — sample
+[CONSIDER] AudioEngine.swift:332 — `stop()` is terminal — lifecycle or document — Coldkeel, sample
+[CONSIDER] SaveStore.swift:40,52,64 — `url` getter creates a directory; load/clear swallow errors — pure getter, throwing load — sample
+
+### Light, shadows, sky, particles
+[MUST] PunctualLight.swift:42-46 — cone settable past its checks — re-apply on set — sample, Sedgefall tests
+[MUST] ShadowMap.swift:44-97 — `Batch` exposes fields meaningless for self-encoding batches; `mesh` traps — internal fields or an enum — Worldra, Coldkeel, sample
+[SHOULD] ShadowMap.swift:102-106 — `Pass.index` means cascade, tile or cube face depending on caller — say which — Worldra
+[SHOULD] ShadowCascades.swift:140,146 — depth biases fixed — init parameters with defaults — engine
+[SHOULD] ShadowCascades.swift:23 — not `Sendable`/`Equatable` — add — sample, Worldra, Coldkeel
+[SHOULD] ShadowCascades.swift:68-83 — accepts unsorted or more than four splits; past four is silently dropped or traps — validate — sample, Worldra, Coldkeel
+[SHOULD] ShadowCubes.swift:125-191 — test-only helpers public — internal — engine
+[SHOULD] ShadowAtlas/ShadowCubes — `tile` vs `slice`, `size` vs `resolution` — one name each — sample
+[SHOULD] ShadowAtlas.swift:117 vs ShadowCubes.swift:143 — isolation and conformances differ between siblings — make consistent — sample
+[SHOULD] ShadowAtlas/ShadowCubes/ShadowCascades — three bias defaults and label styles for one technique — one `ShadowBias` type — sample
+[SHOULD] ParticleRenderer.swift:165-170 — needs a first-person `Camera` plus a separate matrix — take the view values — sample, Coldkeel
+[SHOULD] ParticleSystem.swift:18-53,239 — settable past init's checks (lifetime 0 divides by zero) — validate on set — sample
+[SHOULD] ClusteredLights.swift:143 — `busiestCluster` is a count — `maxLightsPerCluster` — sample
+[SHOULD] ClusteredLights.swift:159,204 — silently drops lights past the index limit — report it — sample
+[SHOULD] ClusteredLights.swift:66-67 — `depthBias` also means shadow bias — `sliceBias` — sample
+[SHOULD] ClusteredLights.swift:100,157 — `fovY:` with no unit vs `fovyRadians:` — one label — sample
+[SHOULD] ProceduralSky.swift:33 — `sunDirection` settable unnormalized — normalize on set — engine, sample
+[SHOULD] ParticleRenderer.swift:114 and others — `allocations` typed two ways — one type — sample, Worldra, Coldkeel
+[CONSIDER] PunctualLight.swift:19 — `color` is color × intensity, while the file stores them apart — store apart or rename — sample, Sedgefall
+[CONSIDER] PunctualLight/ProceduralSky — angle units named inconsistently — one convention — sample
+[CONSIDER] PunctualLight.swift:210 — `luminance(_:)` is a general color helper filed under lights — move — sample, Sedgefall
+[CONSIDER] PunctualLight.swift:257,272 — `LightSet` not `Equatable`; `negligible` naming — fix — sample, Sedgefall
+[CONSIDER] ShadowMap.swift:44-117 — `Batch`/`Pass`/`BufferIndex` nested in the sun's type but shared by all three — top-level — Worldra, Coldkeel, sample
+[CONSIDER] ShadowAtlas.swift:100-104 — `tile(_:)` clamps a bad index to another light's tile — precondition or optional — engine
+[CONSIDER] ParticleSystem.swift:93-101 — `Particle` setters unreachable — `let` — sample, Coldkeel
+[CONSIDER] ParticleSystem.swift:213 — `hash(_:_:)` public, engine-only — internal — engine
+[CONSIDER] ParticleSystem/ParticleRenderer — two capacities that must match — derive one — sample
+[CONSIDER] ParticleRenderer.swift:58-91 — init prints and returns nil — throw — sample, Coldkeel
+[CONSIDER] ParticleRenderer.swift:134 — sky property placed on the renderer — move to the sky — sample
+[CONSIDER] EnvironmentMap.swift:56 — only init blocks the main thread for ~2M evaluations — off-main build step — sample
+[CONSIDER] ToneMapping.swift:30-33 — not `Codable`; shader raw values public — add, hide — sample, Worldra
+
+### Core, meshes, HUD, math
+[MUST] Math.swift:12-108 — C-style public math function names — Swift names — Coldkeel, sample, Worldra
+[MUST] UIColor.swift:20 — collides with UIKit's `UIColor` — rename — Coldkeel, sample
+[SHOULD] FrameRenderer.swift:71,275 — public `NSObject` and display-link delegate — private delegate — engine
+[SHOULD] FrameRenderer.swift:98-99 — command queue and buffer public — internal — engine
+[SHOULD] FrameRenderer/HUDRenderer/FontAtlas/TextureStore inits — `init?` hides why — throw a public error — Coldkeel, sample, Worldra
+[SHOULD] FrameRenderer.swift:23, FixedTimestep.swift:28, SplashScreen.swift:109 — time span: three names, two types; `step` noun vs verb — one label and type — all games
+[SHOULD] FrameRenderer.swift:26, HUDRenderer.swift:141, SplashScreen.swift:127 — viewport spelled three ways, pixels vs points unstated — one — Coldkeel, sample, Worldra
+[SHOULD] HUDRenderer.swift:25,414 — fixed 8192-vertex limit, silent truncation — init parameter, warn — engine
+[SHOULD] HUDRenderer.swift:225,266 — test-only helpers public — internal — engine
+[SHOULD] HUDRenderer.swift:146-379 — mixed scalar and SIMD drawing calls; `stroke` doesn't name its shape — one style, shape names — Coldkeel, sample
+[SHOULD] HUDRenderer.swift:132, TextureStore.swift:211 — `allocations` typed two ways — one — sample, Worldra, Coldkeel
+[SHOULD] FontAtlas.swift:31-158 — atlas internals public — internal — engine
+[SHOULD] MeshDetail.swift:47-56 — tuning constants public and implicit — `MeshDetail.Options` — engine
+[SHOULD] MeshDetail.swift:207-212 — assumes position at offset 0 of buffer 0 — `positionAttribute:` — Worldra
+[SHOULD] MeshLoader.swift:10,61-80 — errors can't describe real failures — proper cases, wrap — Coldkeel, sample, Worldra
+[SHOULD] ShaderLibrary.swift:25-45 — isolation, error name and Sendable inconsistent — align — sample, Worldra
+[SHOULD] Frustum.swift:35 — main-actor, not `Sendable`/`Equatable` — nonisolated, add — Coldkeel, Worldra, Brassgrave
+[SHOULD] BoundingBox.swift:66,83 — `intersection`/`intersects` names mislead — distance names — Worldra
+[SHOULD] Instancing.swift:83,92 — test-only growth policy public — internal — engine
+[SHOULD] MeshLoader.swift:212,252 — `LoadedMesh`/`SceneObject` not `Sendable`; Worldra wraps them itself — engine decides — Worldra, Coldkeel, sample
+[CONSIDER] FrameRenderer.swift:105, FixedTimestep.swift:36-45 — timestep config and clock not reachable — expose — sample
+[CONSIDER] FrameRenderer.swift:266 — frame-rate range fixed 30–120 — parameter — Coldkeel, sample, Worldra
+[CONSIDER] HUDRenderer.swift:414 — `frameSlot` unchecked, can write past the buffer — precondition — Coldkeel, sample
+[CONSIDER] Material/FrameRenderer/UIColor — three color representations — decide on a scene color type — Coldkeel, sample, Worldra
+[CONSIDER] Material.swift:108,133 — two public paths to the same textures — keep one — sample
+[CONSIDER] Material.swift:237, UIColor.swift:50 — unused public helpers — internal — engine
+[CONSIDER] TextureStore.swift:64 — `TextureStore.TextureOrigin` stutters — top-level — engine
+[CONSIDER] MeshLoader.swift:41,44 — `"obj"` default though USD is preferred; stringly semantics and warnings — drop default, type them — Coldkeel, sample, Worldra
+[CONSIDER] MeshDetail.swift:39-121 — `var` fields with no init; `choose` naming — `let`, clearer name — Worldra
+[CONSIDER] Instancing.swift:34,43 — `Batch.first` shadows `Collection.first`; two matrix spellings — rename, one spelling — sample, Worldra
+[CONSIDER] Frustum.swift:74 — `canSee` overstates a conservative test — `mayContain` — Coldkeel, Worldra
+[CONSIDER] AssetOrientation.swift:49,91 — factory where an init is idiomatic; 0 treated as 1 — init, precondition — sample
+[CONSIDER] SplashScreen.swift:62,76 — `ignoresSkipsFor`, `markWidthFraction` naming — `skipDelay`, fix — engine
+[CONSIDER] EngineMark.swift:52,55 — construction constants public — internal — engine
+[CONSIDER] Engine.swift:42 — `SemanticVersion` lacks `Hashable`, `LosslessStringConvertible` — add — engine
+[CONSIDER] FrameRenderer.swift:36,53 — `encodeHUD` gets no interpolation; label differs — pass it, one name — Coldkeel, sample, Worldra
