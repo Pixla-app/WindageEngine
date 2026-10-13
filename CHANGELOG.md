@@ -10,6 +10,12 @@ Every release of Windage Engine, newest first. Format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.27.1] — 2026-10-13
+
+**The documentation, complete and in US English.** Nothing compiled changes.
+
 ### Documentation
 
 - **Doc comments are US English**, as the public names have been since 0.26.0 — swept now that the docs are

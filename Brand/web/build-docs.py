@@ -42,7 +42,12 @@ NAV = [
     ("Checking your game", [("walks", "Scripted walks"), ("frames", "Recorded frames")]),
 ]
 
-NEWS = ("New in 0.25.0", "Level of detail: simpler versions of each mesh, chosen by distance.", "level-of-detail.html")
+def news():
+    """The box under "On this page": the newest release's headline, from `CHANGELOG.md` — never typed, so it
+    cannot fall behind the version beside it."""
+    text = (ENGINE / "CHANGELOG.md").read_text()
+    m = re.search(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n+\*\*(.+?)\*\*", text, flags=re.M)
+    return (f"New in {m.group(1)}", m.group(2).rstrip("."), f"changelog.html#v{slugify(m.group(1))}")
 
 
 def version():
@@ -227,7 +232,7 @@ def section_of(slug):
 
 def page(slug, title, description, body, toc, crumb, ver):
     toc_links = "".join(f'<a href="#{hid}">{html.escape(t)}</a>' for hid, t in toc)
-    news_title, news_text, news_href = NEWS
+    news_title, news_text, news_href = news()
     toc_html = (f'<h2>On this page</h2>{toc_links}' if toc else "") + \
         f'<a class="news" href="{news_href}"><b>{news_title}</b>{news_text}</a>'
     return f"""<!doctype html>
@@ -282,7 +287,8 @@ def changelog_md():
     text = (ENGINE / "CHANGELOG.md").read_text()
     text = text[text.index("## ["):]
     # The Unreleased heading is for whoever edits the file; a reader wants releases.
-    text = re.sub(r"^## \[Unreleased\]\n+Nothing yet\.\n+", "", text, flags=re.M)
+    # Releases only. Unreleased is a working section of the file, not something a reader can install.
+    text = re.sub(r"^## \[Unreleased\].*?(?=^## \[)", "", text, flags=re.M | re.S)
     # Each release a section: "## [0.27.0] — 2026-10-13" → "## 0.27.0 — 2026-10-13 {#v0-27-0}"
     text = re.sub(r"^## \[(.+?)\](.*)$", lambda m: f"## {m.group(1)}{m.group(2)} {{#v{slugify(m.group(1))}}}",
                   text, flags=re.M)

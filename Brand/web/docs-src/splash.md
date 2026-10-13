@@ -86,7 +86,7 @@ Where the engine's name appears without a splash — a credits screen, an about 
 window.title = "\(Engine.name) \(Engine.version) — sample"
 ```
 
-**Crediting the engine is a choice, not an obligation.** Nothing in the engine's license requires a splash or a credit, and nothing shows one unless a game does. See [the mark](mark.html) for the ways to credit it.
+**The license asks for a notice, not a splash.** A game that ships the engine passes on the license's `Required Notice:` line in its acknowledgments; the splash is a visible credit on top of that, and nothing shows one unless your game does. See [the mark](mark.html#credit) for the notice and the ways to credit the engine.
 
 ## In the sample
 
