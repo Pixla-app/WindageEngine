@@ -1,8 +1,8 @@
 # Public API audit before 1.0 — 2026-10-13
 
 Every public declaration in `Sources/WindageEngine`, reviewed for what would be a mistake to freeze at 1.0
-(after which a change to a public name, signature or behavior needs a 2.0). **Nothing here has been changed
-yet; the owner decides what is.** 132 findings: **12 MUST**, 72 SHOULD, 48 CONSIDER.
+(after which a change to a public name, signature or behavior needs a 2.0). **The owner approved fixing them on
+2026-10-13; the outcome of each is noted beside it.** 132 findings: **12 MUST**, 72 SHOULD, 48 CONSIDER.
 
 - **MUST** — clearly wrong to freeze: a crash path, a name collision, one game's design baked in, or names
   that break the Swift guidelines everywhere they're called.
