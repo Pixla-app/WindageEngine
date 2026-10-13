@@ -184,6 +184,31 @@ vertex VertexOut sampleVertex(VertexIn in [[stage_in]],
     return out;
 }
 
+/// Many copies of one mesh in one draw: the engine's `InstanceBatches` and `InstanceBuffer`.
+///
+/// **The copy's transform comes from a buffer, by `instance_id`, on top of the object's own** — so the
+/// uniforms are written once for the whole batch and only the transforms differ. The copies are sized
+/// evenly, so their transform turns normals correctly with no inverse; the normal matrix still carries
+/// the object's own.
+vertex VertexOut sampleInstancedVertex(VertexIn in [[stage_in]],
+                                       uint instance [[instance_id]],
+                                       constant Uniforms &uniforms [[buffer(1)]],
+                                       const device float4x4 *copies [[buffer(7)]])
+{
+    const float4x4 model = copies[instance] * uniforms.model;
+    const float3x3 basis = float3x3(copies[instance][0].xyz, copies[instance][1].xyz, copies[instance][2].xyz);
+
+    VertexOut out;
+    float4 world = model * float4(in.position, 1.0);
+    out.position = uniforms.viewProjection * world;
+    out.normal = normalize(basis * (uniforms.normalMatrix * in.normal));
+    out.tangent = (model * float4(in.tangent.xyz, 0.0)).xyz;
+    out.handedness = in.tangent.w;
+    out.worldPosition = world.xyz;
+    out.uv = in.uv;
+    return out;
+}
+
 /// The same scene, wearing a pose.
 ///
 /// **The palette is per character, not per vertex** — one matrix per joint, written on the CPU by

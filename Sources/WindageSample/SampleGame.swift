@@ -397,6 +397,11 @@ final class SampleGame: GameLoop {
     private let pipeline: MTLRenderPipelineState
     /// **Optional: no skinned pipeline means no characters, not no sample.**
     private let skinnedPipeline: MTLRenderPipelineState?
+    /// Debris, drawn instanced. **Optional, the same way: no pipeline means no debris.**
+    private let instancedPipeline: MTLRenderPipelineState?
+    /// The debris lying round this level's buildings — ``SampleRubble`` — as one batch of the box mesh.
+    private var rubble = InstanceBatches<String>()
+    private let rubbleBuffer: InstanceBuffer
     private let depthState: MTLDepthStencilState
     private let hud: HUDRenderer?
 
@@ -993,7 +998,9 @@ final class SampleGame: GameLoop {
 
     /// Figures take uniform slots after the level's drawables, in the same buffer.
     private static let maxFigures = 8
-    private static let uniformSlots = maxDrawables + maxFigures
+    /// One more for the debris, whose uniforms are written once for the whole batch.
+    private static let uniformSlots = maxDrawables + maxFigures + 1
+    private static var rubbleSlot: Int { maxDrawables + maxFigures }
 
     /// **A ceiling, not the rig's joint count.** The buffer is allocated before any rig is loaded,
     /// so it has to be sized for a plausible character rather than for the one that turns up. A
@@ -1039,6 +1046,7 @@ final class SampleGame: GameLoop {
 
         let vertexDescriptor = SampleGame.vertexDescriptor()
         var sky: MTLRenderPipelineState?
+        var instanced: MTLRenderPipelineState?
 
         let shaderLibrary: MTLLibrary
         do {
@@ -1069,6 +1077,16 @@ final class SampleGame: GameLoop {
             // drawable's format here would not match the attachment it is given.
             descriptor.colorAttachments[0].pixelFormat = FrameRenderer.sceneColorPixelFormat
                 pipeline = try compiler.makeRenderPipelineState(descriptor: descriptor, compilerTaskOptions: nil)
+
+            // The instanced pipeline differs only in its vertex function — same layout, same fragment
+            // shader, so a piece of debris is lit and shadowed exactly as the crate it was cut from.
+            let instancedVertex = MTL4LibraryFunctionDescriptor()
+            instancedVertex.library = library
+            instancedVertex.name = "sampleInstancedVertex"
+            descriptor.label = "SampleInstancedPipeline"
+            descriptor.vertexFunctionDescriptor = instancedVertex
+            instanced = try? compiler.makeRenderPipelineState(descriptor: descriptor, compilerTaskOptions: nil)
+            descriptor.vertexFunctionDescriptor = vertexFunction
 
             // The skinned pipeline differs only in its vertex function and its layout — same
             // fragment shader, so a character is lit and shadowed by exactly the code the rest of
@@ -1106,6 +1124,8 @@ final class SampleGame: GameLoop {
         }
         self.depthState = depthState
         skyPipeline = sky
+        instancedPipeline = instanced
+        rubbleBuffer = InstanceBuffer(renderer: engine)
 
         // **The sky writes no depth and tests none.** It is drawn first and everything else covers
         // it; writing depth would put the far plane in front of the scene, and testing it would need
@@ -1117,8 +1137,8 @@ final class SampleGame: GameLoop {
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         // 0: vertices · 1: per-object uniforms · 2: frame data · 3: joints
-        // 4: every light in the scene · 5: cluster ranges · 6: cluster light indices.
-        tableDescriptor.maxBufferBindCount = 7
+        // 4: every light in the scene · 5: cluster ranges · 6: cluster light indices · 7: instance transforms.
+        tableDescriptor.maxBufferBindCount = 8
         // 0: cascades · 1: base colour · 2: normal · 3: environment · 4: irradiance · 5: ORM
         // 6: glow · 7: the lamps' shadow atlas.
         tableDescriptor.maxTextureBindCount = 9
@@ -1601,6 +1621,7 @@ final class SampleGame: GameLoop {
         objectiveDrawables.removeAll(keepingCapacity: true)
         glowingDrawables.removeAll(keepingCapacity: true)
         let ground = SampleGame.ground
+        var buildings: [BoundingBox] = []
         for (placementIndex, placement) in level.placements.enumerated() {
             guard let mesh = meshes[placement.mesh] else { continue }
             // **The engine's placement transform, not one built here.** This file used to build the
@@ -1620,6 +1641,7 @@ final class SampleGame: GameLoop {
             if let glow = SampleGame.glowStrength[placement.mesh] { glowingDrawables[drawables.count - 1] = glow }
             let volume = Volume(local: mesh.bounds, transform: transform)
             volumes.append(volume)
+            if !placement.tags.contains("ground") { buildings.append(volume.worldBounds) }
             // **The level's own tag decides.** The engine has no idea what "solid" means; this game
             // does. Shipping the tag and then ignoring it — which this sample did on its first
             // run — is worse than not having it, because the file says something untrue.
@@ -1657,6 +1679,8 @@ final class SampleGame: GameLoop {
         placeLifts(offset: liftOffset, delta: 0)
         placeSliders(slide: slideRun.offset, slideDelta: 0, piston: pistonOffset, pistonDelta: 0)
         placeTurntables(turnedBy: 0)
+        // Debris among the buildings, one batch of the box mesh — instanced, through the engine.
+        rubble = InstanceBatches(SampleRubble.transforms(around: buildings).map { ("box", $0) })
         rebuildFigures()
         rebuildLanterns()
         rebuildLights()
@@ -3056,6 +3080,23 @@ final class SampleGame: GameLoop {
                 .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         }
 
+        // The debris: one set of uniforms for every piece. The box mesh's own place times nothing else —
+        // each piece's transform comes from the instance buffer.
+        if let box = meshes["box"], !rubble.isEmpty {
+            var uniforms = Uniforms(viewProjection: viewProjection,
+                                    model: box.nodeTransform,
+                                    normalMatrix: normalMatrix(from: box.nodeTransform),
+                                    // Weathered: darker and greyer than a whole crate.
+                                    albedo: SIMD3(0.62, 0.58, 0.54),
+                                    sunDirection: sunDirection,
+                                    material: box.material(forSubmesh: 0),
+                                    specularLOD: environmentLOD,
+                                    sunColour: sunIrradiance,
+                                    emissive: .zero)
+            uniformBuffer.contents().advanced(by: uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot))
+                .copyMemory(from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
+        }
+
         for (index, figure) in figures.prefix(SampleGame.maxFigures).enumerated() {
             var uniforms = Uniforms(viewProjection: viewProjection,
                                     model: figure.transform,
@@ -3336,6 +3377,7 @@ final class SampleGame: GameLoop {
             }
         }
 
+        encodeRubble(into: encoder, frameSlot: frameSlot)
         encodeFigures(into: encoder, frameSlot: frameSlot)
 
         // **Last, into the scene rather than onto the interface**: a spark goes through the tone map
@@ -3397,6 +3439,40 @@ final class SampleGame: GameLoop {
     ///
     /// **Same fragment shader, same shadow map, same uniforms** — a skinned mesh differs from the
     /// rest of the scene in exactly two things: where its vertices are and what moved them there.
+    /// The debris: every piece in one draw per submesh. **Not in the shadow pass** — scenery this small
+    /// casts nothing an eye would miss, and a hundred shadow draws would cost more than the debris.
+    private func encodeRubble(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
+        guard let instancedPipeline, let box = meshes["box"],
+              let copies = rubbleBuffer.write(rubble, frameSlot: frameSlot) else { return }
+        encoder.setRenderPipelineState(instancedPipeline)
+        defer { encoder.setRenderPipelineState(pipeline) }
+        argumentTable.setAddress(
+            uniformBuffer.gpuAddress + UInt64(uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot)),
+            index: 1)
+        let mesh = box.mesh
+        for (bufferIndex, vertexBuffer) in mesh.vertexBuffers.enumerated() {
+            argumentTable.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
+        }
+        let maps = baseColorMaps["box"] ?? [], normals = normalMaps["box"] ?? []
+        let orm = ormMaps["box"] ?? [], glow = emissiveMaps["box"] ?? []
+        for batch in rubble.batches {
+            argumentTable.setAddress(copies.gpuAddress + UInt64(batch.byteOffset), index: 7)
+            for (submeshIndex, submesh) in mesh.submeshes.enumerated() {
+                bindSurface(maps.indices.contains(submeshIndex) ? maps[submeshIndex] : nil,
+                            normals.indices.contains(submeshIndex) ? normals[submeshIndex] : nil,
+                            orm.indices.contains(submeshIndex) ? orm[submeshIndex] : nil,
+                            glow.indices.contains(submeshIndex) ? glow[submeshIndex] : nil)
+                encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
+                                              indexCount: submesh.indexCount,
+                                              indexType: submesh.indexType,
+                                              indexBuffer: submesh.indexBuffer.buffer.gpuAddress
+                                                  + UInt64(submesh.indexBuffer.offset),
+                                              indexBufferLength: submesh.indexBuffer.length,
+                                              instanceCount: batch.count)
+            }
+        }
+    }
+
     private func encodeFigures(into encoder: MTL4RenderCommandEncoder, frameSlot: Int) {
         guard let skinnedPipeline, let mesh = figureMesh?.mesh, visibleFigureCount > 0 else { return }
         encoder.setRenderPipelineState(skinnedPipeline)

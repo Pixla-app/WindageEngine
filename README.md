@@ -169,7 +169,8 @@ has nothing to build** · and a complete sample game exercising all of it.
 | ~~**Post-processing**~~ | **Tone mapping done 2026-09-10** — an HDR scene target, exposure in stops, and a choice of curve. See below. Bloom and colour grading are a *look* and are not here. |
 | ~~**Particles**~~ | **Done 2026-09-10.** `ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer` — embers, a pickup burst and landing dust in the sample. See below. |
 | ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
-| **LOD and instancing** | The next thing that binds once a scene is larger than one valley. |
+| ~~**Instancing**~~ | **Done 2026-10-12 (0.22.0).** `InstanceBatches` and `InstanceBuffer` — copies grouped by kind, one draw per submesh per kind; the sample strews debris with it. |
+| **LOD** | Still to come: nothing in reach has lower-detail meshes for it to choose between. It arrives with the first asset or scene that needs it. |
 | ~~**Input rebinding, settings persistence**~~ | **Done 2026-09-10.** `InputBindings`, `PlayerSettings` and `KeyCode`; the sample has a settings screen that saves as you change it. See below. |
 
 **Contested — defer, and say so rather than pretending they are unwanted.**

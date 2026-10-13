@@ -67,6 +67,21 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-12 — instancing (0.22.0)
+
+**`InstanceBatches` and `InstanceBuffer`**: copies grouped by kind in a fixed order, and a per-frame
+buffer of their transforms that grows and keeps its residency. Extracted from a world editor's scatter
+brush, where it drew woods of hundreds of trees; proved in the sample, which strews ~100 pieces of debris
+round each level as one batch. 10 new tests (5 engine, 5 sample core). **LOD is not done** — nothing has
+lower-detail meshes yet.
+
+**The sample had stopped finding its resources.** Xcode 27's SwiftPM copies a `.copy("Resources")` folder
+one level deeper, and lookups by name missed it: no meshes, no sounds, no figure, every frame failing.
+`.process("Resources")` puts them back where they are looked for. **The splash frame is redrawn for 3
+pixels** of the host font's edge shading, which moved with macOS 27.
+
+Followed into every consumer the same day — see the CHANGELOG and each one's handoff.
+
 ## State — 2026-09-15
 
 626 tests. The sample is a complete small game: a lit and **shadowed** scene, two levels loaded from

@@ -12,6 +12,39 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.22.0] — 2026-10-12
+
+**Instancing.** Many copies of the same meshes drawn once per submesh per kind, with an instance count,
+instead of once per copy. Extracted from working code in a world editor's scatter brush — a wood of
+hundreds of trees of two or three kinds — and proved here in the sample, which strews debris round each
+level's buildings as one batch.
+
+### Added
+
+- **`InstanceBatches<Key>`** — copies grouped by kind, kinds in the order first seen and copies in the
+  order given, so a frame's draws come out in the same order every run. `transforms` is every copy's
+  `float4x4`, kind after kind; each `Batch` has its `first`, `count` and `byteOffset`. No GPU: tested.
+- **`InstanceBuffer`** — one buffer per frame in flight, grown with room to spare and never shrunk, kept in
+  the renderer's residency set as it grows. `write(_:frameSlot:)` returns the buffer to bind; the game's
+  vertex function reads `copies[instance_id]` at the batch's offset. `capacity(for:current:)` is the
+  growth rule, tested.
+- **The sample draws debris instanced** (`SampleRubble`, `sampleInstancedVertex`) — evenly sized, so the
+  copy's transform turns normals with no inverse; scenery, so not in the shadow pass.
+
+### Changed
+
+- **The sample's resources are processed, not copied as a folder.** The SwiftPM that ships with Xcode 27
+  puts a copied folder one level deeper (`Contents/Resources/Resources/`), where lookups by name do not
+  look — the sample started with no meshes, no sounds and no figure, and every recorded frame failed.
+- **Recorded frames redrawn.** The four scene frames now show the debris. The splash's is redrawn
+  for **3 pixels** of the host font's edge shading, which moved with macOS 27 — nothing of the engine's.
+
+### Not here — and why
+
+- **LOD.** There is nothing for it to choose between yet: no asset in the sample, and none in the scatter
+  this came from, has lower-detail meshes. It arrives with the first that does, or with a scene that is too
+  slow without it.
+
 ## [0.21.0] — 2026-09-15
 
 **The Drift W.** 0.20.2 gave the engine a mark, and the mark was a diagram: a thin rule, a curve and two

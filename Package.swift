@@ -54,7 +54,7 @@ let package = Package(
             dependencies: ["WindageEngine", "WindageSampleCore"],
             // `.copy` and not `.process`: the shader **source** has to survive into the bundle so it
             // can be compiled at runtime when no metallib exists.
-            resources: [.copy("SampleShaders.metal"), .copy("Resources")],
+            resources: [.copy("SampleShaders.metal"), .process("Resources")],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(
