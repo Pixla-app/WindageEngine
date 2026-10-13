@@ -23,13 +23,13 @@ deploy needs that opening the file does not.
 
 This is launch-day copy, and four things in it are ahead of the facts. Fix each before the site goes up:
 
-- **The licence.** "Get the engine" and "Free for small studios under PolyForm Small Business 1.0.0" assume
-  that licence is in effect. Today's `LICENSE` grants nothing. Until it does, the button reads "Follow
-  development" and the footer drops the licence line.
+- **The license.** "Get the engine" and "Free for small studios under PolyForm Small Business 1.0.0" assume
+  that license is in effect. Today's `LICENSE` grants nothing. Until it does, the button reads "Follow
+  development" and the footer drops the license line.
 - **The package URL.** There is no public repository, so the docs show `https://…/WindageEngine.git`.
-- **The numbers.** 626 tests, 20 walk runs and 5 recorded frames are 0.21.0's. They move every release;
+- **The numbers.** 636 tests, 20 walk runs and 5 recorded frames are 0.22.0's. They move every release;
   check them against `swift test`, `Tools/walks.py` and `Tools/frames.py` when publishing.
-- **The imagery.** Every picture is the sample's placeholder art. A launch wants a scene built to be looked
+- **The imagery.** Every picture is the sample's placeholder art, and taken before 0.22.0 strewed debris through it. A launch wants a scene built to be looked
   at, and the showcase that the product concept had is left out until a title built on the engine has been
   announced — **no game is named on the engine's site before it is**.
 
@@ -45,3 +45,10 @@ The code on the homepage uses only real API (`GameLoop`, `CharacterController`, 
   is day. The day half follows the reader's light or dark appearance; the night half is always night.
 - **Type:** Archivo, wide and heavy, standing in for a drawn wordmark; Hanken Grotesk for reading; JetBrains
   Mono for anything a reader might type. Loaded from Google Fonts in the draft; self-host them for launch.
+
+## Words on the page are US English (2026-10-12)
+
+The studio's rule for anything a person reads: color, center, meter, license. Checked 2026-10-12. **The
+"No editor" item was reworded the same day**: a standalone world editor built on the engine now exists as
+its own product, so the page says the engine has no editor *inside* it rather than that there is none. The
+page still names no product; a showcase belongs here only once one ships.

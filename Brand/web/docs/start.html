@@ -17,7 +17,7 @@
   <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <label class="search" for="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></label>
   <ul><li><a href="start.html">Guides</a></li><li><a href="start.html">Reference</a></li><li><a href="../index.html#changelog">Changelog</a></li></ul>
-  <span class="ver">v0.21.0</span>
+  <span class="ver">v0.22.0</span>
 </header>
 
 <div class="docs">
@@ -42,7 +42,7 @@
         <h2 id="add">Add the package</h2>
         <p>In your game's <code>Package.swift</code>:</p>
 <pre>dependencies: [
-    .package(url: <span class="p">"https://…/WindageEngine.git"</span>, from: <span class="p">"0.21.0"</span>)
+    .package(url: <span class="p">"https://…/WindageEngine.git"</span>, from: <span class="p">"0.22.0"</span>)
 ]</pre>
       </li>
       <li>
@@ -56,7 +56,7 @@
         <p>Keys and seconds, pressed through the same path a keyboard uses. The log says where the feet ended each segment.</p>
 <pre>WINDAGE_SAMPLE_LEVEL=1 \
 WINDAGE_SAMPLE_WALK=<span class="p">"d:0.7 w:1.0 w:0.4 wait:1"</span> swift run WindageSample
-<span class="c">walk 'w:1.0' → feet (4.20, 1.20, 0.00), highest 1.20, on the ground</span></pre>
+<span class="c">WindageSample: walk 'w:1.0' → feet (4.20, 1.20, -0.00), highest 1.20, on the ground, eye 1.69 m up</span></pre>
       </li>
       <li>
         <h2 id="check">Check it</h2>
@@ -71,7 +71,7 @@ python3 Tools/frames.py</pre>
   <aside class="docs-toc" aria-label="On this page">
     <h2>On this page</h2>
     <a href="#add">Add the package</a><a href="#run">Run the sample</a><a href="#script">Play it by script</a><a href="#check">Check it</a>
-    <div class="news"><b>New in 0.21.0</b>The Drift W: the engine's mark, and a splash any game can show.</div>
+    <div class="news"><b>New in 0.22.0</b>Instancing: many copies of a mesh in one draw per kind.</div>
   </aside>
 </div>
 

@@ -28,7 +28,7 @@
     </nav>
     <div class="hero-copy">
       <h1>Native to the Mac.<br>Nothing in between.</h1>
-      <p class="sub">Swift 6 and Metal 4 all the way down — no runtime, no translation layer, no editor application to learn. Your game is a Swift package.</p>
+      <p class="sub">Swift 6 and Metal 4 all the way down — no runtime, no translation layer, no editor you are required to learn. Your game is a Swift package.</p>
       <div class="ctas">
         <a class="btn" href="docs/start.html">Start with the sample</a>
         <code class="cmd"><span>$</span>swift run WindageSample</code>
@@ -86,7 +86,7 @@
       </div>
       <div class="card">
         <h3>The same jump, however often the game steps</h3>
-        <p class="note">Apex of a 6.3 m/s jump, in metres. The height it should reach is 0.992.</p>
+        <p class="note">Apex of a 6.3 m/s jump, in meters. The height it should reach is 0.992.</p>
         <table class="rates">
           <thead><tr><th scope="col">Steps a second</th><th scope="col">Before 0.16</th><th scope="col">Now</th></tr></thead>
           <tbody>
@@ -121,16 +121,17 @@
       <div class="module"><h3>A body with feet</h3><p>Stairs, lifts, turntables, being pushed — and the same at any step rate.</p><code>CharacterController</code></div>
       <div class="module"><h3>Levels</h3><p>A versioned level format, and an editor you use inside your running game.</p><code>Level · LevelEditor</code></div>
       <div class="module"><h3>Sound, input, settings</h3><p>Positional audio, keys and pads a player rebinds, settings that save.</p><code>AudioEngine · InputBindings</code></div>
+      <div class="module"><h3>Many copies</h3><p>Instanced drawing: a wood of trees or a field of debris in one draw per kind.</p><code>InstanceBatches · InstanceBuffer</code></div>
     </div>
   </section>
 
   <section class="section" aria-labelledby="isnt">
     <h2 id="isnt">What it deliberately isn't</h2>
-    <p class="lead">Each of these is a thing you cannot design correctly from one game, so it waits for a second one.</p>
+    <p class="lead">Each of these is something the engine leaves to you, or to a game that proves it is needed.</p>
     <div class="isnt">
       <div><h3>No scene graph</h3><p>Your game owns its objects. The engine owns when things happen.</p></div>
       <div><h3>No ECS</h3><p>Structure your game the way your game wants to be structured.</p></div>
-      <div><h3>No editor app</h3><p>A level editor inside your game, not an application to learn.</p></div>
+      <div><h3>No editor inside the engine</h3><p>A level editor embeds in your game and edits its levels in place. A standalone editor is a separate product built on the engine, not part of it.</p></div>
       <div><h3>Not a runtime</h3><p>Mac first. Another platform means a native port, not a wrapper.</p></div>
     </div>
   </section>
@@ -139,7 +140,7 @@
     <h2 id="checked">How it's checked</h2>
     <p class="lead">On every change, before it's called done.</p>
     <div class="checks">
-      <div class="check"><strong>626</strong><h3>Tests</h3><p>Each new one shown to fail with its feature switched off.</p><code>swift test</code></div>
+      <div class="check"><strong>636</strong><h3>Tests</h3><p>Each new one shown to fail with its feature switched off.</p><code>swift test</code></div>
       <div class="check"><strong>20</strong><h3>Scripted walks</h3><p>The sample played by script, invisibly — one course of them at four step rates.</p><code>python3 Tools/walks.py</code></div>
       <div class="check"><strong>5</strong><h3>Recorded frames</h3><p>Drawn with no window and compared pixel by pixel against the last good one.</p><code>python3 Tools/frames.py</code></div>
     </div>
@@ -148,8 +149,8 @@
 
 <footer class="site-foot">
   <a class="brand" href="index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
-  <nav aria-label="Footer"><a href="docs/start.html">Docs</a><a href="#changelog">Changelog</a><a href="#licence">Licence</a></nav>
-  <span id="licence">Free for small studios under PolyForm Small Business 1.0.0 · © 2026 Pixla LLC</span>
+  <nav aria-label="Footer"><a href="docs/start.html">Docs</a><a href="#changelog">Changelog</a><a href="#license">License</a></nav>
+  <span id="license">Free for small studios under PolyForm Small Business 1.0.0 · © 2026 Pixla LLC</span>
 </footer>
 
 </body>
