@@ -72,8 +72,11 @@ What that means for the next session, concretely:
 `color`, `center`, `unitsPerMeter` throughout the public API; the British names forward, deprecated, for this
 one release (`Deprecated.swift`) — **delete that file in the next release.** Level files write a light's
 `color` and still read `colour`; the sample's levels are converted. Renamed in code only: **doc comments are
-still British, to be swept when the docs are published** (owner, 2026-10-12). 598 tests (2 new: old levels
-open, old names forward); 20 walks and 5 frames as recorded.
+still British, to be swept when the docs are published** (owner, 2026-10-12). 596 tests (2 new: old levels
+open, old names forward); 20 walks and 5 frames as recorded. **The consumers caught two faults in the aliases
+before anyone else could:** they inherited the package's main-actor default, so background code using `centre`
+stopped compiling (now `nonisolated`, as their types are), and `ring`'s alias renamed a `color:` label that was
+never British.
 
 ## Done 2026-10-12 — level of detail (0.25.0)
 

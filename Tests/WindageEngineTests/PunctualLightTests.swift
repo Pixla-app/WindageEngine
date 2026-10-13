@@ -330,4 +330,10 @@ struct SpotLightTests {
         #expect(box.centre == box.center)
         #expect(AssetOrientation(unitsPerMetre: 100).unitsPerMeter == 100)
     }
+
+    /// Reached from code off the main actor, where a game loads and simplifies its meshes.
+    @available(*, deprecated)
+    nonisolated static func oldNamesOffTheMainActor() -> SIMD3<Float> {
+        BoundingBox(minimum: .zero, maximum: SIMD3(2, 2, 2)).centre
+    }
 }

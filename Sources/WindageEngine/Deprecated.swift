@@ -13,15 +13,19 @@ import simd
 // names stay here, deprecated and forwarding, **for one release**: a game that upgrades gets a warning with
 // a fix-it at every use rather than a build that fails. They are deleted in the release after 0.26.0.
 //
+// **The aliases on value types are `nonisolated`, as the types themselves are** — left to the package's
+// main-actor default, a game's background code that used `centre` stopped compiling, which is the opposite of
+// what an alias is for.
+//
 // One change could not be aliased: ``ParticleSystem/appearance(of:)`` returns a tuple, and a tuple's labels
 // cannot have two names — `.colour` on its result is now `.color`.
 
-extension BoundingBox {
+nonisolated extension BoundingBox {
     @available(*, deprecated, renamed: "center")
     public var centre: SIMD3<Float> { center }
 }
 
-extension AssetOrientation {
+nonisolated extension AssetOrientation {
     @available(*, deprecated, renamed: "unitsPerMeter")
     public var unitsPerMetre: Float {
         get { unitsPerMeter }
@@ -40,7 +44,7 @@ extension AssetOrientation {
     }
 }
 
-extension CharacterController.Surroundings.Turn {
+nonisolated extension CharacterController.Surroundings.Turn {
     @available(*, deprecated, renamed: "center")
     public var centre: SIMD2<Float> {
         get { center }
@@ -48,7 +52,7 @@ extension CharacterController.Surroundings.Turn {
     }
 }
 
-extension CharacterController.Surroundings.Footprint {
+nonisolated extension CharacterController.Surroundings.Footprint {
     @available(*, deprecated, renamed: "center")
     public var centre: SIMD2<Float> {
         get { center }
@@ -74,14 +78,15 @@ extension EngineMark {
 }
 
 extension HUDRenderer {
+    // Its color label was already `color`; only `centre` changed.
     @available(*, deprecated, renamed: "ring(center:innerRadius:outerRadius:segments:color:)")
     public func ring(centre: SIMD2<Float>, innerRadius: Float, outerRadius: Float, segments: Int = 96,
-                     colour: UIColor) {
-        ring(center: centre, innerRadius: innerRadius, outerRadius: outerRadius, segments: segments, color: colour)
+                     color: UIColor) {
+        ring(center: centre, innerRadius: innerRadius, outerRadius: outerRadius, segments: segments, color: color)
     }
 }
 
-extension ParticleRecipe {
+nonisolated extension ParticleRecipe {
     @available(*, deprecated, renamed: "color")
     public var colour: SIMD3<Float> {
         get { color }
@@ -97,7 +102,7 @@ extension ParticleRecipe {
     }
 }
 
-extension PunctualLight {
+nonisolated extension PunctualLight {
     @available(*, deprecated, renamed: "color")
     public var colour: SIMD3<Float> {
         get { color }
