@@ -234,7 +234,7 @@ def page(slug, title, description, body, toc, crumb, ver):
     toc_links = "".join(f'<a href="#{hid}">{html.escape(t)}</a>' for hid, t in toc)
     news_title, news_text, news_href = news()
     toc_html = (f'<h2>On this page</h2>{toc_links}' if toc else "") + \
-        f'<a class="news" href="{news_href}"><b>{news_title}</b>{news_text}</a>'
+        f'<a class="news" href="{news_href}"><b>{news_title}</b>{inline(news_text)}</a>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
