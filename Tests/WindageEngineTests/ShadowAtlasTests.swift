@@ -14,7 +14,7 @@ struct ShadowAtlasTests {
 
     private func atlas(resolution: Int = 2048, tilesPerSide: Int = 4) -> ShadowAtlas? {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
-        return ShadowAtlas(device: device, resolution: resolution, tilesPerSide: tilesPerSide)
+        return try? ShadowAtlas(device: device, resolution: resolution, tilesPerSide: tilesPerSide)
     }
 
     private func spot(pointing direction: SIMD3<Float>,
@@ -131,7 +131,7 @@ struct ShadowAtlasTests {
         await #expect(processExitsWith: .failure) {
             await MainActor.run {
                 guard let device = MTLCreateSystemDefaultDevice(),
-                      let atlas = ShadowAtlas(device: device) else { fatalError("no device: nothing to test") }
+                      let atlas = try? ShadowAtlas(device: device) else { fatalError("no device: nothing to test") }
                 _ = atlas.tile(forSlot: atlas.slotCount)
             }
         }

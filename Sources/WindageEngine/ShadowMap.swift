@@ -200,6 +200,28 @@ public nonisolated struct ShadowBias: Sendable, Equatable {
     public static let cube = ShadowBias(constant: 0, slopeScale: -2.5)
 }
 
+/// Why a ``ShadowMap`` could not be made: which of its objects the device would not create.
+public nonisolated enum ShadowMapError: Error, CustomStringConvertible, Sendable {
+    /// The depth texture array — too large for this GPU, or out of memory.
+    case texture
+    /// The buffer holding each frame's light matrices.
+    case matrixBuffer
+    /// The reversed-Z depth state the pass records with.
+    case depthState
+    /// The argument table the pass binds its buffers through.
+    case argumentTable(underlying: any Error)
+
+    public var description: String {
+        switch self {
+        case .texture: "the device would not create the shadow map's depth texture array"
+        case .matrixBuffer: "the device would not create the shadow map's matrix buffer"
+        case .depthState: "the device would not create the shadow map's depth state"
+        case .argumentTable(let error):
+            "the device would not create the shadow map's argument table — \(error)"
+        }
+    }
+}
+
 /// The sun's shadow pass: the scene recorded from the light's point of view, once per cascade.
 ///
 /// **Extracted 2026-09-09, from two implementations that had drifted into being the same thing.**
@@ -241,7 +263,8 @@ public final class ShadowMap {
     /// - Parameter cascades: **the game's numbers.** A courtyard seventy meters across and a range
     ///   where the target is at 800 m want different splits and a different light depth range;
     ///   `ShadowCascades` takes them as arguments for that reason.
-    public init?(device: MTLDevice, cascades: ShadowCascades) {
+    /// - Throws: ``ShadowMapError``, naming the object the device would not create.
+    public init(device: MTLDevice, cascades: ShadowCascades) throws {
         self.cascades = cascades
 
         let descriptor = MTLTextureDescriptor()
@@ -254,13 +277,13 @@ public final class ShadowMap {
         // Private, but **not memoryless**: unlike a main depth buffer this is read again in a later
         // pass, so it has to survive its own render pass.
         descriptor.storageMode = .private
-        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw ShadowMapError.texture }
         texture.label = "Shadow Cascades"
         self.texture = texture
 
         guard let matrices = device.makeBuffer(
             length: ShadowMap.matrixStride * cascades.count * FrameRenderer.maxFramesInFlight,
-            options: .storageModeShared) else { return nil }
+            options: .storageModeShared) else { throw ShadowMapError.matrixBuffer }
         matrices.label = "Cascade Matrices"
         matrixBuffer = matrices
 
@@ -270,13 +293,18 @@ public final class ShadowMap {
         let depth = MTLDepthStencilDescriptor()
         depth.depthCompareFunction = .greater
         depth.isDepthWriteEnabled = true
-        guard let depthState = device.makeDepthStencilState(descriptor: depth) else { return nil }
+        guard let depthState = device.makeDepthStencilState(descriptor: depth) else {
+            throw ShadowMapError.depthState
+        }
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         tableDescriptor.maxBufferBindCount = 5   // through ShadowBufferIndex.instances
-        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor) else { return nil }
-        argumentTable = table
+        do {
+            argumentTable = try device.makeArgumentTable(descriptor: tableDescriptor)
+        } catch {
+            throw ShadowMapError.argumentTable(underlying: error)
+        }
     }
 
     /// A pipeline descriptor with everything a shadow pass needs set correctly, ready for the game's

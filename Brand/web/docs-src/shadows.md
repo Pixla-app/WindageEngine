@@ -35,7 +35,7 @@ The init checks its splits: one to `ShadowCascades.maximumCount` (four, the shad
 
 ## The pass {#pass}
 
-`ShadowMap(device:cascades:)` allocates the cascade array (`texture`, in `ShadowMap.depthPixelFormat`). Add its `allocations` to your residency set.
+`ShadowMap(device:cascades:)` allocates the cascade array (`texture`, in `ShadowMap.depthPixelFormat`). Add its `allocations` to your residency set. It throws a `ShadowMapError` naming what the device would not create: the texture, the matrix buffer, the depth state or the argument table. `ShadowAtlas` and `ShadowCubes` below throw `ShadowAtlasError` and `ShadowCubesError`, with the same cases.
 
 Build each shadow pipeline from `ShadowMap.pipelineDescriptor(vertexFunction:vertexDescriptor:label:)`. It sets everything that has to be right: no fragment function, no color attachment and a raster sample count of one. You supply the vertex function and the vertex descriptor.
 

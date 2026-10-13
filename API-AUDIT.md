@@ -11,22 +11,35 @@ yet; the owner decides what is.** 132 findings: **12 MUST**, 72 SHOULD, 48 CONSI
 
 "Used by" says who calls it today, which is who a fix touches.
 
+## Status (2026-10-13)
+
+**All four area passes are done, and a consistency pass followed.** Of the 133 finding lines below
+(12 MUST, 72 SHOULD, 49 CONSIDER — one CONSIDER more than the intro's count): **128 DONE, 5 DECLINED,
+0 OWNER**, counted from the `→` markers. Nothing was left for the owner. Every MUST is done; the table's Outcome column says how.
+
+The consistency pass converted the last four GPU objects that still returned `nil` from their
+initializers — `ShadowMap`, `ShadowAtlas`, `ShadowCubes` and `EnvironmentMap` — to throwing, each with its
+own error (`ShadowMapError`, `ShadowAtlasError`, `ShadowCubesError`, `EnvironmentMapError`) naming what the
+device would not create, the convention the core pass set for `FrameRenderer`, `HUDRenderer`, `FontAtlas`,
+`TextureStore` and `ParticleRenderer`. The parsing initializers that return `nil` (`SemanticVersion(_:)`,
+`KeyCode(named:)`, `Footprint(discOf:)`, `Footprint(of:)`) stay as they are: that is standard Swift.
+
 ## The 12 MUST
 
-| # | Where | What's wrong | Fix | Used by |
-|---|---|---|---|---|
-| 1 | `InputBindings.Action` | A closed list of eight actions including `brace` (one sniper game's verb). A game can't add reload, use or weapon swap, and `isFiring`/`isAiming` can't be rebound. | An open action type: the engine's movement and posture actions built in, games add their own. | Coldkeel, sample |
-| 2 | `InputState` `isFiring`, `isSteadying`, brace, R3 magnification | One sniper game's control scheme built into the engine. | Move to that game's bindings on top of #1; keep only generic held/pressed/axis reads. | Coldkeel, sample |
-| 3 | `Camera.walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` | Per-game tuning as fixed engine constants, also the character controller's defaults. | Instance properties or a `Camera.Tuning`. | Coldkeel, sample |
-| 4 | `Camera.position/yaw/pitch` | Settable past the limits the camera promises (pitch clamped, yaw wrapped). | Clamp/wrap on set. | Coldkeel, sample |
-| 5 | `Math.swift` free functions | `matrix4x4_translation(_:_:_:)`, `matrix_perspective_right_hand_reverse_z`, `radians_from_degrees`… are C-style names from Apple's template; every game calls them. | Swift names, e.g. `simd_float4x4(translation:)`, `Float.radians(fromDegrees:)`. | Coldkeel, sample, Worldra |
-| 6 | `matrix_without_scale(_:)` | Same naming problem. | `withoutScale` on the matrix type. | sample |
-| 7 | `UIColor` | Same name as UIKit's `UIColor`: ambiguous the moment a file imports UIKit, and blocks an iPad/iOS target. | Rename, e.g. `InterfaceColor`. | Coldkeel, sample |
-| 8 | `TransformHierarchy.localTransforms` | Settable to an array of the wrong length, which then crashes. | Read-only plus a checked setter. | engine |
-| 9 | `SkeletonPose.set(to:)` | A playhead built for another skeleton crashes instead of failing clearly. | Check the binding matches, with a clear message. | sample |
-| 10 | `JointTrack` / `AnimationClip` inits | Accept data of the wrong shape; it crashes later, far from the cause. | Validate in the init (throwing). | engine |
-| 11 | `PunctualLight.Cone` angles and direction | Settable past the init's checks; an inner angle larger than the outer one lights everything but the cone. | Re-apply the checks on set. | sample |
-| 12 | `ShadowMap.Batch` | Two kinds of batch in one struct; one kind's `mesh` is a `fatalError` trap. | Hide the fields, or make it an enum of the two kinds. | Coldkeel, Worldra, sample |
+| # | Where | What's wrong | Fix | Used by | Outcome |
+|---|---|---|---|---|---|
+| 1 | `InputBindings.Action` | A closed list of eight actions including `brace` (one sniper game's verb). A game can't add reload, use or weapon swap, and `isFiring`/`isAiming` can't be rebound. | An open action type: the engine's movement and posture actions built in, games add their own. | Coldkeel, sample | DONE: top-level `InputAction`, an open name; engine statics `.forward…sprint`, games add theirs with `adding(_:defaultKey:)` / `adding(_:defaultButton:)` |
+| 2 | `InputState` `isFiring`, `isSteadying`, brace, R3 magnification | One sniper game's control scheme built into the engine. | Move to that game's bindings on top of #1; keep only generic held/pressed/axis reads. | Coldkeel, sample | DONE: removed from the engine; generic `isHeld(_:)`, `consumePresses(of:)`, mouse and trigger reads; Coldkeel's `Controls.swift` rebuilds fire, aim, steady, brace and R3 on them |
+| 3 | `Camera.walkSpeed`, `sprintSpeed`, `lookSensitivity`, `stickLookSpeed` | Per-game tuning as fixed engine constants, also the character controller's defaults. | Instance properties or a `Camera.Tuning`. | Coldkeel, sample | DONE: `Camera.Tuning` (`camera.tuning`), same defaults |
+| 4 | `Camera.position/yaw/pitch` | Settable past the limits the camera promises (pitch clamped, yaw wrapped). | Clamp/wrap on set. | Coldkeel, sample | DONE: `didSet` wraps yaw and clamps pitch on every set |
+| 5 | `Math.swift` free functions | `matrix4x4_translation(_:_:_:)`, `matrix_perspective_right_hand_reverse_z`, `radians_from_degrees`… are C-style names from Apple's template; every game calls them. | Swift names, e.g. `simd_float4x4(translation:)`, `Float.radians(fromDegrees:)`. | Coldkeel, sample, Worldra | DONE: `simd_float4x4(translation:)`, `(rotationAngle:axis:)`, `(perspectiveFovY:aspectRatio:nearZ:depthRange:)`, `Float.radians(fromDegrees:)` / `degrees(fromRadians:)` |
+| 6 | `matrix_without_scale(_:)` | Same naming problem. | `withoutScale` on the matrix type. | sample | DONE: `simd_float4x4.withoutScale` |
+| 7 | `UIColor` | Same name as UIKit's `UIColor`: ambiguous the moment a file imports UIKit, and blocks an iPad/iOS target. | Rename, e.g. `InterfaceColor`. | Coldkeel, sample | DONE: renamed `InterfaceColor` |
+| 8 | `TransformHierarchy.localTransforms` | Settable to an array of the wrong length, which then crashes. | Read-only plus a checked setter. | engine | DONE: `private(set)`, plus `setLocalTransform(_:ofNode:)` and a throwing `setLocalTransforms(_:)` |
+| 9 | `SkeletonPose.set(to:)` | A playhead built for another skeleton crashes instead of failing clearly. | Check the binding matches, with a clear message. | sample | DONE: both clip `set`s check the binding was built for this skeleton, by a precondition naming the clip |
+| 10 | `JointTrack` / `AnimationClip` inits | Accept data of the wrong shape; it crashes later, far from the cause. | Validate in the init (throwing). | engine | DONE: both inits throw `AnimationClipError`; `JointTrack.empty(jointCount:)` |
+| 11 | `PunctualLight.Cone` angles and direction | Settable past the init's checks; an inner angle larger than the outer one lights everything but the cone. | Re-apply the checks on set. | sample | DONE: `direction`, `innerAngle`, `outerAngle` re-apply the init's normalizing and clamping on every set |
+| 12 | `ShadowMap.Batch` | Two kinds of batch in one struct; one kind's `mesh` is a `fatalError` trap. | Hide the fields, or make it an enum of the two kinds. | Coldkeel, Worldra, sample | DONE: two initializers over an internal kind; no `mesh` trap |
 
 ## What the 72 SHOULD come to
 

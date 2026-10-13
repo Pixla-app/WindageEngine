@@ -24,7 +24,7 @@ struct ShadowMapTests {
     /// report a red suite for hardware it does not have.
     private func makeShadowMap() -> ShadowMap? {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
-        return ShadowMap(device: device, cascades: cascades)
+        return try? ShadowMap(device: device, cascades: cascades)
     }
 
     @Test("The texture is one depth slice per cascade")

@@ -7,6 +7,28 @@ import Metal
 import MetalKit
 import simd
 
+/// Why a ``ShadowCubes`` could not be made: which of its objects the device would not create.
+public nonisolated enum ShadowCubesError: Error, CustomStringConvertible, Sendable {
+    /// The cube-array depth texture — too large for this GPU, or out of memory.
+    case texture
+    /// The buffer holding each frame's light matrices.
+    case matrixBuffer
+    /// The reversed-Z depth state the pass records with.
+    case depthState
+    /// The argument table the pass binds its buffers through.
+    case argumentTable(underlying: any Error)
+
+    public var description: String {
+        switch self {
+        case .texture: "the device would not create the shadow cubes' cube-array depth texture"
+        case .matrixBuffer: "the device would not create the shadow cubes' matrix buffer"
+        case .depthState: "the device would not create the shadow cubes' depth state"
+        case .argumentTable(let error):
+            "the device would not create the shadow cubes' argument table — \(error)"
+        }
+    }
+}
+
 /// Shadow maps for lights that radiate in every direction: a cube per light, six faces each.
 ///
 /// ### Why this is not a tile of ``ShadowAtlas``, which is what the atlas said it would be
@@ -71,8 +93,9 @@ public final class ShadowCubes {
     ///     mean: six passes each is the real cost, and a level that wants more should be saying so
     ///     rather than discovering it.
     ///   - rasterBias: the depth bias while recording.
-    public init?(device: MTLDevice, resolution: Int = 512, slotCount: Int = 2, nearPlane: Float = 0.05,
-                 rasterBias: ShadowBias = .cube) {
+    /// - Throws: ``ShadowCubesError``, naming the object the device would not create.
+    public init(device: MTLDevice, resolution: Int = 512, slotCount: Int = 2, nearPlane: Float = 0.05,
+                rasterBias: ShadowBias = .cube) throws {
         self.resolution = max(16, resolution)
         self.slotCount = max(1, slotCount)
         self.nearPlane = max(nearPlane, 1e-4)
@@ -88,7 +111,7 @@ public final class ShadowCubes {
         descriptor.arrayLength = self.slotCount
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
-        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw ShadowCubesError.texture }
         texture.label = "Shadow Cubes"
         self.texture = texture
 
@@ -96,16 +119,23 @@ public final class ShadowCubes {
         let depth = MTLDepthStencilDescriptor()
         depth.depthCompareFunction = .greater
         depth.isDepthWriteEnabled = true
-        guard let depthState = device.makeDepthStencilState(descriptor: depth) else { return nil }
+        guard let depthState = device.makeDepthStencilState(descriptor: depth) else {
+            throw ShadowCubesError.depthState
+        }
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         tableDescriptor.maxBufferBindCount = 5      // matching ShadowBufferIndex, instances included
-        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
-              let matrices = device.makeBuffer(
+        let table: MTL4ArgumentTable
+        do {
+            table = try device.makeArgumentTable(descriptor: tableDescriptor)
+        } catch {
+            throw ShadowCubesError.argumentTable(underlying: error)
+        }
+        guard let matrices = device.makeBuffer(
                 length: ShadowCubes.matrixStride * ShadowCubes.faceCount * self.slotCount
                       * FrameRenderer.maxFramesInFlight,
-                options: .storageModeShared) else { return nil }
+                options: .storageModeShared) else { throw ShadowCubesError.matrixBuffer }
         matrices.label = "Shadow Cube Matrices"
         self.argumentTable = table
         self.matrixBuffer = matrices

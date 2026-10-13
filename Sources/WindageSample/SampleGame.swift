@@ -1247,9 +1247,18 @@ final class SampleGame: GameLoop {
             print("WindageSample: no texture store — surfaces will be flat colours (\(error))")
         }
 
-        shadowMap = ShadowMap(device: device, cascades: SampleGame.cascades)
-        shadowAtlas = ShadowAtlas(device: device, resolution: 2048, tilesPerSide: 4)
-        if shadowAtlas == nil { print("WindageSample: no shadow atlas — lamps will reach through walls") }
+        do {
+            shadowMap = try ShadowMap(device: device, cascades: SampleGame.cascades)
+        } catch {
+            shadowMap = nil
+            print("WindageSample: no shadow map (\(error))")
+        }
+        do {
+            shadowAtlas = try ShadowAtlas(device: device, resolution: 2048, tilesPerSide: 4)
+        } catch {
+            shadowAtlas = nil
+            print("WindageSample: no shadow atlas — lamps will reach through walls (\(error))")
+        }
         // **Four rather than the engine's two.** The ruins holds two braziers and the figures carry
         // lanterns, which is exactly the "a level should be choosing" case the default is mean about
         // — so the sample chooses, out loud, instead of inheriting a number.
@@ -1257,14 +1266,18 @@ final class SampleGame: GameLoop {
         // carried lanterns, which is exactly the "a level should be choosing" case the engine's
         // default is mean about — so the sample chooses, out loud, and pays for it in resolution
         // rather than in lamps that do not cast. Six faces at 384² is 21 MB.
-        shadowCubes = ShadowCubes(device: device, resolution: 384, slotCount: 6)
+        do {
+            shadowCubes = try ShadowCubes(device: device, resolution: 384, slotCount: 6)
+        } catch {
+            shadowCubes = nil
+            print("WindageSample: no shadow cubes — point lights will reach through walls (\(error))")
+        }
         do {
             particleRenderer = try ParticleRenderer(device: device, capacity: SampleGame.particleCapacity)
         } catch {
             particleRenderer = nil
             print("WindageSample: no particle renderer — nothing will spark (\(error))")
         }
-        if shadowCubes == nil { print("WindageSample: no shadow cubes — point lights will reach through walls") }
 
         // **Two pipelines, because a skinned mesh has a different vertex layout.** Everything else
         // about a shadow pass — depth only, no colour attachment, one raster sample, the matching
@@ -1668,8 +1681,11 @@ final class SampleGame: GameLoop {
         // A frame's check draws, so it builds the sky like anything else.
         guard !SampleGame.isCheck || SampleGame.frameWanted != nil else { return }
         let started = CFAbsoluteTimeGetCurrent()
-        guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
-            print("WindageSample: no environment — metal will have nothing to reflect")
+        let built: EnvironmentMap
+        do {
+            built = try EnvironmentMap(device: engine.device, sky: level.resolvedSky)
+        } catch {
+            print("WindageSample: no environment — metal will have nothing to reflect (\(error))")
             return
         }
         if let previous = environment {

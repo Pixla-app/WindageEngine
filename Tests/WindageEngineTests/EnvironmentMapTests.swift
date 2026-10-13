@@ -248,7 +248,7 @@ struct EnvironmentMapTests {
     @Test("The cubes are built with the mip chain a shader indexes by roughness")
     func texturesAreShaped() {
         guard let device = MTLCreateSystemDefaultDevice(),
-              let environment = EnvironmentMap(device: device, sky: ProceduralSky(),
+              let environment = try? EnvironmentMap(device: device, sky: ProceduralSky(),
                                                size: 32, irradianceSize: 8) else { return }
         #expect(environment.specular.textureType == .typeCube)
         #expect(environment.specular.width == 32)
@@ -298,7 +298,7 @@ struct EnvironmentMapIsolationTests {
     func buildsOffTheMainActor() async {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let map = await Task.detached {
-            EnvironmentMap(device: device, sky: ProceduralSky(), size: 16, irradianceSize: 4)
+            try? EnvironmentMap(device: device, sky: ProceduralSky(), size: 16, irradianceSize: 4)
         }.value
         #expect(map?.specular.width == 16)
     }

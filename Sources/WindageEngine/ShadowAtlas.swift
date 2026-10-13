@@ -7,6 +7,28 @@ import Metal
 import MetalKit
 import simd
 
+/// Why a ``ShadowAtlas`` could not be made: which of its objects the device would not create.
+public nonisolated enum ShadowAtlasError: Error, CustomStringConvertible, Sendable {
+    /// The depth texture — too large for this GPU, or out of memory.
+    case texture
+    /// The buffer holding each frame's light matrices.
+    case matrixBuffer
+    /// The reversed-Z depth state the pass records with.
+    case depthState
+    /// The argument table the pass binds its buffers through.
+    case argumentTable(underlying: any Error)
+
+    public var description: String {
+        switch self {
+        case .texture: "the device would not create the shadow atlas's depth texture"
+        case .matrixBuffer: "the device would not create the shadow atlas's matrix buffer"
+        case .depthState: "the device would not create the shadow atlas's depth state"
+        case .argumentTable(let error):
+            "the device would not create the shadow atlas's argument table — \(error)"
+        }
+    }
+}
+
 /// Shadow maps for the lights that are not the sun, packed into one texture.
 ///
 /// ### Why an atlas rather than a texture each
@@ -67,8 +89,9 @@ public final class ShadowAtlas {
     ///   - resolution: the whole atlas's edge, in texels.
     ///   - tilesPerSide: cut into this many columns and rows, so `tilesPerSide²` lights may cast.
     ///   - rasterBias: the depth bias while recording.
-    public init?(device: MTLDevice, resolution: Int = 2048, tilesPerSide: Int = 4,
-                 rasterBias: ShadowBias = .spot) {
+    /// - Throws: ``ShadowAtlasError``, naming the object the device would not create.
+    public init(device: MTLDevice, resolution: Int = 2048, tilesPerSide: Int = 4,
+                rasterBias: ShadowBias = .spot) throws {
         self.resolution = max(64, resolution)
         self.tilesPerSide = max(1, tilesPerSide)
         self.rasterBias = rasterBias
@@ -79,7 +102,7 @@ public final class ShadowAtlas {
         descriptor.usage = [.renderTarget, .shaderRead]
         // Private but **not memoryless**: read again in the shading pass, like the cascades.
         descriptor.storageMode = .private
-        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        guard let texture = device.makeTexture(descriptor: descriptor) else { throw ShadowAtlasError.texture }
         texture.label = "Shadow Atlas"
         self.texture = texture
 
@@ -88,16 +111,23 @@ public final class ShadowAtlas {
         let depth = MTLDepthStencilDescriptor()
         depth.depthCompareFunction = .greater
         depth.isDepthWriteEnabled = true
-        guard let depthState = device.makeDepthStencilState(descriptor: depth) else { return nil }
+        guard let depthState = device.makeDepthStencilState(descriptor: depth) else {
+            throw ShadowAtlasError.depthState
+        }
         self.depthState = depthState
 
         let tableDescriptor = MTL4ArgumentTableDescriptor()
         tableDescriptor.maxBufferBindCount = 5      // matching ShadowBufferIndex, instances included
-        guard let table = try? device.makeArgumentTable(descriptor: tableDescriptor),
-              let matrices = device.makeBuffer(
+        let table: MTL4ArgumentTable
+        do {
+            table = try device.makeArgumentTable(descriptor: tableDescriptor)
+        } catch {
+            throw ShadowAtlasError.argumentTable(underlying: error)
+        }
+        guard let matrices = device.makeBuffer(
                 length: ShadowAtlas.matrixStride * self.tilesPerSide * self.tilesPerSide
                       * FrameRenderer.maxFramesInFlight,
-                options: .storageModeShared) else { return nil }
+                options: .storageModeShared) else { throw ShadowAtlasError.matrixBuffer }
         matrices.label = "Shadow Atlas Matrices"
         self.argumentTable = table
         self.matrixBuffer = matrices

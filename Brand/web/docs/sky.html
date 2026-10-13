@@ -58,18 +58,22 @@
 <p>Read it through <code>Level.resolvedSky</code>. That property also handles older files that set the sun with <code>sunPitch</code> and <code>sunYaw</code> in <code>settings</code> and have no <code>sky</code> block. With neither, it returns the default <code>ProceduralSky()</code>.</p>
 <p>An overcast level is darker and flatter overall, not just lit by a dimmer sun. The ruins' first sky kept bright blue-sky values and only dimmed the sun, and the stone washed out to near-white.</p>
 <h2 id="environment-map">EnvironmentMap</h2>
-<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>?(device: MTLDevice,
-             sky: ProceduralSky,
-             size: Int = 128,
-             irradianceSize: Int = 16)</pre>
+<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>(device: MTLDevice,
+            sky: ProceduralSky,
+            size: Int = 128,
+            irradianceSize: Int = 16) <span class="k">throws</span></pre>
+<p>It throws an <code>EnvironmentMapError</code> naming the cube the device would not create: <code>.specularTexture</code> or <code>.irradianceTexture</code>.</p>
 <div class="table"><table><thead><tr><th>Texture</th><th>What it holds</th></tr></thead><tbody><tr><td><code>specular</code></td><td>The sky convolved with the GGX lobe, <strong>one roughness per mip</strong>. Mip 0 is the sky itself, and the last mip is nearly uniform. Sample it at <code>roughness * Float(specularMipCount - 1)</code>.</td></tr><tr><td><code>irradiance</code></td><td>The sky convolved with a cosine lobe: what a diffuse surface facing each direction receives. Sixteen texels a side is enough, because the result has almost no detail.</td></tr></tbody></table></div>
 <p>Add <code>allocations</code> to your residency set. Building a map is a load-time cost, not a per-frame one: 92 ms in a release build and 2.6 s in a debug build. <code>EnvironmentMap</code> is <code>nonisolated</code> and <code>Sendable</code>, so a game that would rather not spend that on the main actor builds it in a <code>Task.detached</code> and hands the map back.</p>
 <h3 id="cpu">Built on the CPU</h3>
 <p>The prefilter runs on the CPU deliberately. The parts that can be wrong are the cube face directions, the importance sampling and two convolutions, and as CPU code they have tests that need no GPU. Those tests caught three bugs: fireflies at high roughness, fixed by quadrupling the sample count per mip; an irradiance integral off by a factor of π; and a black lower hemisphere. One limitation is stated plainly: this prefilters a <strong>function</strong>, not a photograph. It can't load a captured HDR panorama.</p>
 <h2 id="sample">How the sample uses them</h2>
 <p>The sample rebuilds its environment whenever a level loads, from that level's sky:</p>
-<pre class="code-swift"><span class="k">guard</span> <span class="k">let</span> built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) <span class="k">else</span> {
-    print(<span <span class="k">class</span>="p">"WindageSample: no environment — metal will have nothing to reflect"</span>)
+<pre class="code-swift"><span class="k">let</span> built: EnvironmentMap
+<span class="k">do</span> {
+    built = <span class="k">try</span> EnvironmentMap(device: engine.device, sky: level.resolvedSky)
+} <span class="k">catch</span> {
+    print(<span <span class="k">class</span>="p">"WindageSample: no environment — metal will have nothing to reflect (\(error))"</span>)
     <span class="k">return</span>
 }
 <span class="k">if</span> <span class="k">let</span> previous = environment {

@@ -7,6 +7,22 @@ import Foundation
 import Metal
 import simd
 
+/// Why an ``EnvironmentMap`` could not be made: which of its two cube textures the device would not
+/// create.
+public nonisolated enum EnvironmentMapError: Error, CustomStringConvertible, Sendable, Equatable {
+    /// The specular cube, with its roughness mip chain — too large for this GPU, or out of memory.
+    case specularTexture
+    /// The irradiance cube.
+    case irradianceTexture
+
+    public var description: String {
+        switch self {
+        case .specularTexture: "the device would not create the environment map's specular cube"
+        case .irradianceTexture: "the device would not create the environment map's irradiance cube"
+        }
+    }
+}
+
 /// The lighting an environment contributes: what it looks like reflected, and what it looks like
 /// scattered.
 ///
@@ -60,18 +76,20 @@ public nonisolated final class EnvironmentMap: @unchecked Sendable {
     ///   - irradianceSize: edge length of the irradiance cube. **16 is not a corner cut**: a cosine
     ///     convolution is a very heavy blur, so the result genuinely has nothing in it finer than
     ///     this, and a larger one is the same picture stored at greater cost.
-    public init?(device: MTLDevice,
-                 sky: ProceduralSky,
-                 size: Int = 128,
-                 irradianceSize: Int = 16) {
+    /// - Throws: ``EnvironmentMapError``, naming the object the device would not create.
+    public init(device: MTLDevice,
+                sky: ProceduralSky,
+                size: Int = 128,
+                irradianceSize: Int = 16) throws {
         let mipCount = max(1, Int(log2(Double(size))) - 1)   // stop at 4×4; below that is noise
         self.specularMipCount = mipCount
 
         guard let specular = EnvironmentMap.makeCube(device: device, size: size,
-                                                     mipCount: mipCount, label: "Environment Specular"),
-              let irradiance = EnvironmentMap.makeCube(device: device, size: irradianceSize,
+                                                     mipCount: mipCount, label: "Environment Specular")
+        else { throw EnvironmentMapError.specularTexture }
+        guard let irradiance = EnvironmentMap.makeCube(device: device, size: irradianceSize,
                                                        mipCount: 1, label: "Environment Irradiance")
-        else { return nil }
+        else { throw EnvironmentMapError.irradianceTexture }
         self.specular = specular
         self.irradiance = irradiance
 

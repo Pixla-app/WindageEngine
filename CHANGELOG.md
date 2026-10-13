@@ -220,6 +220,11 @@ for pixel.
   follows.
 - **`LightSet.negligible` is `negligibleInfluence`** (init label too), in the units of `influence(at:)`.
 - **`ToneMapping.Curve` is a `String` enum**; the number the shader selects a curve by is internal.
+- **`ShadowMap`, `ShadowAtlas`, `ShadowCubes` and `EnvironmentMap` initializers throw** instead of returning
+  nil, the last four GPU objects that did, so every one in the engine now says why: `ShadowMapError`,
+  `ShadowAtlasError` and `ShadowCubesError` (`.texture`, `.matrixBuffer`, `.depthState`,
+  `.argumentTable(underlying:)`), and `EnvironmentMapError` (`.specularTexture`, `.irradianceTexture`). The
+  sample and Worldra go on without what failed, as before, and log the error.
 
 ### Added
 
@@ -253,6 +258,7 @@ for pixel.
   is `nonisolated` like its sibling.
 - `EnvironmentMap` is `nonisolated` and `Sendable` (unchecked, documented), so a game can build it off the
   main actor.
+- `ShadowMapError`, `ShadowAtlasError`, `ShadowCubesError`, `EnvironmentMapError`.
 
 ### Fixed
 

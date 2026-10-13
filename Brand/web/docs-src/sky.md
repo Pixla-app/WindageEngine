@@ -52,11 +52,13 @@ An overcast level is darker and flatter overall, not just lit by a dimmer sun. T
 ## EnvironmentMap {#environment-map}
 
 ```swift
-public init?(device: MTLDevice,
-             sky: ProceduralSky,
-             size: Int = 128,
-             irradianceSize: Int = 16)
+public init(device: MTLDevice,
+            sky: ProceduralSky,
+            size: Int = 128,
+            irradianceSize: Int = 16) throws
 ```
+
+It throws an `EnvironmentMapError` naming the cube the device would not create: `.specularTexture` or `.irradianceTexture`.
 
 | Texture | What it holds |
 | --- | --- |
@@ -74,8 +76,11 @@ The prefilter runs on the CPU deliberately. The parts that can be wrong are the 
 The sample rebuilds its environment whenever a level loads, from that level's sky:
 
 ```swift
-guard let built = EnvironmentMap(device: engine.device, sky: level.resolvedSky) else {
-    print("WindageSample: no environment — metal will have nothing to reflect")
+let built: EnvironmentMap
+do {
+    built = try EnvironmentMap(device: engine.device, sky: level.resolvedSky)
+} catch {
+    print("WindageSample: no environment — metal will have nothing to reflect (\(error))")
     return
 }
 if let previous = environment {
