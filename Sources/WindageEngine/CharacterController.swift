@@ -85,13 +85,13 @@ public nonisolated struct CharacterController: Sendable {
         /// How far each of ``solids`` turned since the last step, and about where — a turntable, a
         /// ship's deck, a rotating walkway. Same order as ``solids``; missing entries do not turn.
         ///
-        /// **A body standing on one is carried round the centre and turned with it**: its position
+        /// **A body standing on one is carried round the center and turned with it**: its position
         /// through collision like any carry, its facing reported as ``CharacterController/turned`` for
         /// the game to add to the view. Standing on a turntable and staying put while it spins under
         /// you is the fault this answers.
         ///
         /// A solid that both moves and turns is moved by ``motion`` first and then turned about its
-        /// centre — the centre where it is *now*, after moving.
+        /// center — the center where it is *now*, after moving.
         public var turns: [Turn] = []
 
         /// A turn about a vertical axis: where the axis stands on the ground plane, and by how much.
@@ -118,7 +118,7 @@ public nonisolated struct CharacterController: Sendable {
         /// ``Footprint/init(of:)`` makes one from a ``Volume``.
         public var footprints: [Footprint?] = []
 
-        /// A solid's plan on the ground plane: a rectangle turned about its centre — or a disc.
+        /// A solid's plan on the ground plane: a rectangle turned about its center — or a disc.
         ///
         /// Only a turn **about the vertical**, which is every turn a level placement has. A tilted box
         /// has no rectangular plan, and keeps its world box.
@@ -193,11 +193,11 @@ public nonisolated struct CharacterController: Sendable {
     /// with a different scale or feel changes them here rather than in the controller.
     public struct Tuning: Sendable, Equatable {
 
-        /// Metres per second.
+        /// Meters per second.
         public var walkSpeed: Float = Camera.walkSpeed
         public var sprintSpeed: Float = Camera.sprintSpeed
 
-        /// Eye height standing, in metres above the feet.
+        /// Eye height standing, in meters above the feet.
         public var eyeHeight: Float = 1.7
 
         /// Eye height crouched.
@@ -209,7 +209,7 @@ public nonisolated struct CharacterController: Sendable {
         /// How much of a walk you manage crouched.
         public var crouchedSpeedFraction: Float = 0.45
 
-        /// How fast the eye moves between postures, in metres per second. Fast enough to feel
+        /// How fast the eye moves between postures, in meters per second. Fast enough to feel
         /// responsive, slow enough that the view does not teleport.
         public var postureRate: Float = 2.2
 
@@ -217,7 +217,7 @@ public nonisolated struct CharacterController: Sendable {
         ///
         /// **Crouching mid-sprint carries your momentum rather than deleting it** — standing still the
         /// instant you crouch is the one thing a runner's body does not do. It is not movement tech:
-        /// no chaining, no jump out of it, and about twelve metres long.
+        /// no chaining, no jump out of it, and about twelve meters long.
         public var slideSeconds: Float = 1.15
 
         /// The exponent applied to the fraction of a slide remaining. **Below 1 holds the speed and
@@ -249,7 +249,7 @@ public nonisolated struct CharacterController: Sendable {
         /// above the feet at 30 steps a second against 1.636 at 120; now 1.636 at both.
         public var settleRate: Float = 12
 
-        /// Half the width of the body's footprint, in metres.
+        /// Half the width of the body's footprint, in meters.
         public var radius: Float = 0.3
 
         /// How far the top of the body is above the eye. The body is `eye height + this` tall.
@@ -261,15 +261,15 @@ public nonisolated struct CharacterController: Sendable {
         /// A crate that could be walked onto is a crate that is not cover.
         public var stepHeight: Float = 0.45
 
-        /// Metres per second squared.
+        /// Meters per second squared.
         ///
         /// **About twice real gravity, which is what games use.** At 9.8 a fall reads as floating —
         /// a first-person camera has no body in view to give the drop a scale, so the eye judges it
         /// against expectation, and expectation is set by games.
         public var gravity: Float = 20
 
-        /// Upward speed at the moment of a jump, in metres per second. With the default gravity this
-        /// clears about a metre: onto a low wall, not onto a crate.
+        /// Upward speed at the moment of a jump, in meters per second. With the default gravity this
+        /// clears about a meter: onto a low wall, not onto a crate.
         public var jumpSpeed: Float = 6.3
 
         /// How long after walking off an edge a jump still counts, in seconds.
@@ -282,10 +282,10 @@ public nonisolated struct CharacterController: Sendable {
         /// the other side: pressing jump a moment before touching down should jump on touchdown.
         public var jumpBufferSeconds: Float = 0.12
 
-        /// Metres between footfalls at a walk, at a sprint, and crouched.
+        /// Meters between footfalls at a walk, at a sprint, and crouched.
         ///
         /// **Longer than a person's, because these speeds are faster than a person's.** A walk here
-        /// is six metres a second — a jog — and a footstep every real 0.7 m would be eight a second,
+        /// is six meters a second — a jog — and a footstep every real 0.7 m would be eight a second,
         /// which reads as a drum roll. These give about 2.3 steps a second walking, 3.6 sprinting and
         /// 1.7 crouched: a cadence the ear accepts as feet, whatever the distance says.
         public var walkStride: Float = 2.6
@@ -299,7 +299,7 @@ public nonisolated struct CharacterController: Sendable {
         /// to have taken a step.
         public var firstStepPhase: Float = 0.6
 
-        /// How far the eye drops, in metres, and how far the view tips down, in radians, on the
+        /// How far the eye drops, in meters, and how far the view tips down, in radians, on the
         /// hardest landing — scaled down for softer ones.
         ///
         /// **Both, because they say different things.** The drop is the legs taking the weight: the
@@ -309,7 +309,7 @@ public nonisolated struct CharacterController: Sendable {
         public var landingDropMax: Float = 0.16
         public var landingDipMax: Float = 0.06
 
-        /// Landing speeds, metres per second, below which there is no dip and above which it is full.
+        /// Landing speeds, meters per second, below which there is no dip and above which it is full.
         ///
         /// **A jump's own landing is 6.3 m/s**, so it dips about a third: enough to feel the ground
         /// arrive, not enough to make hopping about a camera shake. The hardest, 12, is a fall of 3.6 m.
@@ -322,7 +322,7 @@ public nonisolated struct CharacterController: Sendable {
         /// it never overshoots, which would read as a bounce.
         public var landingSpring: Float = 14
 
-        /// How far the head rises and falls, and sways side to side, at a walk — metres, each an
+        /// How far the head rises and falls, and sways side to side, at a walk — meters, each an
         /// amplitude either side of still.
         ///
         /// **Up and down twice for every side to side.** The head is lowest as each foot comes down
@@ -340,12 +340,12 @@ public nonisolated struct CharacterController: Sendable {
 
         /// How fast the bob comes and goes, as a fraction per second — setting off, stopping,
         /// leaving the ground. **Eased, never switched**: a bob that stops dead mid-stride leaves the
-        /// view parked a centimetre off where it rests, and then snaps it back.
+        /// view parked a centimeter off where it rests, and then snaps it back.
         public var bobEase: Float = 8
 
         public init() {}
 
-        /// Metres per footfall at a speed.
+        /// Meters per footfall at a speed.
         func strideLength(atSpeed speed: Float, crouching: Bool) -> Float {
             if crouching { return crouchStride }
             let t = simd_clamp((speed - walkSpeed) / max(sprintSpeed - walkSpeed, 1e-3), 0, 1)
@@ -363,13 +363,13 @@ public nonisolated struct CharacterController: Sendable {
     /// Where the feet are. **Exact** — collision is resolved against this, never against the eye.
     public private(set) var feet: SIMD3<Float>
 
-    /// Metres per second, positive up.
+    /// Meters per second, positive up.
     public private(set) var verticalVelocity: Float = 0
 
     /// Whether the feet are on something.
     public private(set) var isGrounded = true
 
-    /// Metres from the feet to the eye for the current posture, between the crouched and standing
+    /// Meters from the feet to the eye for the current posture, between the crouched and standing
     /// heights. **Carried rather than inferred from the eye**, because the eye also moves for
     /// reasons that are not posture — the ground changing under it — and deriving one from the other
     /// makes a walk downhill look like standing up.
@@ -399,9 +399,9 @@ public nonisolated struct CharacterController: Sendable {
 
     /// Something the body did that a game will want to hear, see or count.
     public enum Event: Sendable, Equatable {
-        /// A foot came down. `speed` is the ground speed that step was taken at, metres per second.
+        /// A foot came down. `speed` is the ground speed that step was taken at, meters per second.
         case stride(foot: Foot, speed: Float)
-        /// Down from a fall or a jump. `impactSpeed` is how fast, metres per second, downward.
+        /// Down from a fall or a jump. `impactSpeed` is how fast, meters per second, downward.
         case landed(impactSpeed: Float)
         /// Left the ground on purpose.
         case jumped
@@ -463,7 +463,7 @@ public nonisolated struct CharacterController: Sendable {
     /// turning the view would leave the player facing one fixed direction while the floor spins.
     public private(set) var turned: Float = 0
 
-    /// How fast the ground was carrying the body this step, metres a second — and, across, anything
+    /// How fast the ground was carrying the body this step, meters a second — and, across, anything
     /// pushing it (0.14.0). Zero on still ground with nothing in the way. **What the body keeps when it
     /// leaves**: added to a jump, and the speed a step off an edge — or a shove off one — falls at.
     public private(set) var groundVelocity = SIMD3<Float>.zero
@@ -488,7 +488,7 @@ public nonisolated struct CharacterController: Sendable {
     public private(set) var landingCompression: Float = 0
     private var compressionRate: Float = 0
 
-    /// How far the eye is below where it would stand, in metres, from the last landing. Part of
+    /// How far the eye is below where it would stand, in meters, from the last landing. Part of
     /// ``eye`` — the body really is lower.
     public var landingDrop: Float { landingCompression * tuning.landingDropMax }
 
@@ -497,7 +497,7 @@ public nonisolated struct CharacterController: Sendable {
     /// landing would otherwise shoot the ground.
     public var landingCameraDip: Float { -landingCompression * tuning.landingDipMax }
 
-    /// The head's bob for the *displayed* camera, in metres: `x` to the right of the view, `y` up.
+    /// The head's bob for the *displayed* camera, in meters: `x` to the right of the view, `y` up.
     ///
     /// **Locked to the stride, not to a clock.** It advances with the distance the feet actually
     /// cover — the same phase that sounds the footsteps — so the head dips as each foot lands, stops
@@ -917,7 +917,7 @@ public nonisolated struct CharacterController: Sendable {
     }
 
     /// How far the part of a solid at `position` went this step: its motion, then its turn about its
-    /// centre — so a turning arm pushes along its sweep, faster further out.
+    /// center — so a turning arm pushes along its sweep, faster further out.
     private func displacement(of index: Int, at position: SIMD3<Float>, in world: Surroundings) -> SIMD3<Float> {
         var going = world.motion.indices.contains(index) ? world.motion[index] : .zero
         if world.turns.indices.contains(index), world.turns[index].radians != 0 {
@@ -932,7 +932,7 @@ public nonisolated struct CharacterController: Sendable {
 
     // MARK: - Plans
 
-    /// A solid as the ground plane sees it: its centre, its own two axes and half its size along each.
+    /// A solid as the ground plane sees it: its center, its own two axes and half its size along each.
     /// A plain box's axes are the world's.
     private struct Plan {
         var center: SIMD2<Float>
@@ -973,7 +973,7 @@ public nonisolated struct CharacterController: Sendable {
             + plan.half.x * abs(simd_dot(plan.across, axis)) + plan.half.y * abs(simd_dot(plan.along, axis))
     }
 
-    /// How deep the body's footprint, centred at `position`, is into the plan — the least overlap on
+    /// How deep the body's footprint, centered at `position`, is into the plan — the least overlap on
     /// any separating axis. **Negative when they are apart**, and then no deeper than the gap.
     private func depth(at position: SIMD2<Float>, into plan: Plan) -> Float {
         if let radius = plan.radius {
@@ -1040,7 +1040,7 @@ public nonisolated struct CharacterController: Sendable {
     /// footstep has only just sounded, or a tread taken mid-stride would ring twice.
     ///
     /// **The head bob would jump with it**, from wherever the stride was to a footfall — up to three
-    /// centimetres in one frame, on every tread. So ``setStridePhase(_:)`` puts the jump into
+    /// centimeters in one frame, on every tread. So ``setStridePhase(_:)`` puts the jump into
     /// ``bobCatchUp``, which eases out at the eye's own settling rate: the head bob follows a step the
     /// way the eye does.
     ///
@@ -1233,7 +1233,7 @@ public nonisolated struct CharacterController: Sendable {
 
     /// How close two surfaces have to be to count as touching rather than overlapping.
     ///
-    /// **A millimetre, and not zero.** Feet placed exactly on a crate's top are at the same float as
+    /// **A millimeter, and not zero.** Feet placed exactly on a crate's top are at the same float as
     /// the top; one rounding step later they are a hair inside it, and a strict test calls that an
     /// overlap and refuses the next step across the crate.
     static let contactTolerance: Float = 1e-3

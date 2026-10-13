@@ -11,7 +11,7 @@ import WindageEngine
 /// **It is here to prove instancing through the public API**, the way every capability in the engine is
 /// proved: a scene with a hundred small things in it, drawn as one batch. Debris is the honest case for
 /// it — many copies of one mesh, none of them anything the player does anything with — so it is
-/// scenery, not solid, and casts no shadow.
+/// scenery, not solid. It casts shadows, through a self-drawing shadow batch (0.23.0).
 ///
 /// **Deterministic**: the same level gives the same debris on every run and every machine, so the
 /// recorded frames do not drift.

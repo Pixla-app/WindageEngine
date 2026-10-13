@@ -5,12 +5,12 @@
 
 import simd
 
-/// A colour authored for the **interface**, not for the scene.
+/// A color authored for the **interface**, not for the scene.
 ///
-/// **The distinction this type exists to make explicit.** Scene colours are radiance: unbounded,
-/// linear, and tone mapped on the way to the screen — a scene colour of `#00C2FF` will not arrive as
+/// **The distinction this type exists to make explicit.** Scene colors are radiance: unbounded,
+/// linear, and tone mapped on the way to the screen — a scene color of `#00C2FF` will not arrive as
 /// `#00C2FF`, because an exposure and a filmic curve stand between it and the drawable, by design.
-/// Interface colours are the opposite: they are a *specification*, and a brand cyan must land on the
+/// Interface colors are the opposite: they are a *specification*, and a brand cyan must land on the
 /// screen as exactly that cyan.
 ///
 /// So a `UIColor` is authored in sRGB (the space hex codes live in) and converted to linear once,
@@ -33,7 +33,7 @@ public nonisolated struct UIColor: Sendable, Equatable {
                             srgb.w)   // alpha is not gamma-encoded
     }
 
-    /// From a hex literal, the way brand colours are actually written down: `UIColor(hex: 0x00C2FF)`.
+    /// From a hex literal, the way brand colors are actually written down: `UIColor(hex: 0x00C2FF)`.
     public init(hex: UInt32, alpha: Float = 1) {
         self.init(srgb: SIMD4(Float((hex >> 16) & 0xFF) / 255,
                               Float((hex >> 8) & 0xFF) / 255,

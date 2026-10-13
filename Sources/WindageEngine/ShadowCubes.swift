@@ -24,7 +24,7 @@ import simd
 /// **And a filter kernel cannot cross a tile edge.** A shadow taken from a 2D tile is filtered by
 /// stepping in *uv*; at the edge of a face the next texel is not in the next tile, it is on a
 /// different face at a right angle. Taps that walk off the edge either clamp — a bright seam down
-/// all twelve edges of the cube — or, worse, wander into a neighbouring light's tile.
+/// all twelve edges of the cube — or, worse, wander into a neighboring light's tile.
 ///
 /// A `typeCubeArray` texture hands both problems to the hardware. The sampler takes a **direction**
 /// and picks the face itself, filters across the seams itself, and does its own comparison — so the
@@ -186,7 +186,7 @@ public final class ShadowCubes {
     ///
     /// **`near / distance`, and the `distance` is the major axis rather than the length.** A cube face
     /// is a 90° frustum, so what its projection divides by is the offset's largest component — the
-    /// corner of a face is `√3` further away than its centre and stores a *smaller* depth for it.
+    /// corner of a face is `√3` further away than its center and stores a *smaller* depth for it.
     /// Comparing against a euclidean distance instead darkens every face towards its corners.
     public nonisolated static func normalizedDepth(majorAxis: Float, nearPlane: Float) -> Float {
         nearPlane / max(majorAxis, 1e-6)

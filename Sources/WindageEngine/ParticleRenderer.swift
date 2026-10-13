@@ -17,7 +17,7 @@ import simd
 /// ### Unlike the shadow pass, the engine can own the pipeline here
 ///
 /// A shadow pipeline needs the game's vertex function, because it draws the game's meshes. A
-/// particle is a point and a colour — there is nothing of the game's in its geometry — so the whole
+/// particle is a point and a color — there is nothing of the game's in its geometry — so the whole
 /// pipeline, shaders included, lives here, and a game hands over a system and a camera.
 ///
 /// ### Drawn into the HDR scene, after the opaque geometry
@@ -117,11 +117,11 @@ public final class ParticleRenderer {
     ///
     /// ### Why matter needs this and light does not
     ///
-    /// **A particle's colour is one of two different quantities, and treating them as one is the
-    /// bug this exists for.** For a spark the colour *is* its radiance: it makes light. For dust it is
+    /// **A particle's color is one of two different quantities, and treating them as one is the
+    /// bug this exists for.** For a spark the color *is* its radiance: it makes light. For dust it is
     /// an **albedo** — how much of the light arriving it sends on — and drawn as if it were radiance,
-    /// a grey dust puff is a grey *lamp*. The first landing in the sample threw exactly that: a
-    /// 0.5-grey cloud on ground in shadow, reading as a white glow several times brighter than the
+    /// a gray dust puff is a gray *lamp*. The first landing in the sample threw exactly that: a
+    /// 0.5-gray cloud on ground in shadow, reading as a white glow several times brighter than the
     /// floor it came off.
     ///
     /// ### Isotropic, and unshadowed

@@ -16,7 +16,7 @@ import simd
 /// was written for one valley: four splits ending at 850 m, because that was the longest shot in the
 /// game that produced it. Nothing in the maths cares — but the numbers were `static let`s, so a
 /// second game could have the mechanism only by taking a sniper range's geometry with it. A
-/// courtyard sixty metres across wants splits an order of magnitude tighter, and would otherwise
+/// courtyard sixty meters across wants splits an order of magnitude tighter, and would otherwise
 /// spend 99% of every shadow texel on empty ground.
 ///
 /// So this is a value you configure, and a game's own numbers live with the game.
@@ -51,13 +51,13 @@ public nonisolated struct ShadowCascades {
 
     /// Half-extent of a cascade's world box, as a fraction of that cascade's split distance.
     ///
-    /// Less than one because the box is centred *ahead* of the camera rather than on it — see
+    /// Less than one because the box is centered *ahead* of the camera rather than on it — see
     /// ``focusFraction`` — so it does not have to reach back to the eye.
     public let extentFraction: Float
 
-    /// How far ahead of the camera each cascade's box is centred, as a fraction of its split.
+    /// How far ahead of the camera each cascade's box is centered, as a fraction of its split.
     ///
-    /// **Centred ahead rather than on the camera**, so the covered box is spent on what the player
+    /// **Centered ahead rather than on the camera**, so the covered box is spent on what the player
     /// is looking at instead of half-wasted behind them.
     public let focusFraction: Float
 
@@ -95,7 +95,7 @@ public nonisolated struct ShadowCascades {
     /// How many cascades an object of this size is worth recording into, counting from the nearest.
     ///
     /// **A caster narrower than a shadow texel cannot cast a shadow — it can only cast noise.** With
-    /// a far cascade spanning half a kilometre across 2048 texels, a half-metre stone is two thirds
+    /// a far cascade spanning half a kilometer across 2048 texels, a half-meter stone is two thirds
     /// of one texel: recording it costs a draw and produces at best a flickering speck.
     ///
     /// Derived from the texel size rather than assigned per object type, so it stays right if the
@@ -129,7 +129,7 @@ public nonisolated struct ShadowCascades {
               value(min(2, count - 1)), value(min(3, count - 1)))
     }
 
-    /// The constant part of the rasteriser's depth bias, before the per-cascade scale.
+    /// The constant part of the rasterizer's depth bias, before the per-cascade scale.
     ///
     /// **Negative because depth is reversed.** Under reversed-Z, pushing a recorded occluder *away*
     /// from the light means a smaller value, so the sign is the opposite of every textbook. Getting
@@ -157,15 +157,15 @@ public nonisolated struct ShadowCascades {
 
     public var splitVector: SIMD4<Float> { vector { splits[$0] } }
 
-    /// Constant depth bias for a cascade, in the light's **normalised** depth units — what a shader
+    /// Constant depth bias for a cascade, in the light's **normalized** depth units — what a shader
     /// adds to a fragment's own depth before comparing it against the recorded occluder.
     ///
     /// **Derived from the texel's world size, not from a tuned constant, and that is a fix rather
     /// than a flourish.** The depth error inside one shadow texel is proportional to how much world
     /// that texel spans, so the bias has to be too. It shipped as a literal `0.00035 *
-    /// cascadeBiasScale` in normalised units, which silently coupled it to ``lightDepthRange``: the
-    /// same literal is a *centimetre* in a scene 30 m deep and **16 metres** in one ranged to 1500,
-    /// and 16 metres of bias deletes every shadow in a courtyard. Extracting this from the game it
+    /// cascadeBiasScale` in normalized units, which silently coupled it to ``lightDepthRange``: the
+    /// same literal is a *centimeter* in a scene 30 m deep and **16 meters** in one ranged to 1500,
+    /// and 16 meters of bias deletes every shadow in a courtyard. Extracting this from the game it
     /// was tuned in is what made that visible — nothing was wrong while there was only one scale.
     ///
     /// `biasTexels` is therefore in texels, which is scale-free.

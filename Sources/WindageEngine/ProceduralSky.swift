@@ -12,7 +12,7 @@ import simd
 /// disc — enough for metal to read as metal and for a reflection to be legible, and enough that a
 /// game with no environment asset still gets correct image-based lighting rather than none.
 ///
-/// **Radiance, not colour.** The sun is thousands of times brighter than the sky around it, and these
+/// **Radiance, not color.** The sun is thousands of times brighter than the sky around it, and these
 /// numbers say so; that is what the HDR target and ``ToneMapping`` exist for. Values here are linear
 /// and unbounded.
 public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
@@ -29,7 +29,7 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     /// image-based lit object looks like it is floating in a void.
     public var ground: SIMD3<Float>
 
-    /// Towards the sun, normalised.
+    /// Towards the sun, normalized.
     public var sunDirection: SIMD3<Float>
 
     /// The sun's own radiance — how bright the disc *is*, looked at.
@@ -43,14 +43,14 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
     public var sunRadiance: SIMD3<Float>
 
     /// Angular radius of the sun's disc, in radians. The real one is about 0.00465; a wider disc
-    /// gives a softer reflection and is usually what a stylised game wants.
+    /// gives a softer reflection and is usually what a stylized game wants.
     public var sunAngularRadius: Float
 
     /// The sun's elevation above the horizon, in degrees.
     ///
     /// **Angles, not a vector, because a person writes this.** A level file saying `pitch 34, yaw 295`
     /// is something you can picture and adjust; the same thing as `(-0.75, 0.56, 0.35)` is three
-    /// numbers that must stay normalised and that nobody can read.
+    /// numbers that must stay normalized and that nobody can read.
     public var sunPitchDegrees: Float {
         get { radians_to_degrees(asin(simd_clamp(sunDirection.y, -1, 1))) }
         set { setSun(pitchDegrees: newValue, yawDegrees: sunYawDegrees) }
@@ -163,7 +163,7 @@ public nonisolated struct ProceduralSky: Sendable, Equatable, Codable {
         sunRadiance * (2 * .pi * (1 - cos(sunAngularRadius)))
     }
 
-    /// Radiance arriving from `direction`, which need not be normalised.
+    /// Radiance arriving from `direction`, which need not be normalized.
     public func radiance(inDirection direction: SIMD3<Float>) -> SIMD3<Float> {
         let d = simd_length(direction) > 1e-6 ? simd_normalize(direction) : SIMD3(0, 1, 0)
 

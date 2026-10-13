@@ -18,7 +18,7 @@ public nonisolated struct MovementInput: Equatable, Sendable {
     public var vertical: Float = 0
     public var sprint: Bool = false
 
-    /// **Spelled out rather than synthesised.** A memberwise initialiser stays `internal`, so a
+    /// **Spelled out rather than synthesized.** A memberwise initializer stays `internal`, so a
     /// consumer outside this module can read a `MovementInput` and never construct one — an access
     /// error that reads like a missing declaration.
     public init(forward: Float = 0, strafe: Float = 0, vertical: Float = 0, sprint: Bool = false) {
@@ -31,7 +31,7 @@ public nonisolated struct MovementInput: Equatable, Sendable {
     public static let still = MovementInput()
 }
 
-/// A first-person camera, in metres.
+/// A first-person camera, in meters.
 ///
 /// **An eye, not a body.** ``advance(_:deltaTime:)`` flies — along the look direction, through
 /// anything — which is right for an editor, a photo mode or a title that genuinely flies. A game
@@ -44,7 +44,7 @@ public nonisolated struct MovementInput: Equatable, Sendable {
 /// are far easier to read in a debugger and to clamp meaningfully.
 public nonisolated struct Camera: Sendable {
 
-    /// Metres. Y is up.
+    /// Meters. Y is up.
     public var position: SIMD3<Float>
 
     /// Radians. 0 looks down -Z; positive turns left.
@@ -60,7 +60,7 @@ public nonisolated struct Camera: Sendable {
     /// slightly short for this reason.
     public static let pitchLimit: Float = 89 * .pi / 180
 
-    /// Metres per second.
+    /// Meters per second.
     public static let walkSpeed: Float = 6
     public static let sprintSpeed: Float = 18
 

@@ -35,7 +35,7 @@ import simd
 public struct Frustum {
 
     /// Each plane as `(normal, distance)`, pointing **inward**: a point is inside when
-    /// `dot(normal, point) + distance >= 0` for all six.
+    /// `dot(normal, point) + distance >= 0` for all five.
     public private(set) var planes: [SIMD4<Float>] = []
 
     /// Builds the frustum from a world-to-clip matrix.

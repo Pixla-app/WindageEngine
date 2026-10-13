@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hanging things off joints · Windage Engine</title>
+  <meta name="description" content="Attach a lantern to a hand or a turret to a hull with TransformHierarchy, keep a thing&#x27;s extent in a Volume, and hit-test volumes with a ray or a segment.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html" aria-current="page">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html" aria-current="page">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Characters</p>
+    <h1>Hanging things off joints</h1>
+<p>Some things are placed relative to other things: a lamp in a hand, a turret on a hull, a sight on a rifle. <code>TransformHierarchy</code> resolves one transform relative to another, in the right order, every frame. It owns no objects — it is a list of attachments and a list of matrices — so the same hierarchy can place a drawable, a light and a collision volume without knowing any of them exist.</p>
+<h2 id="it-is-parenting-not-a-scene-graph">It is parenting, not a scene graph</h2>
+<p>A scene graph is an object model — nodes that own children and components, looked up by name. Windage Engine has not made that decision. What a game runs into first is much smaller, and this is that.</p>
+<p>The same goes for what gets drawn. A <code>SceneObject</code> is a flat pair — an <code>MTKMesh</code> and a <code>Volume</code> — made with <code>SceneObject(loaded:transform:)</code>, which composes the mesh's <code>nodeTransform</code> in for you. There is no parent pointer on it.</p>
+<h2 id="building-a-hierarchy">Building a hierarchy</h2>
+<p>Each node says what it hangs off, as a <code>TransformHierarchy.Attachment</code>:</p>
+<div class="table"><table><thead><tr><th>Case</th><th>Its parent</th></tr></thead><tbody><tr><td><code>.world</code></td><td>nothing: its local transform is its world transform</td></tr><tr><td><code>.node(Int)</code></td><td>another node of this hierarchy, which must come <strong>earlier</strong></td></tr><tr><td><code>.external(Int)</code></td><td>something the hierarchy does not own — a joint of a posed character, a platform driven by another system</td></tr></tbody></table></div>
+<pre class="code-swift"><span class="k">var</span> hierarchy = <span class="k">try</span> TransformHierarchy(attachments: [.world, .node(0), .node(1)],
+                                       localTransforms: [hull, turretMount, barrelMount])
+hierarchy.refresh()
+<span class="k">let</span> barrel = hierarchy.worldTransform(of: 2)</pre>
+<p><code>localTransforms</code> is a <code>var</code>, so move a node by writing its local transform and calling <code>refresh(attachedTo:)</code> again. <code>worldTransforms</code> holds every result.</p>
+<p>Every structural mistake — a count mismatch, a node attached to itself, a parent after its child, an unknown node or external — throws a <code>TransformHierarchy.Fault</code> when the hierarchy is built, because later it would only be a transform that is quietly wrong.</p>
+<h2 id="attaching-to-a-joint">Attaching to a joint</h2>
+<p>A rig is already a hierarchy, resolved by <code>SkeletonPose</code> (see <a href="skeletons.html">skeletons</a>). What it cannot do is reach outside itself, and a thing in a hand is exactly that: its parent is a joint, inside a pose, placed by a character's world transform.</p>
+<p><code>.external(_:)</code> handles it. The node keeps <strong>the grip, authored once</strong>, as its local transform, and takes its parent's world transform from the array you hand to <code>refresh(attachedTo:)</code>. How many externals there will be is declared up front, so an out-of-range index is a load-time error rather than an object drawn at the origin in a frame nobody saw.</p>
+<p>The sample's figures each carry a lantern. Once, at load, it finds a joint and builds one node per figure:</p>
+<pre class="code-swift">lanternJoint = joint   <span class="c">// from skeleton.index(ofJoint:), looked up once</span>
+
+lanterns = <span class="k">try</span>? TransformHierarchy(
+    attachments: figures.indices.map { .external($0) },
+    localTransforms: Array(repeating: SampleGame.lanternGrip, count: figures.count),
+    externalCount: figures.count)</pre>
+<p>Each frame, <strong>after posing the figures</strong>, it hands over each hand's world transform and places the lanterns:</p>
+<pre class="code-swift">rig.refresh(attachedTo: figures.map {
+    matrix_without_scale($0.transform * $0.pose.modelTransform(ofJoint: joint))
+})
+<span class="k">for</span> (slot, index) <span class="k">in</span> lanternDrawables.enumerated() {
+    <span class="k">let</span> world = rig.worldTransform(of: slot)
+    drawables[index].transform = world
+    volumes[index].transform = world
+}</pre>
+<p>The same matrix moves the drawable, its volume and its light. Placed from last step's pose, hand and lantern would be a frame apart.</p>
+<h3 id="strip-the-scale">Strip the scale</h3>
+<p>A child inherits its parent's scale. That is right for a limb and wrong for a held object: a rig authored in centimeters carries a hundredfold scale down to the wrist, and a lantern hung off that matrix is drawn at one percent of its size, in a place that is otherwise correct. <code>matrix_without_scale(_:)</code> removes the scale and keeps rotation and position. It is a function you call, not a flag on the hierarchy, because whether to inherit scale is a decision about what is being attached, and only your game can see that. A mirrored basis stays mirrored.</p>
+<h3 id="a-grip-is-a-number-you-set-by-looking">A grip is a number you set by looking</h3>
+<p>A joint's frame is not a promise about where the mesh was drawn. In the sample's figure, a grip worked out from the bind pose sits in the hand with the arm down, and floats above the head with the arm raised, because the drawn limb stops short of where the arithmetic says. Set the grip by looking at the character in the poses it will be in.</p>
+<h2 id="volume-an-extent-with-no-mesh">Volume: an extent with no mesh</h2>
+<p>A <code>Volume</code> is a model-space <code>BoundingBox</code> (<code>local</code>) and a <code>transform</code>. It has no opinion about drawing, so something you only collide with or shoot at does not need a GPU mesh to be hit.</p>
+<pre class="code-swift">volumes.append(Volume(local: mesh.bounds, transform: matrix_identity_float4x4))</pre>
+<p><code>worldBounds</code> is <strong>computed from the transform every time it is read</strong>, never stored, so a volume that moves is hit where it is. Its <code>worldBounds</code> are the solids <a href="character-controller.html">CharacterController</a> collides with, and the boxes the sample <a href="culling.html">culls</a> against.</p>
+<p>Two hit tests run over an array of volumes and return the nearest <code>(index, distance)</code>, or nil:</p>
+<ul><li><code>Volume.firstHit(segmentFrom:to:against:)</code> — the segment a shot covers in one step. A round moves several meters a step, so testing only where it ended lets it pass through anything thinner.</li><li><code>Volume.firstHit(origin:direction:against:maxDistance:)</code> — a ray, for ranging or picking. The sample's editor picks with it:</li></ul>
+<pre class="code-swift"><span class="k">let</span> hit = Volume.firstHit(origin: origin, direction: camera.forward,
+                          against: Array(volumes.prefix(levelVolumeCount)),
+                          maxDistance: 200)</pre>
+<p>Use the same list for both, so what a reticle ranges on and what a round stops against agree.</p>
+<h2 id="what-it-does-not-do">What it does not do</h2>
+<p>No scene graph, no lookup by name, no components and no "do not inherit scale" option. A node does not know what it places. A volume is an axis-aligned box in the world, so a turned thing's <code>worldBounds</code> is larger than the thing.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#it-is-parenting-not-a-scene-graph">It is parenting, not a scene graph</a><a href="#building-a-hierarchy">Building a hierarchy</a><a href="#attaching-to-a-joint">Attaching to a joint</a><a href="#volume-an-extent-with-no-mesh">Volume: an extent with no mesh</a><a href="#what-it-does-not-do">What it does not do</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

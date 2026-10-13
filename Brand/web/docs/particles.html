@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Particles · Windage Engine</title>
+  <meta name="description" content="ParticleRecipe, ParticleSystem and ParticleEmitter simulate on the fixed step; ParticleRenderer draws sparks and dust into the HDR scene.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html" aria-current="page">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html" aria-current="page">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Particles</h1>
+<p>Particles are the small things that show something just happened: sparks, embers, dust. <code>ParticleSystem</code> simulates them on the fixed step, with no GPU and no randomness that changes between runs. <code>ParticleRenderer</code> draws whatever is alive as camera-facing quads in one instanced draw. The sample uses them for embers rising off braziers and lanterns, a burst when a crate is collected, and dust when the player lands from a drop.</p>
+<h2 id="recipe">ParticleRecipe</h2>
+<p>A recipe describes one kind of particle. Your game defines its own kinds, so the engine has no list of embers or smoke.</p>
+<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>(count: Int, speed: Float, spread: Float, lifetime: Float, size: Float,
+            growth: Float = 0, gravity: Float = -6.5, drag: Float = 2.4,
+            color: SIMD3&lt;Float&gt;, opacity: Float = 1, fade: Float = 1, glows: Bool = <span class="k">false</span>)</pre>
+<div class="table"><table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody><tr><td><code>count</code></td><td>How many one burst throws.</td></tr><tr><td><code>speed</code>, <code>spread</code></td><td>Meters per second along the burst's axis and across it.</td></tr><tr><td><code>lifetime</code>, <code>size</code></td><td>Seconds and edge length in meters, before per-particle variation.</td></tr><tr><td><code>growth</code></td><td>Size growth over a lifetime: 0 stays the same size, 1 doubles.</td></tr><tr><td><code>gravity</code></td><td>Meters per second squared, <strong>signed</strong>: dust falls, an ember rises.</td></tr><tr><td><code>drag</code></td><td>Fraction of velocity lost per second.</td></tr><tr><td><code>color</code></td><td>Linear and unbounded. Values above 1 make a spark read as hot.</td></tr><tr><td><code>opacity</code>, <code>fade</code></td><td>Opacity at birth, and how it falls: <code>(1 − t)^fade</code>.</td></tr><tr><td><code>glows</code></td><td>Whether this is light or matter.</td></tr></tbody></table></div>
+<h3 id="glows">Light or matter</h3>
+<p>Matter (dust, smoke, dirt) covers whatever is behind it. Light (a spark, an ember) adds to it and covers nothing. <strong>Both go through one pipeline.</strong> Color is premultiplied, and a glowing particle writes zero coverage, which turns the "over" blend into an add. A dozen overlapping sparks get brighter, and a dozen dust motes get more opaque.</p>
+<p>For a spark, <code>color</code> is the light it gives off. For dust, it's an <strong>albedo</strong>: how much of the arriving light the dust passes on. The sample found this by landing: a 0.5-gray cloud on shaded ground came out as a white glow, brighter than the floor. <code>ParticleRenderer.matterLight(under:)</code> gives the light a white speck of dust would scatter under a <code>ProceduralSky</code>. It is the sky's average radiance plus the sun's irradiance spread over 4π. Compute it once per level and pass it to <code>draw</code>. It ignores shadow, so dust beside a wall is lit as if it were in the open.</p>
+<h2 id="system">ParticleSystem</h2>
+<pre class="code-swift"><span class="k">private</span> <span class="k">var</span> particles = ParticleSystem(recipes: [
+    ParticleRecipe(count: 1, speed: 0.9, spread: 0.35, lifetime: 1.6, size: 0.07,
+                   gravity: 1.4, drag: 0.9, color: SIMD3(5.0, 1.1, 0.12), fade: 1.5, glows: <span class="k">true</span>),
+    ParticleRecipe(count: 48, speed: 4.5, spread: 2.2, lifetime: 0.9, size: 0.12,
+                   gravity: -7, drag: 1.8, color: SIMD3(0.5, 5.0, 2.2), glows: <span class="k">true</span>),
+    ParticleRecipe(count: 14, speed: 0.6, spread: 1.4, lifetime: 0.9, size: 0.35, growth: 1.8,
+                   gravity: -1, drag: 3, color: SIMD3(0.50, 0.46, 0.40), opacity: 0.45, fade: 2),
+], capacity: 1024)</pre>
+<p>Those are the sample's three recipes: embers, the pickup burst and landing dust. Two glow and one doesn't, so the single blend has to handle both.</p>
+<ul><li><strong><code>burst(_:at:direction:seed:count:)</code></strong> throws a burst of the recipe at that index, along <code>direction</code> (up by default). <code>count</code> can be fewer than the recipe's count, never more.</li><li><strong><code>step(deltaTime:)</code></strong> advances every live particle. Call it from your <a href="fixed-timestep.html">fixed step</a>, so a burst plays out the same way at any frame rate.</li><li><strong><code>particles</code></strong>, <code>live</code>, <code>liveCount</code> and <code>appearance(of:)</code> are for reading the state. <code>appearance(of:)</code> returns a particle's premultiplied color, its coverage and its current size.</li></ul>
+<p><strong>The pool is fixed.</strong> When it's full, a dead slot is reused, and otherwise the <em>oldest</em> particle is recycled. Dropping the newest instead would silently throw away the burst that just happened, which is the one the player is looking at.</p>
+<p><strong>There is no <code>random()</code>.</strong> Spread comes from <code>ParticleSystem.hash(_:_:)</code>, an integer hash of the burst's seed and the particle's index. <strong>The seed should come from the simulation, never from a clock.</strong> The sample uses its step count:</p>
+<pre class="code-swift">particles.burst(SampleGame.pickupRecipe, at: crate + SIMD3(0, 1.6, 0), seed: stepCount)</pre>
+<p>The hash used to be the shader one-liner <code>fract(sin(x) × 43758.5453)</code>. In 32-bit floats on the CPU, 300,000 draws gave only 8,923 distinct values. The integer hash gives 297,320.</p>
+<p>The landing dust only triggers on a real fall, not every step down a stair:</p>
+<pre class="code-swift"><span class="k">if</span> wasAirborne &amp;&amp; body.isGrounded &amp;&amp; fallSpeed &gt; 4 {
+    particles.burst(SampleGame.dustRecipe, at: body.feet + SIMD3(0, 0.05, 0),
+                    seed: stepCount)
+}</pre>
+<h2 id="emitter">ParticleEmitter</h2>
+<p>For a steady stream rather than a burst, use <code>ParticleEmitter(recipe:rate:seedBase:)</code>. <code>rate</code> is in particles per second. The emitter carries the leftover fraction from one step to the next, so twelve a second is twelve a second at any step rate. Give each emitter a different <code>seedBase</code> so two emitters don't throw identical particles.</p>
+<p>The sample keeps one emitter per brazier and lantern. Each step, it emits before stepping the system:</p>
+<pre class="code-swift">emberEmitters[index].emitter.emit(into: &amp;particles, at: at, deltaTime: deltaTime)
+<span class="c">// ...</span>
+particles.step(deltaTime: deltaTime)</pre>
+<p>The lanterns move, so an ember's origin is read from the lantern's light every step. That way an ember leaves the lantern where it is now, not where it was.</p>
+<h2 id="renderer">ParticleRenderer</h2>
+<p><code>ParticleRenderer(device:capacity:)</code> owns its whole pipeline, shaders included. A particle is just a point and a color, so there's nothing of your game's in its geometry. Match <code>capacity</code> to the system's, and add <code>allocations</code> to your residency set.</p>
+<p>Draw <strong>last in <code>encode</code></strong>, after everything opaque:</p>
+<pre class="code-swift">particleRenderer.draw(particles, into: encoder, frameSlot: frameSlot,
+                      viewProjection: simd_mul(projection, view.viewMatrix), camera: view,
+                      matterLight: matterLight)</pre>
+<ul><li><strong>Into the scene, not the HUD.</strong> A spark goes through the <a href="tone-mapping.html">tone map</a> like the lamp it came from.</li><li><strong>Depth is tested but never written.</strong> A spark behind a pillar is hidden by it, but one spark doesn't punch a hole in another.</li><li><strong>Unsorted.</strong> Light is additive, so order doesn't matter, and at the low opacities dust is drawn at, a wrong order isn't visible. Dense smoke would need sorting back to front, which the renderer does not do.</li></ul>
+<p><code>draw</code> leaves its own pipeline, depth state and argument table bound, so anything you draw after it must bind its own again. It returns how many particles it drew.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#recipe">ParticleRecipe</a><a href="#system">ParticleSystem</a><a href="#emitter">ParticleEmitter</a><a href="#renderer">ParticleRenderer</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

@@ -16,7 +16,7 @@ import Metal
 ///
 /// For this engine's first year that never showed, because its only consumer was an Xcode app. The
 /// moment a **sample game** was built as a plain SwiftPM executable — which is how anybody cloning
-/// this repo would first try to run it — the HUD failed to initialise with nothing on screen and
+/// this repo would first try to run it — the HUD failed to initialize with nothing on screen and
 /// nothing useful in the log. An engine that can only be run from Xcode is not something other
 /// people can build with, which is the entire reason the sample exists.
 ///

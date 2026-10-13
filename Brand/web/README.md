@@ -6,11 +6,25 @@ the proof-led page's argument, and the docs in their own shape underneath.**
 | page | what it is |
 |---|---|
 | `index.html` | the homepage — "Native to the Mac. Nothing in between.", a game as a Swift file, then "A game engine that shows its work": the jump at four step rates, the stale-shadow story, what's in it, what it deliberately isn't, how it's checked |
-| `docs/start.html` | the docs' first page — add the package, run the sample, play it by script, check it |
+| `docs/*.html` | the docs — **generated, never edited**: 29 guides, the reference and the changelog (below) |
+| `docs-src/*.md` | the guides' sources, one per page; `docs-src/WRITING.md` is how a page is written |
+| `build-docs.py` | builds the docs from `docs-src/`, the changelog page from `CHANGELOG.md`, the reference page from the public types and their doc comments, and the search index |
+| `docs/search.js` | search, opened from the box or ⌘K; it reads `docs/search-index.js` |
 | `site.css` | one stylesheet for both |
 | `images/` | the engine's own sample, running — nothing staged, nothing painted over |
 
-Open `index.html` in a browser; there is no build step.
+Open `index.html` in a browser; there is no build step to *view* it. **After changing a guide's source, the
+changelog or the engine's public types, run `python3 Brand/web/build-docs.py`** and commit what it writes.
+
+## The docs (2026-10-13)
+
+The sidebar listed two dozen topics with one page behind them. Every topic has a page now, plus eight the
+engine had grown since the sidebar was drawn (loading meshes, the camera, sky and environment, particles,
+instancing, level of detail, culling, saving), a reference page of every public type linked to its guide,
+and the changelog. **Each guide was written from the engine's source, its README and the sample's real
+usage**: every identifier in a Swift example exists in the engine or the sample (checked by script), the one
+complete example — Your first game — was built and run, and no page names a product. The version on every
+page is read from `Engine.semanticVersion`, never typed. The sidebar's order is `NAV` in `build-docs.py`.
 
 ## The mark is not copied here
 
@@ -21,11 +35,8 @@ deploy needs that opening the file does not.
 
 ## What is not true yet
 
-This is launch-day copy, and four things in it are ahead of the facts. Fix each before the site goes up:
-
-- **The license.** "Get the engine" and "Free for small studios under PolyForm Small Business 1.0.0" assume
-  that license is in effect. Today's `LICENSE` grants nothing. Until it does, the button reads "Follow
-  development" and the footer drops the license line.
+- **The button and the license line stay as they are** (owner, 2026-10-13): "Get the engine" goes to the
+  docs, and the footer keeps "Free for small studios under PolyForm Small Business 1.0.0".
 - **The package URL.** There is no public repository, so the docs show `https://…/WindageEngine.git`.
 - **The numbers.** 645 tests, 20 walk runs and 5 recorded frames are 0.27.0's (measured 2026-10-13). They move every release;
   check them against `swift test`, `Tools/walks.py` and `Tools/frames.py` when publishing.

@@ -29,7 +29,7 @@ public nonisolated enum Engine {
 /// | | means |
 /// |---|---|
 /// | **minor** — 0.1 → 0.2 | Something changed that can break a build: a signature, a type, a
-/// removed declaration, or a default that alters behaviour. |
+/// removed declaration, or a default that alters behavior. |
 /// | **patch** — 0.1.0 → 0.1.1 | Additions and fixes only. Code that compiled still compiles and
 /// still does the same thing. |
 ///

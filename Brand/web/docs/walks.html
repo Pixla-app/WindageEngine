@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scripted walks · Windage Engine</title>
+  <meta name="description" content="Play the sample by script — keys, seconds and pad buttons — read where the feet ended up, and check every recorded walk with Tools/walks.py.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html" aria-current="page">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html" aria-current="page">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Checking your game</p>
+    <h1>Scripted walks</h1>
+<p>A scripted walk plays the game from a line of keys and seconds and logs where the feet were at the end of each segment. Unlike "it felt right on the stairs", anyone can repeat it, and <code>Tools/walks.py</code> turns the walks into a check that fails when a change moves where they end.</p>
+<div class="note"><p><strong>This is the sample's tooling, not engine API.</strong> The script reader, the log line and <code>Tools/walks.py</code> belong to <code>WindageSample</code>. The engine provides the pieces they are built from, listed <a href="#your-game">at the end</a>, and a game that wants the same check builds its own reader on top of them.</p></div>
+<h2 id="syntax">The script</h2>
+<p>Set <code>WINDAGE_SAMPLE_WALK</code> to segments separated by spaces. Each segment is <code>keys:seconds</code>:</p>
+<pre class="code-sh">WINDAGE_SAMPLE_LEVEL=1 \
+WINDAGE_SAMPLE_WALK=<span class="p">"wait:0.5 d:0.75 wait:0.5 w:1.0 wait:0.6"</span> swift run WindageSample</pre>
+<div class="table"><table><thead><tr><th>Segment</th><th>What it does</th></tr></thead><tbody><tr><td><code>w:1.0</code></td><td>holds W for one second, then releases it</td></tr><tr><td><code>w+shift:0.8</code></td><td>holds several keys at once, joined with <code>+</code></td></tr><tr><td><code>space:0.05</code></td><td>any name <code>KeyCode(named:)</code> knows: letters, <code>space</code>, <code>shift</code>, <code>up</code>, <code>down</code>, <code>left</code>, <code>right</code></td></tr><tr><td><code>wait:1.2</code></td><td>holds nothing</td></tr><tr><td><code>click:0.1</code></td><td>starts with a mouse click</td></tr><tr><td><code>yaw:90</code>, <code>pitch:-40</code></td><td>turns the view to that many degrees, and takes no time</td></tr><tr><td><code>mousex:500</code>, <code>mousey:-80</code></td><td>moves the mouse that many points, through the real mouse path</td></tr><tr><td><code>pad.south:0.1</code></td><td>presses a controller element</td></tr><tr><td><code>pad.lookRight@0.2:1</code></td><td>holds a stick a fifth of the way over</td></tr></tbody></table></div>
+<p>The pad elements are <code>south</code>, <code>east</code>, <code>west</code>, <code>north</code>, <code>leftShoulder</code>, <code>rightShoulder</code>, <code>leftStick</code>, <code>rightStick</code> and <code>menu</code>. The d-pad is <code>up</code>, <code>down</code>, <code>left</code> and <code>right</code>, the look stick is <code>lookUp</code>, <code>lookDown</code>, <code>lookLeft</code> and <code>lookRight</code>, and the move stick is <code>moveUp</code>, <code>moveDown</code>, <code>moveLeft</code> and <code>moveRight</code>. A script that names any of them gets a virtual pad for its whole run.</p>
+<p><strong>The keys go through the game, not around it</strong>: the same <code>keyPressed</code> a keyboard calls, so the bindings, the settings screen and the editor all see them.</p>
+<p><strong>Segments are whole simulation steps.</strong> Each boundary is measured from the start of the script and lands on the nearest step, so roundings can't add up over a long script. A walk that must hold at several step rates uses whole steps of the slowest one, which means multiples of 1/30 s.</p>
+<h2 id="log">The log</h2>
+<p>When a segment ends, the sample prints where the feet are, the highest they got during the segment, whether they're on the ground, and how high the eye is above them. Indented lines after it describe the same segment. Here is the walk above going up the ruins' stairs:</p>
+<pre class="code-log"><span class="c">WindageSample: walk 'w:1.0' → feet (4.50, 1.20, -0.00), highest 1.20, on the ground, eye 1.69 m up</span>
+<span class="c">WindageSample:     4 footsteps on dirt and stone and wood</span>
+<span class="c">WindageSample:     lift top 0.75 m, feet at 1.20 m</span>
+<span class="c">WindageSample:     head bob 2.7 cm up and down, 1.7 cm side to side</span></pre>
+<p>The indented lines can also report a landing's impact speed and how far the eye dipped. A segment that turned the view prints <code>look &#x27;…&#x27; → view turned …° right, …° up</code>.</p>
+<h2 id="check">Checking every walk</h2>
+<p><code>Tools/walks.json</code> lists the walks the README and the handoff document, each with what it measured. <code>Tools/walks.py</code> runs them all:</p>
+<pre class="code-sh">python3 Tools/walks.py            # every walk
+python3 Tools/walks.py piston     # the walks whose names contain <span class="p">"piston"</span>
+python3 Tools/walks.py --record   # print what each walk gives now; writes nothing
+python3 Tools/walks.py --serial   # one at a time</pre>
+<p>Each walk runs as a check (<code>WINDAGE_SAMPLE_CHECK=&lt;name&gt;</code>), with no window, no keyboard, no sound and its own saves, so it runs while you work and a player's rebinding can't make it fail. Four run at a time. A result depends on the step count, not the clock, so running them together only changes how long the run takes.</p>
+<p>A walk entry names its <code>level</code> and <code>script</code>, and each item under <code>expect</code> says which segment it checks (<code>after</code>, with an optional <code>occurrence</code>) and what to compare:</p>
+<ul><li><code>feet</code> and <code>highest</code> must be within the file's <code>tolerance</code> of <strong>2 cm</strong>, plus half a centimeter for the log's rounding.</li><li><code>footsteps</code> and the surfaces they were <code>on</code> must match exactly.</li><li><code>bob</code> may differ by a millimeter, a <code>landed</code> speed by a tenth of a meter per second, and the eye's <code>dip</code> not at all.</li><li><code>look</code> checks a view turn, and <code>line</code> matches any log line with a regular expression.</li></ul>
+<p>2 cm is wide enough for a real change to hide in, so <code>--record</code> is there for looking. <strong>A recorded number changes only on purpose, with its reason in the CHANGELOG.</strong></p>
+<p><code>like</code> reuses another walk's script and expectations. "crate behind the splash" uses it to check that the engine's <a href="splash.html">splash</a> takes nothing from the walk underneath. <code>rates</code> runs a walk at several step rates (<code>WINDAGE_SAMPLE_RATE</code>). The course walk runs at 30, 60, 120 and 240 steps a second and must give the same numbers at each.</p>
+<h2 id="your-game">The same approach in your game</h2>
+<p>The engine does not ship a script reader. These are the parts the sample's is built on, and each one is public:</p>
+<ul><li><strong><code>KeyCode(named:)</code></strong> turns <code>&quot;W&quot;</code>, <code>&quot;space&quot;</code> or <code>&quot;shift&quot;</code> into a key code. Feed the codes through your own key handling, then <code>InputState.keyDown(_:)</code> and <code>keyUp(_:)</code>.</li><li><strong><code>InputState.useGamepad(_:)</code></strong> reads a pad you supply. <code>GCController.withExtendedGamepad()</code> makes one whose buttons are set from code. Push its d-pad through <code>setValueForXAxis(_:yAxis:)</code>, because setting <code>dpad.down</code> as a button is accepted and does nothing.</li><li><strong><code>FrameRenderer.runsWhileHidden</code></strong> keeps the <a href="running-hidden.html">simulation stepping</a> with the window never shown, so a check runs out of the way.</li><li><strong><code>FrameRenderer(device:simulationStepsPerSecond:)</code></strong> sets the <a href="fixed-timestep.html">step rate</a>. The fixed timestep is what makes the same keys reach the same place.</li><li><strong><code>CharacterController</code></strong> exposes <code>feet</code>, <code>eye</code>, <code>isGrounded</code>, <code>events</code> and <code>groundSolid</code>, which is everything the log line reports.</li></ul>
+<p>The rest is your game's: parse the segments, press and release on the step boundaries, and print what the body did. The sample's <code>ScriptedWalk</code>, in <code>Sources/WindageSample/SampleGame.swift</code>, is one way to write it.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#syntax">The script</a><a href="#log">The log</a><a href="#check">Checking every walk</a><a href="#your-game">The same approach in your game</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

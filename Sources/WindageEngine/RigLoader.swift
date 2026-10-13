@@ -30,7 +30,7 @@ public nonisolated struct Rig: Sendable {
     /// Where the rig sits in the file's own node hierarchy, composed from the root.
     ///
     /// **The same matrix the mesh under it carries**, and for the same reason: an exported character
-    /// has its geometry *and* its skeleton in centimetres under a parent scaled by 0.01. Apply it in
+    /// has its geometry *and* its skeleton in centimeters under a parent scaled by 0.01. Apply it in
     /// front of the model matrix and the mesh, the rig and the clips are all corrected at once.
     public let nodeTransform: matrix_float4x4
 
@@ -264,7 +264,7 @@ public nonisolated enum RigLoader {
     /// The skeleton's own place in the file's node hierarchy.
     ///
     /// **Not decoration — see ``LoadedMesh/nodeTransform``.** An exported character's rig is in
-    /// centimetres under a parent scaled by 0.01, and a loader that reads the joints and ignores the
+    /// centimeters under a parent scaled by 0.01, and a loader that reads the joints and ignores the
     /// node chain produces a skeleton a hundred times too big for the world it is placed in.
     private static func nodeTransform(of skeleton: MDLSkeleton, in asset: MDLAsset) -> matrix_float4x4 {
         var found = matrix_identity_float4x4

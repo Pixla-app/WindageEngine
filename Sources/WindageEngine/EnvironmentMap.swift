@@ -152,7 +152,7 @@ public final class EnvironmentMap {
     /// around roughness 0.6 and starts getting *brighter* again — 0.72 at roughness 0.6 rising to
     /// 1.67 at roughness 1.0, where the true values fall to 0.60. A wide lobe over a small, very
     /// bright sun means the estimate is decided by whether any sample happened to land on the sun, so
-    /// the rough mips come out blotched with sun-coloured speckle.
+    /// the rough mips come out blotched with sun-colored speckle.
     ///
     /// **Quadrupling exactly cancels the mip chain.** Each level has a quarter of the texels of the
     /// one above, so four times the samples costs the same per level — the whole chain is a flat

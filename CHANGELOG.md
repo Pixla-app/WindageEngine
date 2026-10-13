@@ -10,7 +10,14 @@ Every release of Windage Engine, newest first. Format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Documentation
+
+- **Doc comments are US English**, as the public names have been since 0.26.0 — swept now that the docs are
+  published at windageengine.com, whose reference page quotes them. Code comments and these notes keep
+  whichever spelling they were written in.
+- **Four doc comments that had stopped being true are corrected**: `Frustum.planes` said six planes (it is
+  five), `HUDRenderer` said it draws no text (it does), the sample's debris said it casts no shadow (it has
+  since 0.23.0), and `AssetOrientation.read`'s parameter note used the old name.
 
 ## [0.27.0] — 2026-10-13
 

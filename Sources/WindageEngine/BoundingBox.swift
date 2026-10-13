@@ -92,8 +92,8 @@ public nonisolated struct BoundingBox: Sendable, Equatable {
 
     /// The point of the box nearest to somewhere else, which is the box itself if it contains it.
     ///
-    /// **What a light's reach should be measured against.** A long wall whose *centre* is out of a
-    /// lamp's range still has an end inside it, and testing the centre is how one end of a corridor
+    /// **What a light's reach should be measured against.** A long wall whose *center* is out of a
+    /// lamp's range still has an end inside it, and testing the center is how one end of a corridor
     /// goes dark while the lamp is plainly shining on it.
     public func closestPoint(to point: SIMD3<Float>) -> SIMD3<Float> {
         simd_clamp(point, minimum, maximum)

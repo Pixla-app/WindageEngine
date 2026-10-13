@@ -9,7 +9,7 @@ import simd
 
 /// Which map a texture is, and therefore how it must be read.
 ///
-/// **The split that matters is colour against numbers**, and getting it wrong is the single most
+/// **The split that matters is color against numbers**, and getting it wrong is the single most
 /// common texture bug there is — see ``isColor``.
 public nonisolated enum TextureSlot: String, Sendable, Hashable, CaseIterable {
     case baseColor
@@ -35,7 +35,7 @@ public nonisolated enum TextureSlot: String, Sendable, Hashable, CaseIterable {
     /// call site.
     ///
     /// **It is also right for an unpacked map**, which is the reason the convention survives: a
-    /// standalone roughness map is greyscale, so its green channel is its value. Reading a fixed
+    /// standalone roughness map is grayscale, so its green channel is its value. Reading a fixed
     /// channel works for both, and that is why glTF fixed one.
     public var packedChannel: Int? {
         switch self {
@@ -47,15 +47,15 @@ public nonisolated enum TextureSlot: String, Sendable, Hashable, CaseIterable {
         }
     }
 
-    /// Whether this map holds a **colour** or **numbers**.
+    /// Whether this map holds a **color** or **numbers**.
     ///
-    /// A colour map is authored in sRGB — the encoding a monitor expects, which spends more of its
+    /// A color map is authored in sRGB — the encoding a monitor expects, which spends more of its
     /// range on darks because eyes do. Shading arithmetic is only correct in linear space, so a
-    /// colour texture has to be decoded on the way in. The GPU does that for free if the texture is
+    /// color texture has to be decoded on the way in. The GPU does that for free if the texture is
     /// created with an `_srgb` pixel format, and not at all if it is not.
     ///
-    /// **A roughness or normal map is not a colour.** Its bytes are already numbers. Decode one as
-    /// sRGB and every value is bent — mid-grey roughness 0.5 arrives as 0.21, so everything looks
+    /// **A roughness or normal map is not a color.** Its bytes are already numbers. Decode one as
+    /// sRGB and every value is bent — mid-gray roughness 0.5 arrives as 0.21, so everything looks
     /// wetter than it was authored, and a normal map's flat regions stop being flat.
     ///
     /// Both mistakes look like a lighting problem rather than a loading one, which is why this is a
@@ -78,7 +78,7 @@ public nonisolated enum TextureSource: Sendable, Hashable {
 /// How a surface responds to light: the metallic-roughness parameter set.
 ///
 /// **This set and not another, because it is the one everything speaks.** glTF, USD's
-/// `UsdPreviewSurface`, Unreal, Unity's standard shader and every DCC exporter agree on base colour,
+/// `UsdPreviewSurface`, Unreal, Unity's standard shader and every DCC exporter agree on base color,
 /// metallic, roughness, normal, occlusion and emissive. An engine that invented its own vocabulary
 /// would make every bought asset a conversion problem.
 ///
@@ -145,12 +145,12 @@ nonisolated extension Material {
     /// **The finding this method exists for.** A USD `UsdPreviewSurface` with a textured diffuse
     /// arrives as *two* properties both carrying `.baseColor`: a float3 named `baseColor` and a
     /// texture named `diffuseColor`. `MDLMaterial.property(with:)` returns whichever it reaches
-    /// first, so a loader using it gets a colour on one asset and a texture on the next, with
+    /// first, so a loader using it gets a color on one asset and a texture on the next, with
     /// nothing to say which. Every semantic here is read from the **whole list**.
     ///
-    /// ### Model I/O's own default is 0.18 grey, and it is not the file's intent
+    /// ### Model I/O's own default is 0.18 gray, and it is not the file's intent
     ///
-    /// That float3 `baseColor` above is 0.18 in a file that never mentioned a base colour — it is
+    /// That float3 `baseColor` above is 0.18 in a file that never mentioned a base color — it is
     /// the importer filling in a principled-shader default. Multiply a texture by it and the whole
     /// asset comes in at 18% brightness, which reads as a lighting bug. **So a slot with a texture
     /// takes a white tint**, and the numeric value is used only when there is no map to tint.
@@ -261,7 +261,7 @@ nonisolated extension MDLMaterialProperty {
     /// ordinary PNG referenced from a `.usda` — while `urlValue` resolves correctly relative to the
     /// asset every time. The URL is also what a texture cache can be keyed on.
     ///
-    /// **And the property's *type* cannot be used to recognise a texture.** The same property in the
+    /// **And the property's *type* cannot be used to recognize a texture.** The same property in the
     /// same file is `.string` before `MDLAsset.loadTextures()` is called and `.texture` after it, so
     /// a loader matching on `.texture` works or fails depending on an unrelated call somewhere else.
     /// Having a URL is the thing that actually means "this is a map".

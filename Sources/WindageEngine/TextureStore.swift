@@ -52,9 +52,9 @@ public final class TextureStore {
     /// then it is every game — and the failure is silent on any texture that happens to be roughly
     /// symmetrical, which is most of them.
     ///
-    /// **It was found on a character whose texture is a palette.** Its colour map is a 32×32 grid of
+    /// **It was found on a character whose texture is a palette.** Its color map is a 32×32 grid of
     /// swatches with a magenta row along the bottom, so a vertical flip does not soften an edge — it
-    /// hands a limb a completely different colour. The sample's own crate, stone and ground textures
+    /// hands a limb a completely different color. The sample's own crate, stone and ground textures
     /// had been flipped the whole time and looked fine, because noise and brickwork read the same
     /// upside down.
     ///
@@ -87,7 +87,7 @@ public final class TextureStore {
     /// **So that a shader can always sample.** The alternative is a shader that branches on whether
     /// a texture exists, or a second pipeline compiled without it — one costs a branch per fragment
     /// and the other doubles the pipelines in the game. White multiplies to nothing, so the
-    /// material's own colour comes through untouched.
+    /// material's own color comes through untouched.
     public let white: MTLTexture
 
     /// A 1×1 flat normal — (0.5, 0.5, 1) — meaning "no perturbation".
@@ -181,7 +181,7 @@ public final class TextureStore {
 
     /// Every map a material names, with anything missing or unloadable filled in by ``fallback(for:)``.
     ///
-    /// **Never throws.** A missing texture should draw the object in a plain colour and say so once,
+    /// **Never throws.** A missing texture should draw the object in a plain color and say so once,
     /// not stop a level loading — a level that will not open because one map is misspelled is a
     /// worse failure than a crate that is the wrong shade.
     public func textures(for material: Material,

@@ -58,7 +58,7 @@ public final class ShadowMap {
         /// **Optional, and nil means draw everything.** A cascade covers what the camera covers, so
         /// there is little to cull and nothing to gain; ``ShadowCubes`` renders the same scene six
         /// times from one point, where a light's range and a face's frustum remove most of it. A
-        /// batch that cannot cheaply say where its objects are keeps the conservative behaviour,
+        /// batch that cannot cheaply say where its objects are keeps the conservative behavior,
         /// which costs draws rather than deleting shadows.
         public let bounds: ((Int) -> BoundingBox)?
         /// **Draws for geometry that is not one `MTKMesh` per object** — instanced copies drawn with an
@@ -97,7 +97,7 @@ public final class ShadowMap {
     }
 
     /// Which pass a self-drawing batch is being asked to encode for: **so it can draw only what that pass
-    /// can see.** A sun cascade near the eye covers a few metres; drawing a whole wood into it was three
+    /// can see.** A sun cascade near the eye covers a few meters; drawing a whole wood into it was three
     /// quarters of a measured frame.
     public struct Pass {
         /// The cascade, atlas tile or cube face (`slice × 6 + face`) being recorded.
@@ -140,7 +140,7 @@ public final class ShadowMap {
     private let matrixBuffer: MTLBuffer
     private static let matrixStride = MemoryLayout<matrix_float4x4>.stride
 
-    /// - Parameter cascades: **the game's numbers.** A courtyard seventy metres across and a range
+    /// - Parameter cascades: **the game's numbers.** A courtyard seventy meters across and a range
     ///   where the target is at 800 m want different splits and a different light depth range;
     ///   `ShadowCascades` takes them as arguments for that reason.
     public init?(device: MTLDevice, cascades: ShadowCascades) {
@@ -185,7 +185,7 @@ public final class ShadowMap {
     /// vertex function.
     ///
     /// **Three things have to be right and none of them is obvious.** No fragment function and no
-    /// colour attachment, because nothing is being shaded and everything but the depth write is
+    /// color attachment, because nothing is being shaded and everything but the depth write is
     /// wasted; a raster sample count of one, because a multisampled shadow map costs four times the
     /// memory to record the same occlusion; and the depth format matching the texture, which is the
     /// one that fails loudly rather than quietly.

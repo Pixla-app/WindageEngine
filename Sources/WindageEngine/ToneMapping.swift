@@ -18,14 +18,14 @@ import simd
 /// carries no information at all.
 ///
 /// It is not a stylistic addition. A renderer that produces HDR and writes it to an LDR target is
-/// **incomplete**, and the symptom — blown highlights, a plasticky look, colours that shift towards
+/// **incomplete**, and the symptom — blown highlights, a plasticky look, colors that shift towards
 /// white as they brighten — reads as bad art rather than as a missing pass.
 ///
 /// ### What is here and what is not
 ///
 /// An exposure and a curve. **No auto-exposure**: metering the frame, deciding what "correctly
 /// exposed" means for a game, and smoothing the adaptation over time are genuinely contested — every
-/// engine does it differently and a game's needs decide it. **No bloom, no colour grading, no
+/// engine does it differently and a game's needs decide it. **No bloom, no color grading, no
 /// vignette.** Those are a look; this is the part without which there is no picture.
 public nonisolated struct ToneMapping: Sendable, Equatable {
 
@@ -39,14 +39,14 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
         ///
         /// The gentlest of these and the most washed out. Preserves hue exactly — it scales all three
         /// channels by the same factor — which is either its virtue or its problem depending on
-        /// whether a very bright saturated colour should stay saturated.
+        /// whether a very bright saturated color should stay saturated.
         case reinhard = 1
 
         /// The ACES filmic curve, Narkowicz's fit.
         ///
         /// **The default, and the industry's.** Six constants standing in for a much larger transform,
         /// accurate enough that the difference is invisible in a game and cheap enough to run per
-        /// pixel. Rolls the shoulder off gradually and lets very bright colours desaturate towards
+        /// pixel. Rolls the shoulder off gradually and lets very bright colors desaturate towards
         /// white, which is what film does and what the eye reads as "bright" rather than "clipped".
         case aces = 2
     }
@@ -86,7 +86,7 @@ public nonisolated struct ToneMapping: Sendable, Equatable {
     /// input-output pairs, so a change to one copy and not the other is at least visible in the
     /// numbers rather than only on screen.
     ///
-    /// A game can also call it: picking an interface colour that matches a tone-mapped scene means
+    /// A game can also call it: picking an interface color that matches a tone-mapped scene means
     /// running the scene's own curve, and doing it by eye against a screenshot goes stale the moment
     /// the exposure moves.
     public func apply(_ color: SIMD3<Float>) -> SIMD3<Float> {

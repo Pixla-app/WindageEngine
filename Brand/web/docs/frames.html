@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recorded frames · Windage Engine</title>
+  <meta name="description" content="Draw a frame with no window using FrameRenderer.render(into:), and compare it pixel by pixel against a recorded one with Tools/frames.py.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html" aria-current="page">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html" aria-current="page">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Checking your game</p>
+    <h1>Recorded frames</h1>
+<p>A renderer can only be judged by looking at it, and a screenshot someone looked at once protects nothing afterwards. <code>FrameRenderer.render(into:)</code> draws a frame into a texture of your own, with no window. The sample's <code>Tools/frames.py</code> uses it to draw a set of recorded viewpoints and compare each one, pixel by pixel, against the frame kept for it. That makes shadows, the tone map and the lights something a check can fail on.</p>
+<h2 id="render-into">Drawing a frame into a texture</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">func</span> render(into texture: MTLTexture, interpolation: Float = 0)</pre>
+<p>It runs the same passes in the same order as a displayed frame: the pre-passes, the scene into its HDR target, then the tone map and the interface. What comes out is what a player would have seen. It <strong>waits for the GPU</strong> before returning, so you can read the texture straight away.</p>
+<p>The texture needs <code>FrameRenderer.colorPixelFormat</code> and <code>.renderTarget</code>. To read it back, it also needs shared or managed storage, and like everything else the GPU reads, it has to be in the residency set. This is the sample's version, trimmed:</p>
+<pre class="code-swift"><span class="k">let</span> width = 640, height = 400
+<span class="k">let</span> descriptor = MTLTextureDescriptor.texture2DDescriptor(
+    pixelFormat: FrameRenderer.colorPixelFormat, width: width, height: height, mipmapped: <span class="k">false</span>)
+descriptor.usage = [.renderTarget, .shaderRead]
+descriptor.storageMode = .shared
+<span class="k">guard</span> <span class="k">let</span> texture = engine.device.makeTexture(descriptor: descriptor) <span class="k">else</span> { <span class="k">return</span> <span class="k">false</span> }
+engine.residencySet.addAllocation(texture)
+engine.commitResidency()
+viewportChanged(width: width, height: height)
+engine.render(into: texture)
+
+<span class="k">var</span> bgra = [UInt8](repeating: 0, count: width * height * 4)
+bgra.withUnsafeMutableBytes {
+    texture.getBytes($0.baseAddress!, bytesPerRow: width * 4,
+                     from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+}</pre>
+<p>The bytes are BGRA. The sample swaps them to RGBA and writes a PNG with <code>NSBitmapImageRep</code>. Comparing frames is only one use: a thumbnail or a photo a game saves also wants the frame the game draws, without a drawable to draw it into.</p>
+<h2 id="deterministic">The same picture every time</h2>
+<p>A comparison only means something if both runs draw the <strong>same</strong> frame. The sample makes sure of that through environment variables:</p>
+<ul><li><code>WINDAGE_SAMPLE_FRAME=&lt;path&gt;</code> draws one frame to a PNG and quits. The window is never shown, and nothing has been simulated yet, so the clock is full, no crate has been collected, and the lifts and turntable are where the level puts them.</li><li><code>WINDAGE_SAMPLE_LEVEL</code> and <code>WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch</code> choose the viewpoint, with angles in degrees. A camera placed this way flies, because a body under a raised camera would fall to the ground before the first frame.</li><li>The engine's <a href="splash.html">splash</a> is off for these frames unless one asks for it, because a splash over every frame would test the splash and never the scene.</li></ul>
+<pre class="code-sh">WINDAGE_SAMPLE_CHECK=frame-courtyard WINDAGE_SAMPLE_FRAME=/tmp/courtyard.png \
+WINDAGE_SAMPLE_LEVEL=0 WINDAGE_SAMPLE_CAMERA=<span class="p">"0,2.5,11,0,-12"</span> swift run WindageSample</pre>
+<h2 id="check">Checking every frame</h2>
+<p><code>Tools/frames.json</code> lists the viewpoints: the ruins from above, the lintel at eye height, the courtyard, the turntable, and the splash. Each has a <code>level</code>, a <code>camera</code> and a <code>shows</code> line saying what it is there to guard. The recorded frames are in <code>Tools/frames/</code>.</p>
+<pre class="code-sh">python3 Tools/frames.py            # draw every frame and compare
+python3 Tools/frames.py ruins      # the frames whose names contain <span class="p">"ruins"</span>
+python3 Tools/frames.py --record   # draw them and write them in as the recorded frames</pre>
+<p><strong>A frame fails when more than 0.5% of its pixels differ by more than 5 in any channel.</strong> That allows a GPU its last bit but doesn't let a shadow move. A frame can set a tighter <code>tolerance</code> of its own, and the splash has to. It is a small flat drawing, where moving the mark's curve by 4% of its height changes a quarter of a percent of the frame. That is well inside the scene's half percent, so the splash checks with a channel tolerance of 2 and no differing pixels at all.</p>
+<p>After <code>--record</code>, <strong>look at the new frames before committing them.</strong> A recorded frame should change when the renderer changes, and the reason goes in the CHANGELOG. What the record guards is that someone looked.</p>
+<h2 id="stale-shadows">Every shadow was a frame stale</h2>
+<p>The first frame drawn this way found a bug that had been there all along. <strong>Metal 4 tracks no hazards between passes.</strong> The scene pass sampled shadow maps that an earlier pass in the same command buffer was still writing, and nothing told the GPU to wait.</p>
+<p>In play it looked right, because the previous frame's shadow maps were there to sample. Every shadow was simply one frame stale. The very first frame had nothing in those maps yet, and it came out differently on every run: once as a black scene, once blotched in cluster-sized squares. Two consumer barriers fixed it, one making the scene wait for the shadows and one making the tone map wait for the scene. Since then, four runs of the same frame produce the same bytes. A game can't see this bug, and a test that draws no pixels can't either. A frame drawn twice and compared shows it.</p>
+<h2 id="fails">A check is only a check if it fails</h2>
+<p>Each frame was tested against a deliberate break. Switching the sample's tone map from ACES to Reinhard fails all four scene frames, with 98% of pixels changed. Drawing nothing into the sun's shadow maps fails all four too, with 5.5 to 7.6% of the courtyard changed. Two other changes moved nothing, and a change that moves nothing proves nothing. One was <code>ToneMapping</code>'s default curve, which the sample overrides. The other was the constant depth bias at 25 times its value, too small to see against a cascade's depth range.</p>
+<p>The engine runs three checks on itself before a change is called done: <code>swift test</code>, <a href="walks.html">the walks</a> and these frames. Your game can use the same approach with its own viewpoints. <code>render(into:)</code> is the engine's part. <code>Tools/frames.py</code> is the sample's, and is plain Python with no dependencies to copy from.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#render-into">Drawing a frame into a texture</a><a href="#deterministic">The same picture every time</a><a href="#check">Checking every frame</a><a href="#stale-shadows">Every shadow was a frame stale</a><a href="#fails">A check is only a check if it fails</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

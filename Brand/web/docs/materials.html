@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Materials and textures · Windage Engine</title>
+  <meta name="description" content="Read a file&#x27;s metallic-roughness materials with Material and TextureSlot, load their maps once with TextureStore, and keep color and data textures apart.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html" aria-current="page">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html" aria-current="page">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Materials and textures</h1>
+<p>Every <code>LoadedMesh</code> carries a <code>Material</code> per submesh, read from the file that named it. <code>TextureStore</code> turns those materials into GPU textures, loading each file once. Between them, a bought asset arrives with its surfaces intact instead of as untextured geometry.</p>
+<p>What a material <em>says</em> needs no GPU and is a plain, testable value; turning it into GPU memory is a separate, small class.</p>
+<h2 id="material">Material</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> Material: Sendable, Equatable {
+    <span class="k">public</span> <span class="k">var</span> name: String
+    <span class="k">public</span> <span class="k">var</span> baseColor: SIMD4&lt;Float&gt;     <span class="c">// linear, alpha is opacity</span>
+    <span class="k">public</span> <span class="k">var</span> metallic: Float             <span class="c">// 0 dielectric, 1 bare metal</span>
+    <span class="k">public</span> <span class="k">var</span> roughness: Float            <span class="c">// 0 a mirror, 1 chalk</span>
+    <span class="k">public</span> <span class="k">var</span> emissive: SIMD3&lt;Float&gt;      <span class="c">// linear</span>
+    <span class="k">public</span> <span class="k">var</span> textures: [TextureSlot: TextureSource]
+    <span class="k">public</span> <span class="k">var</span> specularExponent: Float?
+    <span class="k">public</span> subscript(slot: TextureSlot) -&gt; TextureSource?
+}</pre>
+<p>This is the <strong>metallic-roughness parameter set</strong>, because it is the one everything speaks: glTF, USD's <code>UsdPreviewSurface</code> and every common exporter agree on it. The defaults — white, dielectric, roughness 0.65 — are chosen so a material nobody filled in still draws as a plausible painted surface.</p>
+<p>Each scalar is <strong>multiplied</strong> with its map when there is one, so a textured material normally carries a white base color and a scalar of 1.</p>
+<div class="note"><p><strong>This is a material, not a material system.</strong> No shader graph, no permutations, no passes, no authoring model. Your shaders decide what the parameters mean; the engine only reads them faithfully.</p></div>
+<h3 id="what-meshloader-does-for-you">What <code>MeshLoader</code> does for you</h3>
+<p><code>Material(_:name:)</code> reads a Model I/O material, and it handles three things Model I/O gets wrong quietly:</p>
+<ol><li><strong>Two properties can share a semantic.</strong> A textured <code>UsdPreviewSurface</code> diffuse arrives as both a float3 and a texture. Every property is read, and the first — the one the file authored — wins.</li><li><strong>Model I/O invents a 0.18 gray base color</strong> for files that never mentioned one. A slot with a map takes a white tint instead, so a texture is not dimmed to 18%.</li><li><strong>A map's scalar is set to the identity.</strong> A file that connects <code>metallic</code> to a texture supplies no scalar, and the default of 0 would multiply the map away. <code>metallic</code>, <code>roughness</code> and <code>emissive</code> become 1 when mapped.</li></ol>
+<p>For OBJ, Model I/O always reports the same roughness whatever the file says. So when a material has a specular exponent (<code>Ns</code>), <code>specularExponent</code> is set and <code>roughness</code> comes from <code>Material.roughness(fromSpecularExponent:)</code>, the standard Blinn-Phong to GGX approximation.</p>
+<h2 id="textureslot-and-texturesource">TextureSlot and TextureSource</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">enum</span> TextureSlot: String, Sendable, Hashable, CaseIterable {
+    <span class="k">case</span> baseColor, normal, metallic, roughness, ambientOcclusion, emissive
+}
+
+<span class="k">public</span> <span class="k">nonisolated</span> <span class="k">enum</span> TextureSource: Sendable, Hashable {
+    <span class="k">case</span> url(URL)        <span class="c">// usually resolved by Model I/O beside the asset</span>
+    <span class="k">case</span> named(String)   <span class="c">// a bundle resource, extension included</span>
+}</pre>
+<h3 id="color-against-numbers">Color against numbers</h3>
+<p><code>TextureSlot.isColor</code> is true for <code>baseColor</code> and <code>emissive</code> only. A color map is authored in sRGB and has to be decoded to linear on the way in. <strong>A roughness or normal map is not a color</strong>: its bytes are already numbers, and decoding it as sRGB bends every value — mid-gray roughness 0.5 arrives as 0.21, and a normal map's flat regions stop being flat. Both mistakes look like a lighting problem, so the slot decides, never the call site.</p>
+<h3 id="occlusion-roughness-and-metalness-in-one-texture">Occlusion, roughness and metalness in one texture</h3>
+<p><code>TextureSlot.packedChannel</code> says which channel a packed slot reads: <strong>R occlusion, G roughness, B metalness</strong> — glTF's packing, and what exporters write. Model I/O does not pass on which channel a USD input reads, so the convention is assumed here. It also works for an unpacked grayscale map, whose green channel is its value. The sample binds one ORM texture per submesh, taken from the roughness slot, since all three slots name the same file and <code>TextureStore</code> loads it once.</p>
+<h2 id="texturestore">TextureStore</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">final</span> <span class="k">class</span> TextureStore {
+    <span class="k">public</span> <span class="k">init</span>?(device: MTLDevice)
+    <span class="k">public</span> <span class="k">let</span> white: MTLTexture        <span class="c">// 1×1 opaque white</span>
+    <span class="k">public</span> <span class="k">let</span> flatNormal: MTLTexture   <span class="c">// 1×1 (0.5, 0.5, 1)</span>
+    <span class="k">public</span> <span class="k">func</span> fallback(<span class="k">for</span> slot: TextureSlot) -&gt; MTLTexture
+    <span class="k">public</span> <span class="k">func</span> texture(_ source: TextureSource, isColor: Bool,
+                        origin: TextureOrigin = .bottomLeft,
+                        bundle: Bundle = .main) <span class="k">throws</span> -&gt; MTLTexture
+    <span class="k">public</span> <span class="k">func</span> textures(<span class="k">for</span> material: Material, origin: TextureOrigin = .bottomLeft,
+                         bundle: Bundle = .main,
+                         reportingTo report: ((String) -&gt; Void)? = <span class="k">nil</span>) -&gt; [TextureSlot: MTLTexture]
+    <span class="k">public</span> <span class="k">var</span> allocations: [MTLResource]
+}</pre>
+<ul><li><strong>It caches</strong> by file, by color-or-data and by origin. Every crate naming the same map shares one texture.</li><li><strong>Every texture gets mipmaps</strong>, because anything seen at an angle aliases without them.</li><li><strong>Fallbacks let a shader always sample.</strong> <code>white</code> multiplies to nothing; <code>flatNormal</code> means "no perturbation". They differ on purpose: a white pixel decoded as a normal tilts every surface diagonally.</li><li><code>textures(for:)</code> <strong>never throws</strong>. A missing map draws the object in its plain color and is reported once, rather than stopping a level from loading.</li><li>After loading, add <code>allocations</code> to the renderer's residency set and commit. A texture the GPU cannot reach is garbage that looks like a shader bug.</li></ul>
+<h3 id="the-v-axis">The v axis</h3>
+<p>Metal puts texture coordinate (0, 0) at an image's top-left; USD and OBJ put it at the bottom-left. <code>TextureStore</code> flips on load with <code>.bottomLeft</code>, the default and the convention of every format Model I/O reads. Use <code>.topLeft</code> for glTF-derived UVs or coordinates your game generates itself.</p>
+<h3 id="errors">Errors</h3>
+<p><code>TextureStoreError</code> has three cases: <code>notFound(String)</code> for a missing bundle resource, <code>loadFailed(String, underlying:)</code> when the file would not decode, and <code>fallbackUnavailable</code>.</p>
+<h2 id="in-the-sample">In the sample</h2>
+<p>The sample resolves every map from the file's own material, per submesh:</p>
+<pre class="code-swift"><span class="k">let</span> material = mesh.material(forSubmesh: index)
+<span class="k">guard</span> <span class="k">let</span> source = material[slot] <span class="k">else</span> { <span class="k">return</span> textures.fallback(<span class="k">for</span>: slot) }
+<span class="k">do</span> {
+    <span class="k">return</span> <span class="k">try</span> textures.texture(source, isColor: slot.isColor, bundle: .module)
+} <span class="k">catch</span> {
+    print(<span <span class="k">class</span>="p">"WindageSample: \(name) \(slot.rawValue) — \(error)"</span>)
+    <span class="k">return</span> textures.fallback(<span class="k">for</span>: slot)
+}</pre>
+<h2 id="normal-mapping">Normal mapping</h2>
+<p>A normal map stores directions in <strong>tangent space</strong>, relative to the surface, so it needs the surface's tangent to get back to world space. Ask <code>MeshLoader</code> for <code>MDLVertexAttributeTangent</code> and it generates one — see <a href="meshes.html">meshes</a>. In the shader:</p>
+<ul><li><strong>Reconstruct the bitangent</strong> as the cross of normal and tangent times the handedness <code>w</code>, rather than storing it.</li><li><strong>Re-orthogonalize the tangent</strong> against the interpolated normal first.</li><li><strong>Transform the tangent by the model matrix</strong>, not the normal matrix: it lies along the surface.</li><li><strong>Keep the geometric normal for the shadow lookup</strong>, or contact shadows detach from their casters.</li></ul>
+<p>Model I/O's OBJ reader recognizes only the <code>bump</code> keyword for a normal map; <code>map_Bump</code>, <code>norm</code>, <code>map_Kn</code> and <code>map_normal</code> are silently dropped. Use USD for normal-mapped assets.</p>
+<h2 id="what-things-are-made-of-for-sound">What things are made of, for sound</h2>
+<p>A material says how a surface looks, not what it sounds like underfoot. That is the level's word: <code>Level.Placement.surface</code> (<code>&quot;stone&quot;</code>, <code>&quot;wood&quot;</code>) and <code>Level.surface(standingOn:)</code>. See <a href="levels.html">levels</a> and <a href="audio.html">audio</a>.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#material">Material</a><a href="#textureslot-and-texturesource">TextureSlot and TextureSource</a><a href="#texturestore">TextureStore</a><a href="#in-the-sample">In the sample</a><a href="#normal-mapping">Normal mapping</a><a href="#what-things-are-made-of-for-sound">What things are made of, for sound</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

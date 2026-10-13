@@ -11,18 +11,18 @@ import simd
 /// ### Why per-draw selection was not enough
 ///
 /// `LightSet` picks a few lights per object, which is correct and cheap and **only as good as the
-/// draws are small**. The sample proved the failure: its ground is one eight-hundred-metre quad, so a
-/// single draw got four lights for an entire level and a spot five metres up lost to lamps standing
+/// draws are small**. The sample proved the failure: its ground is one eight-hundred-meter quad, so a
+/// single draw got four lights for an entire level and a spot five meters up lost to lamps standing
 /// closer to the plane. No budget and no ordering rule fixes that — the object is simply the wrong
 /// unit to choose lights for.
 ///
 /// A cluster is the right unit. It is a small box of the world, so the lights that reach it are few
 /// by construction, and a fragment belongs to exactly one.
 ///
-/// ### The slices are exponential, and that is not an optimisation
+/// ### The slices are exponential, and that is not an optimization
 ///
 /// Cut the depth range evenly and the near slices are microscopic while the far ones are hundreds of
-/// metres deep — because a perspective frustum's cross-section grows with distance, an even cut puts
+/// meters deep — because a perspective frustum's cross-section grows with distance, an even cut puts
 /// almost every cluster where there is almost no screen. Slicing by the logarithm of depth makes each
 /// cluster roughly cubic, which is what makes the count manageable.
 ///

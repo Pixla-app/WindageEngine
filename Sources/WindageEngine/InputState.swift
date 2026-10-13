@@ -146,7 +146,7 @@ public final class InputState {
     // MARK: - Gamepad
 
     /// The active pad, if any. `GCController.current` follows whichever pad was last used, which is
-    /// the right behaviour when someone puts a controller down and picks up the mouse.
+    /// the right behavior when someone puts a controller down and picks up the mouse.
     public var gamepad: GCExtendedGamepad? {
         suppliedGamepad ?? GCController.current?.extendedGamepad
     }

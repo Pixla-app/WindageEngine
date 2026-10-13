@@ -45,7 +45,7 @@ public enum SkeletonError: Error, CustomStringConvertible, Sendable {
 /// ### The two transform arrays are in different spaces, and nothing in the format says so
 ///
 /// This is the single easiest thing to get wrong, and it was found by measuring rather than reading:
-/// a rig authored with its root joint at (5, 0, 0) and a child one metre above it comes back with
+/// a rig authored with its root joint at (5, 0, 0) and a child one meter above it comes back with
 ///
 /// - `restTransforms[child]` = translate(0, 1, 0) — **joint-local**, relative to its parent, and
 /// - `bindTransforms[child]` = translate(5, 1, 0) — **skeleton-space**, already accumulated.
@@ -76,7 +76,7 @@ public nonisolated struct Skeleton: Sendable {
     ///
     /// Stored inverted because that is the only form skinning ever uses: the skinning matrix for a
     /// joint is its posed model-space transform times this, and the pair is what takes a vertex from
-    /// the space it was modelled in to the space it is posed in.
+    /// the space it was modeled in to the space it is posed in.
     public let inverseBindTransforms: [matrix_float4x4]
 
     public var jointCount: Int { jointPaths.count }
@@ -84,7 +84,7 @@ public nonisolated struct Skeleton: Sendable {
     /// - Parameters:
     ///   - restTransforms: joint-local.
     ///   - bindTransforms: **skeleton-space**, not joint-local. Inverted once, here.
-    ///   - geometryBindTransform: takes a vertex from the space the mesh was modelled in into the
+    ///   - geometryBindTransform: takes a vertex from the space the mesh was modeled in into the
     ///     space the bind transforms are measured in. Applied *before* skinning, so it multiplies in
     ///     on the right of each inverse bind matrix and the shader never learns it exists.
     public init(jointPaths: [String],

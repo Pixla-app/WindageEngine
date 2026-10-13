@@ -23,7 +23,7 @@ import simd
 /// - **No version.** No engine shows one in a shipped game — a version belongs to an editor's splash,
 ///   an about box and a log. ``showsVersion`` is there for development builds and is off.
 /// - **The lead is worth its two words here.** A splash showing only a logo works for an engine every
-///   player already recognises; nobody recognises this one yet, and "made with" says what they are
+///   player already recognizes; nobody recognizes this one yet, and "made with" says what they are
 ///   looking at. It is part of the lockup, set in the lockup's capitals, not a label floating over it.
 ///
 /// The name is set in the host's own interface font. The engine has a drawn **mark**; it does not have
@@ -68,7 +68,7 @@ public nonisolated struct SplashScreen: Sendable {
     public var foreground = EngineMark.display
 
     /// Words set in small capitals to the left of the mark, one per line — `"MADE WITH"` is the usual
-    /// lead. Nil draws none, and the mark and name centre on their own.
+    /// lead. Nil draws none, and the mark and name center on their own.
     public var lead: String?
 
     /// How tall the mark is drawn, as a share of the viewport's width. Everything else in the lockup

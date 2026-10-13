@@ -9,16 +9,16 @@ import simd
 ///
 /// **The first light in this engine that is not the sun.** A directional sun and an environment map
 /// light an outdoor scene correctly and have no answer at all for an interior: the sun does not reach
-/// inside, and a sky-coloured ambient lights a cellar as though the sky were overhead.
+/// inside, and a sky-colored ambient lights a cellar as though the sky were overhead.
 public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
     public var position: SIMD3<Float>
 
-    /// Colour times brightness, unbounded — **radiant intensity, not a colour.** A lamp is far
+    /// Color times brightness, unbounded — **radiant intensity, not a color.** A lamp is far
     /// brighter than white paper, which is what the HDR target and ``ToneMapping`` are for.
     public var color: SIMD3<Float>
 
-    /// Metres at which this light has fallen to nothing.
+    /// Meters at which this light has fallen to nothing.
     ///
     /// **Finite on purpose.** An inverse-square falloff never actually reaches zero, so without a
     /// cutoff every lamp in a building is technically relevant to every fragment and no selection
@@ -38,7 +38,7 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// as a stencil rather than as a lamp. Full brightness within the inner angle, nothing beyond the
     /// outer, and a smooth fall between.
     public nonisolated struct Cone: Sendable, Equatable {
-        /// Where the light points, normalised.
+        /// Where the light points, normalized.
         public var direction: SIMD3<Float>
         /// Half-angle of the fully-lit core, in radians.
         public var innerAngle: Float
@@ -196,14 +196,14 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
     /// light is *doing*, so one leaves the set at the point where it had nearly stopped mattering.
     ///
     /// **And attenuation alone is not enough either, which the probe this came from had wrong.** It
-    /// ranked lights by falloff and ignored their brightness — so a candle at one metre outranked a
+    /// ranked lights by falloff and ignored their brightness — so a candle at one meter outranked a
     /// floodlight at ten, and the floodlight was the one dropped. Weighting by luminance costs a dot
     /// product and makes the ordering mean what it claims.
     public func influence(at point: SIMD3<Float>) -> Float {
         attenuation(at: point) * PunctualLight.luminance(color)
     }
 
-    /// Rec. 709 luminance: how bright a colour looks, rather than how large its numbers are.
+    /// Rec. 709 luminance: how bright a color looks, rather than how large its numbers are.
     ///
     /// Green carries most of it and blue almost none, which is why a blue lamp of the same numeric
     /// magnitude as a green one is the one to drop first.
@@ -213,8 +213,8 @@ public nonisolated struct PunctualLight: Sendable, Equatable, Codable {
 
     /// Whether this light reaches any part of a box.
     ///
-    /// **Tested against the nearest point of the box, not its centre.** A long wall whose centre is
-    /// out of range still has an end inside it, and lighting a whole draw by its centre is how one
+    /// **Tested against the nearest point of the box, not its center.** A long wall whose center is
+    /// out of range still has an end inside it, and lighting a whole draw by its center is how one
     /// end of a corridor goes dark.
     ///
     /// ### A cone cannot be tested at one point, and the error has a direction

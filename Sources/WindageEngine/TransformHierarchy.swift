@@ -151,7 +151,7 @@ public nonisolated struct TransformHierarchy: Sendable {
 /// ### Why a hierarchy needs this and a rig does not
 ///
 /// **A child inherits its parent's scale, which is right for a limb and wrong for a held object.** A
-/// rig exported from a package that works in centimetres carries a hundredfold scale down to the
+/// rig exported from a package that works in centimeters carries a hundredfold scale down to the
 /// wrist, and it belongs there — the arm is a hundred units long in that space. Hang a lantern off
 /// the same matrix and the lantern is drawn at one percent of its size, in a place that is otherwise
 /// correct, which reads as the wrong mesh rather than as the wrong space.
@@ -160,7 +160,7 @@ public nonisolated struct TransformHierarchy: Sendable {
 /// hierarchy that only some callers want. This is the same thing at the call site, where the caller
 /// can see what it is attaching to.
 ///
-/// **A mirrored basis stays mirrored.** Each axis is normalised, and nothing here tries to decide
+/// **A mirrored basis stays mirrored.** Each axis is normalized, and nothing here tries to decide
 /// that a negative determinant was a mistake; a shear is flattened onto its own axes, which is the
 /// only thing it can mean once the scale is gone.
 public nonisolated func matrix_without_scale(_ m: matrix_float4x4) -> matrix_float4x4 {

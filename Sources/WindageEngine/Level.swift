@@ -34,7 +34,7 @@ import simd
 ///
 /// A placement stores **how it meets the ground**, not the height it happened to sit at when someone
 /// pressed save. Terrain changes — a valley grows a cross-section and every structure in it
-/// moved tens of metres — and a level of absolute Y values silently becomes a level of floating and
+/// moved tens of meters — and a level of absolute Y values silently becomes a level of floating and
 /// buried buildings. See ``Anchor``.
 /// **`nonisolated`, like every other value type here.** A level is data; loading one is I/O and
 /// decoding, and tying it to the main actor would mean a game could not read a level off the main
@@ -60,9 +60,9 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
 
     /// The sky this level is under, and therefore what everything in it is lit by.
     ///
-    /// **A named thing rather than more entries in ``settings``.** A sky is three colours, two angles
+    /// **A named thing rather than more entries in ``settings``.** A sky is three colors, two angles
     /// and a sun size; flattened into a scalar dictionary that is fifteen keys with no structure, no
-    /// way to say a colour is a colour, and nothing to stop `skyZenithB` being set and `skyZenithG`
+    /// way to say a color is a color, and nothing to stop `skyZenithB` being set and `skyZenithG`
     /// forgotten. It was in the game's source until 2026-09-10, which meant two levels could differ
     /// in where the sun was and not in what the sky looked like.
     ///
@@ -73,7 +73,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
     ///
     /// **A named list rather than markers with values on them.** A marker is a *place* the game
     /// interprets — a spawn, an objective — and its `values` dictionary is scalars. A light is a
-    /// position, a colour, a brightness and a range, and expressing it as five loose numbers under a
+    /// position, a color, a brightness and a range, and expressing it as five loose numbers under a
     /// marker means nothing checks that they belong together.
     public var lights: [PunctualLight]
 
@@ -139,7 +139,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         self.markers = markers
     }
 
-    /// A level whose ground is made of something. Separate from the initialiser above for the reason
+    /// A level whose ground is made of something. Separate from the initializer above for the reason
     /// ``Placement/init(mesh:position:yaw:scale:anchor:tags:light:surface:)`` gives.
     public init(name: String,
                 settings: [String: Double] = [:],
@@ -227,7 +227,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
         /// The mesh's resource name. The engine does not resolve it — the game does, from wherever
         /// its meshes live.
         public var mesh: String
-        /// Metres. `y` is interpreted per ``anchor``.
+        /// Meters. `y` is interpreted per ``anchor``.
         public var position: SIMD3<Float>
         /// Radians about +Y.
         public var yaw: Float
@@ -284,8 +284,8 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
             self.light = light
         }
 
-        /// A placement made of something. **A separate initialiser rather than one more defaulted
-        /// parameter on the one above**, because adding a parameter changes that initialiser's symbol:
+        /// A placement made of something. **A separate initializer rather than one more defaulted
+        /// parameter on the one above**, because adding a parameter changes that initializer's symbol:
         /// a consumer's already-compiled code then fails to link against the new engine until it
         /// happens to be rebuilt — which is exactly what happened to a consumer's test target when this
         /// field arrived.
@@ -369,7 +369,7 @@ public nonisolated struct Level: Codable, Equatable, Sendable {
 
     /// A point that means something to the game.
     ///
-    /// Spawns, objectives, patrol nodes, cameras, trigger volumes' centres. **``kind`` is the game's
+    /// Spawns, objectives, patrol nodes, cameras, trigger volumes' centers. **``kind`` is the game's
     /// word, not the engine's** — see the type's own notes.
     public nonisolated struct Marker: Codable, Equatable, Sendable {
         public var kind: String

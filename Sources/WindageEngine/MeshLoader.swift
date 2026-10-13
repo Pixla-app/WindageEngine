@@ -171,7 +171,7 @@ public nonisolated enum MeshLoader {
     ///
     /// **This loader ignored it until 2026-09-09, and a real character is what showed it.** A
     /// character out of a game engine, through an FBX, through Blender arrives with its mesh data in
-    /// **centimetres** and a **scale of 0.01 on a parent node** — 176 units tall in its own space and
+    /// **centimeters** and a **scale of 0.01 on a parent node** — 176 units tall in its own space and
     /// 1.76 m in the world. Read the mesh's bounds alone and it is a hundred times too big, and the
     /// file looks wrong when it is not.
     ///
@@ -224,7 +224,7 @@ public nonisolated struct LoadedMesh {
     ///
     /// **Apply it in front of the model matrix: `model * nodeTransform`.** It is usually the identity
     /// for a hand-written mesh and almost never for an exported one — a character out of an FBX
-    /// pipeline has its geometry in centimetres under a parent scaled by 0.01. ``bounds`` is in the
+    /// pipeline has its geometry in centimeters under a parent scaled by 0.01. ``bounds`` is in the
     /// mesh's own space, so it needs the same treatment before it means anything in the world.
     public let nodeTransform: matrix_float4x4
 
@@ -264,7 +264,7 @@ public nonisolated struct SceneObject {
 
     /// **The mesh's node transform is composed in**, so a placement means the same thing whether the
     /// geometry came from a hand-written OBJ at the origin or from an exported character in
-    /// centimetres under a scaled parent.
+    /// centimeters under a scaled parent.
     public init(loaded: LoadedMesh, transform: matrix_float4x4) {
         self.mesh = loaded.mesh
         self.volume = Volume(local: loaded.bounds, transform: transform * loaded.nodeTransform)

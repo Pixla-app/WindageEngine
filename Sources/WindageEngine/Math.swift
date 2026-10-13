@@ -32,7 +32,7 @@ public nonisolated func matrix4x4_translation(_ translationX: Float, _ translati
 ///
 /// Maps the near plane to depth 1 and infinite distance to depth 0 — the opposite of the
 /// conventional near-0/far-1. Depth is stored as floating point, and floats hold far more precision
-/// near zero, so the conventional mapping spends almost all of it in the first few metres and leaves
+/// near zero, so the conventional mapping spends almost all of it in the first few meters and leaves
 /// the far field to z-fight. A game about reading a target at 800 m wants the precision where the
 /// distance is.
 ///

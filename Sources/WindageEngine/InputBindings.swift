@@ -279,7 +279,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     /// How far each stick must move before it counts, 0…0.5 of its travel.
     ///
-    /// **A worn stick drifts**: it rests a few percent off centre, and past the dead zone that is a
+    /// **A worn stick drifts**: it rests a few percent off center, and past the dead zone that is a
     /// view creeping round or a player walking off with nobody touching anything. The only fix a
     /// player has without this is a new controller. The defaults are the engine's tuning — movement
     /// tolerates more dead area than aiming, because drifting forward slowly is harmless and an aim

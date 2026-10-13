@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tone mapping · Windage Engine</title>
+  <meta name="description" content="The HDR scene target, ToneMapping&#x27;s exposure in stops and its three curves, and why the interface is drawn after the tone map.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html" aria-current="page">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html" aria-current="page">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Tone mapping</h1>
+<p>Shading doesn't stop at 1. Windage Engine draws the scene into a half-float HDR target, then a second pass applies an exposure and a curve to fit it onto the display. Your HUD is drawn in that second pass, after the curve, so its colors reach the screen exactly as specified.</p>
+<h2 id="why">Why a curve is not optional</h2>
+<p>A sunlit surface with a specular highlight is genuinely brighter than white paper. Once ambient, direct and specular light are added together, values routinely go past 1.0. The sample's lit faces reach about 1.13 before anything shiny is involved. Written straight to an 8-bit display buffer, all of those values clip to the same white. The brightest part of the image ends up carrying no detail, and it reads as bad art rather than a missing step.</p>
+<h2 id="passes">The two passes</h2>
+<p><code>FrameRenderer</code> runs the frame as two passes:</p>
+<ol><li><strong>The scene</strong> draws into <code>FrameRenderer.sceneColorPixelFormat</code>, which is <code>rgba16Float</code>. Half float holds far more range than a frame needs, at half the bandwidth of full float. It can't be memoryless, because the second pass reads it after the scene pass ends.</li><li><strong>The tone map</strong> draws one full-screen triangle, generated from <code>vertex_id</code> with no vertex buffer. It reads the scene, applies exposure and the curve, and writes the drawable in <code>FrameRenderer.colorPixelFormat</code> (<code>bgra8Unorm_srgb</code>). <code>GameLoop.encodeHUD(into:frameSlot:)</code> runs in this same pass.</li></ol>
+<p><code>FrameRenderer.clearColor</code> is in radiance, because it is cleared into the HDR target and tone-mapped along with everything else.</p>
+<div class="note"><p><strong>A pipeline with the wrong pixel format draws static, not an error.</strong> Metal 4 builds pipelines separately from passes. A scene pipeline that still declares <code>colorPixelFormat</code> is accepted, and it writes 8-bit pixels into the 16-bit float target: magenta and blue noise, with nothing logged. Pipelines drawn in <code>encode</code> use <code>sceneColorPixelFormat</code>, pipelines drawn in <code>encodeHUD</code> use <code>colorPixelFormat</code>, and anything drawn into your own target uses that target's format.</p></div>
+<h2 id="tone-mapping">ToneMapping</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>(curve: Curve = .aces, exposureStops: Float = 0, whitePoint: Float = 4)</pre>
+<p>Set it on the renderer and change it whenever you like:</p>
+<pre class="code-swift">engine.toneMapping = ToneMapping(curve: .aces, exposureStops: SampleGame.baseExposure)</pre>
+<p><strong>Exposure is in stops</strong>: +1 doubles the light, and −1 halves it. Stops match how people think about brightness, and the useful range is small and symmetric, roughly −4 to +4. As a plain multiplier, that same range runs from 0.06 to 16. <code>exposure</code> gives you the linear multiplier when you need it.</p>
+<h3 id="curves">Curves</h3>
+<div class="table"><table><thead><tr><th><code>ToneMapping.Curve</code></th><th></th></tr></thead><tbody><tr><td><code>clamp</code></td><td>Not really a curve. It's what a renderer does with no tone mapping, kept so you can see the difference.</td></tr><tr><td><code>reinhard</code></td><td>Extended Reinhard with a <code>whitePoint</code>. The gentlest curve and the most washed out. It scales all three channels by the same factor, so hue is exactly preserved.</td></tr><tr><td><code>aces</code></td><td><strong>The default.</strong> Narkowicz's fit of the ACES filmic curve. It rolls highlights off gradually and lets very bright colors desaturate toward white, which reads as bright rather than clipped.</td></tr></tbody></table></div>
+<p><code>ToneMapping.default</code> is ACES at 0 stops. <code>ToneMapping.off</code> is <code>clamp</code> at 0 stops. If your game tone-maps in its own shader, set <code>toneMapping = .off</code> so the picture doesn't get a second curve.</p>
+<p>The sample cycles through all three curves on a key, using <code>ToneMapping.Curve.allCases</code>. It also adds the player's brightness setting to its own exposure:</p>
+<pre class="code-swift">engine.toneMapping.exposureStops = SampleGame.baseExposure + settings.brightness</pre>
+<h3 id="gotchas">Two things worth knowing</h3>
+<ul><li><strong>ACES lifts the midtones.</strong> Middle gray 0.18 maps to 0.267. A scene whose values were picked before there was a curve comes out <em>brighter</em> once ACES is on. The sample sits at −0.5 stops for this reason. A game authored against the curve from the start would sit at zero.</li><li><strong>The ACES fit isn't asymptotic.</strong> It passes 1 at an input of about 6.6, so the clamp afterward is doing real work.</li></ul>
+<h3 id="apply">The curve in Swift</h3>
+<p><code>apply(_:)</code> is the definitive version of the curve; the shader transcribes it, and tests pin input–output pairs so the two can't drift silently. Your game can call it to pick an interface color that matches the tone-mapped scene.</p>
+<h2 id="hud">The interface is drawn after tone mapping</h2>
+<p>This ordering is built into the engine, not left as a convention. Scene color is <em>radiance</em>: unbounded, linear and tone-mapped. Interface color is a <em>specification</em>: it must land on screen as exactly the value it was authored as. A HUD drawn inside the scene goes through exposure and a filmic curve like everything else, and a brand color comes out desaturated and shifted with nothing to explain why.</p>
+<p>So <code>GameLoop</code> has a separate hook. <code>encode(into:frameSlot:interpolation:)</code> draws the scene, and <code>encodeHUD(into:frameSlot:)</code> draws the interface after the curve. <code>UIColor</code> is the interface's color type. It takes an sRGB value, such as <code>UIColor(hex: 0x00C2FF)</code> or <code>UIColor(srgb:)</code>, and converts it once to linear. The <code>_srgb</code> drawable encodes it back on write, so the round trip is exact: <code>#00C2FF</code> authored is <code>#00C2FF</code> on screen, verified by reading pixels back. See <a href="hud.html">HUD</a>.</p>
+<p>Particles are the reverse case. A spark belongs to the scene, so it goes through the curve like the lamp it came from. See <a href="particles.html">particles</a>.</p>
+<h2 id="not-here">What is deliberately not here</h2>
+<p><strong>No auto-exposure.</strong> Metering a frame, deciding what "correctly exposed" means and smoothing adaptation over time all depend on the game. <strong>No bloom, color grading or vignette.</strong> Those are a look. Tone mapping is the part without which there is no picture.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#why">Why a curve is not optional</a><a href="#passes">The two passes</a><a href="#tone-mapping">ToneMapping</a><a href="#hud">The interface is drawn after tone mapping</a><a href="#not-here">What is deliberately not here</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

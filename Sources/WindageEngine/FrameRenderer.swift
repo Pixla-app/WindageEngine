@@ -46,9 +46,9 @@ public protocol GameLoop: AnyObject {
     /// Encode the interface, **after** the scene.
     ///
     /// Separate from ``encode(into:frameSlot:interpolation:)`` so the ordering is structural rather
-    /// than a convention each title has to remember. Scene colour is radiance and gets tone mapped;
-    /// interface colour is a specification and must not be. Draw HUD inside the scene's shading and
-    /// a brand colour arrives on screen desaturated, with nothing to say why.
+    /// than a convention each title has to remember. Scene color is radiance and gets tone mapped;
+    /// interface color is a specification and must not be. Draw HUD inside the scene's shading and
+    /// a brand color arrives on screen desaturated, with nothing to say why.
     ///
     /// Default implementation does nothing.
     func encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int)
@@ -105,7 +105,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     public private(set) var timestep: FixedTimestep
 
     /// What an untouched pixel is, **in radiance** — the scene target is HDR, so this is a linear
-    /// value that will be tone mapped like everything else rather than a colour that reaches the
+    /// value that will be tone mapped like everything else rather than a color that reaches the
     /// screen unchanged.
     public var clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
 
@@ -126,7 +126,7 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     private static let toneMapStride = (MemoryLayout<ToneMapping.Packed>.stride + 255) & ~255
 
     /// Whether the simulation keeps running while nothing is being drawn — the window hidden,
-    /// minimised, covered or on another Space. **Off by default: hidden is frozen.**
+    /// minimized, covered or on another Space. **Off by default: hidden is frozen.**
     ///
     /// **The display link is the clock, and a hidden window has none.** macOS stops delivering its
     /// frames, so the simulation stops with them; when the window returns, the first frame reports the
@@ -328,9 +328,9 @@ public final class FrameRenderer: NSObject, CAMetalDisplayLinkDelegate {
     /// Pass two: the scene fitted to the display, then the interface on top of it.
     ///
     /// **The interface is drawn here, after the curve, and that is the whole reason the two are one
-    /// pass.** Scene colour is radiance and gets tone mapped; interface colour is a *specification* —
+    /// pass.** Scene color is radiance and gets tone mapped; interface color is a *specification* —
     /// a brand red is that red, not "that red as it would look lit by this sun". Tone map the HUD as
-    /// well and every interface colour arrives desaturated with nothing to say why.
+    /// well and every interface color arrives desaturated with nothing to say why.
     private func encodeToneMapAndInterface(to target: MTLTexture,
                                            scene: MTLTexture,
                                            frameSlot: Int,

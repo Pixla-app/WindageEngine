@@ -29,7 +29,7 @@ struct WEParticleOut {
     float4 colour;
 };
 
-/// **Expanded from one instance in the vertex shader**, so the CPU writes a position and a colour
+/// **Expanded from one instance in the vertex shader**, so the CPU writes a position and a color
 /// per particle rather than four corners. The corner is the vertex id; the camera's axes arrive
 /// once per frame.
 vertex WEParticleOut weParticleVertex(uint vertexID [[vertex_id]],

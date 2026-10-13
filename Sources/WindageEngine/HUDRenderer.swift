@@ -10,15 +10,15 @@ import simd
 /// Draws the interface, **after** the scene has been tone mapped.
 ///
 /// **The ordering is the point of this type.** A HUD drawn inside the scene's shading would go
-/// through exposure and a filmic curve like everything else, and a brand colour would arrive on
+/// through exposure and a filmic curve like everything else, and a brand color would arrive on
 /// screen desaturated and shifted — quietly, with nothing to indicate why. `FrameRenderer` calls
 /// `GameLoop.encodeHUD` after the scene, and this renderer's pipeline applies no curve, so a
 /// ``UIColor`` lands as the exact value it was authored as.
 ///
-/// **What this is not.** There is no layout, no text, no widgets and no event handling. It draws
-/// coloured rectangles and lines in screen space, which is enough for a reticle, a bar, a panel or a
-/// marker. Text and layout arrive when a title actually needs them and can show what shape they
-/// should be — the same extract-when-proven rule as everything else here.
+/// **What this is not.** There is no layout, no widgets and no event handling. It draws colored
+/// rectangles, lines, rings, filled outlines and text in screen space, which is enough for a reticle,
+/// a bar, a panel, a marker or a label. Layout arrives when a title actually needs it and can show
+/// what shape it should be — the same extract-when-proven rule as everything else here.
 public final class HUDRenderer {
 
     /// Vertices reserved per frame in flight. Two triangles per rectangle.
@@ -29,7 +29,7 @@ public final class HUDRenderer {
     private let argumentTable: MTL4ArgumentTable
     private let vertexBuffer: MTLBuffer
 
-    /// Screen-space geometry accumulated this frame, in normalised device coordinates.
+    /// Screen-space geometry accumulated this frame, in normalized device coordinates.
     private var vertices: [Vertex] = []
     private var viewportSize = SIMD2<Float>(1, 1)
 
@@ -187,7 +187,7 @@ public final class HUDRenderer {
     /// then this renderer drew rectangles, lines, rings and text, and a shape was approximated out of
     /// those — which is how a curve built from quads came out hatched with a hairline seam at every
     /// joint. A polygon is triangulated once, here, and its triangles share their vertices exactly, so
-    /// the rasteriser's fill rule leaves no seam between them.
+    /// the rasterizer's fill rule leaves no seam between them.
     ///
     /// The outline must be *simple* — no edge crossing another. One that is not is still drawn, but
     /// only in part: see ``triangulate(_:)``.
@@ -196,9 +196,9 @@ public final class HUDRenderer {
     /// is given in pixels as the sample gives it. This pipeline has no multisampling, so a filled shape
     /// with any diagonal in it came out stair-stepped: the engine's mark on its own splash, the first
     /// thing a player sees, with jagged edges at 640 × 400 and visibly so at a window's size. A strip
-    /// fading from the colour to nothing runs round the outline instead (``rim(of:width:)``); the
+    /// fading from the color to nothing runs round the outline instead (``rim(of:width:)``); the
     /// shader premultiplies, so the fade composites cleanly over whatever is beneath. Pass 0 for hard
-    /// edges — a shape that must tile against its neighbour exactly wants those.
+    /// edges — a shape that must tile against its neighbor exactly wants those.
     public func fill(polygon points: [SIMD2<Float>], color: UIColor, feather: Float = 1) {
         guard color.srgb.w > 0, points.count >= 3 else { return }
         let placed = points.map(toDevice)
@@ -403,7 +403,7 @@ public final class HUDRenderer {
         }
     }
 
-    /// Points, origin top-left, to normalised device coordinates.
+    /// Points, origin top-left, to normalized device coordinates.
     private func toDevice(_ point: SIMD2<Float>) -> SIMD2<Float> {
         SIMD2((point.x / viewportSize.x) * 2 - 1,
               1 - (point.y / viewportSize.y) * 2)

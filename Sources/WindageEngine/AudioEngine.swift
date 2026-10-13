@@ -8,7 +8,7 @@ import simd
 
 /// Positional one-shot audio.
 ///
-/// **Spatialised from the start, not stereo panning bolted on later.** A game about distance needs
+/// **Spatialized from the start, not stereo panning bolted on later.** A game about distance needs
 /// sound to carry distance: a plate hit at 800 m should arrive from where the plate is and sound
 /// like it is 800 m away. `AVAudioEnvironmentNode` does the head-related work; what a title supplies
 /// is a listener each frame and a world position per sound.
@@ -21,7 +21,7 @@ import simd
 /// **The one-shots' curve was tuned for a shot heard across a range**: full volume out to 8 m, then
 /// 90% of the inverse law. Put a brazier's crackle through it and it is as loud at 8 m as at arm's
 /// length and still 43% at 20 m — two braziers fill a level with fire. Loops go through a second
-/// spatialiser with the physical inverse law from 2 m: half as loud at twice the distance, which is
+/// spatializer with the physical inverse law from 2 m: half as loud at twice the distance, which is
 /// what a small, near sound does. Measured, not argued — see ``renderOffline(seconds:)``.
 ///
 /// > **A landmine worth knowing before adding any AVFoundation callback here.** This type is
@@ -40,7 +40,7 @@ public final class AudioEngine {
 
     private let engine = AVAudioEngine()
     private let environment = AVAudioEnvironmentNode()
-    /// The loops' spatialiser — see the type's notes.
+    /// The loops' spatializer — see the type's notes.
     private let nearEnvironment = AVAudioEnvironmentNode()
     private var players: [AVAudioPlayerNode] = []
     private var nextVoice = 0
@@ -51,7 +51,7 @@ public final class AudioEngine {
     private var nextLoop = 0
     private let isOffline: Bool
 
-    /// Where a loop's inverse falloff starts, in metres: full volume nearer than this, half at twice it.
+    /// Where a loop's inverse falloff starts, in meters: full volume nearer than this, half at twice it.
     public static let loopReferenceDistance: Float = 2
 
     /// A loop that is playing. Hand it back to ``moveLoop(_:to:)`` and ``stopLoop(_:)``.
@@ -183,7 +183,7 @@ public final class AudioEngine {
     ///
     /// **Each loop starts somewhere different in its sound**, so two braziers playing the same
     /// crackle are not a single crackle in two places — which is what starting both at sample zero
-    /// sounds like. Through the near spatialiser; see the type's notes.
+    /// sounds like. Through the near spatializer; see the type's notes.
     @discardableResult
     public func startLoop(_ name: String, at position: SIMD3<Float>, volume: Float = 1) -> Loop? {
         guard let buffer = buffers[name], buffer.frameLength > 0 else { return nil }
@@ -296,7 +296,7 @@ public final class AudioEngine {
     }
 
     /// Plays without a position — for anything that happens *to the player* rather than in the
-    /// world, where spatialising it would only make it quieter and further away.
+    /// world, where spatializing it would only make it quieter and further away.
     public func play(_ name: String, volume: Float = 1) {
         guard let buffer = buffers[name] else { return }
         let player = players[nextVoice]
@@ -311,7 +311,7 @@ public final class AudioEngine {
     /// The loops, 0…1 — a brazier's crackle, a generator's hum — and **nothing else**: the player's
     /// ambience setting.
     ///
-    /// **On the loops' own spatialiser**, which is why it can be separate at all: every loop and no
+    /// **On the loops' own spatializer**, which is why it can be separate at all: every loop and no
     /// one-shot passes through it. A player who wants the fire quieter should not have to turn down
     /// their own footsteps with it, which is what one volume made them do. ``masterVolume`` still
     /// scales everything, this included.
@@ -322,7 +322,7 @@ public final class AudioEngine {
 
     /// Everything this engine plays, 0…1 — the player's volume setting.
     ///
-    /// **On the main mixer, after the spatialiser**, so it scales every voice by the same amount
+    /// **On the main mixer, after the spatializer**, so it scales every voice by the same amount
     /// without touching the distance attenuation that says how far away each one is.
     public var masterVolume: Float {
         get { engine.mainMixerNode.outputVolume }

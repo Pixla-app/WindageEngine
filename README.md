@@ -1994,9 +1994,9 @@ around.
   is how one end of a corridor goes dark while the lamp is plainly shining on it.
 - **The falloff needs a floor in the denominator.** A fragment exactly at a lamp's position is a
   division by zero, and the pixel that produces is not "very bright" — it is `NaN`, which draws black.
-- **Local lights cast no shadows.** There is one shadow map and the sun has it, so a lamp reaches
-  through a wall. A real limitation, and the reason the sample's ranges are short: it is only obvious
-  when a lamp reaches far enough for it to be.
+- **Local lights cast no shadows — at the time; they do now** (see "Shadows for the lamps" and "Point
+  lights cast too"). There was one shadow map and the sun had it, so a lamp reached through a wall: a real
+  limitation then, and the reason the sample's ranges are short.
 - **A lamp in daylight does almost nothing**, which is correct and is why the sunlit level has none.
 
 ### Two things in the level and the sample

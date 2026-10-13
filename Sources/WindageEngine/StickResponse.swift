@@ -16,7 +16,7 @@ public nonisolated enum StickResponse {
     public static let moveDeadzone: Float = 0.16
     public static let lookDeadzone: Float = 0.10
 
-    /// 1 is linear. Above 1 gives fine control near the centre and full speed at the edge, which is
+    /// 1 is linear. Above 1 gives fine control near the center and full speed at the edge, which is
     /// what aiming wants; movement stays nearly linear because walking speed should feel direct.
     public static let moveExponent: Float = 1.3
     public static let lookExponent: Float = 2.0
@@ -26,7 +26,7 @@ public nonisolated enum StickResponse {
     /// **The deadzone is radial, not per-axis, and that distinction is the whole point.** Sticks
     /// never rest at exactly zero — they wander by a few percent — so something must ignore small
     /// readings or the view drifts while untouched. The obvious implementation clamps each axis
-    /// separately, which carves a *square* hole out of the centre: push diagonally at 45° and both
+    /// separately, which carves a *square* hole out of the center: push diagonally at 45° and both
     /// axes must individually clear the threshold, so the stick feels dead in the corners and
     /// snappy along the axes. Measuring the magnitude instead carves a circle, which is the shape
     /// the stick actually moves in.

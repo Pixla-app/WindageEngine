@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Level of detail · Windage Engine</title>
+  <meta name="description" content="MeshDetail makes simpler tiers of a mesh when it loads and picks the coarsest one a distant copy can use without a visible change.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html" aria-current="page">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html" aria-current="page">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Level of detail</h1>
+<p><code>MeshDetail</code> makes simpler versions of a mesh when it loads, and gives you the rule that picks one for how far away a copy stands. You need it when a scene has thousands of copies of a heavy mesh, most of whose triangles are detail too small to see from where they stand.</p>
+<h2 id="tiers">Tiers</h2>
+<p>A mesh gets up to ten <strong>tiers</strong> (<code>MeshDetail.maximumTiers</code>), each aiming for about half the triangles of the one before (<code>MeshDetail.step</code>). Tier 0 is the mesh as loaded. They are called tiers rather than levels because in this engine a level is a <code>Level</code> file.</p>
+<p>Tiers stop early when a tier would keep more than <code>MeshDetail.stall</code> (85%) of the triangles before it, and a submesh of <code>MeshDetail.smallest</code> (12) triangles or fewer is left alone.</p>
+<p>For a mesh that came through <code>MeshLoader</code>, one call does everything:</p>
+<pre class="code-swift"><span class="c">// Your game, after MeshLoader.load(…). Safe off the main thread, and worth running there.</span>
+<span class="k">let</span> tiers = MeshDetail.tiers(<span class="k">for</span>: loaded, vertexDescriptor: layout, normalAttribute: 1)</pre>
+<p><code>vertexDescriptor</code> is the one the mesh was loaded with: its first layout's stride, and the offset of attribute <code>normalAttribute</code>, which each tier rewrites. The mesh's own buffers are read on the CPU. A mesh with a submesh that is not triangles gets no tiers. Simplifying a 19,000-triangle mesh takes a few milliseconds.</p>
+<p>Each <code>MeshDetail.Tier</code> has:</p>
+<div class="table"><table><thead><tr><th>Property</th><th>What it is</th></tr></thead><tbody><tr><td><code>vertices</code></td><td><code>[UInt8]</code> in the full mesh's vertex layout, three vertices per triangle</td></tr><tr><td><code>submeshes</code></td><td><code>[[UInt32]]</code>, per submesh, indices into <code>vertices</code></td></tr><tr><td><code>error</code></td><td>the worst of its submeshes' errors, in the mesh's units</td></tr></tbody></table></div>
+<p>Tier <code>i</code> is reduction <code>i</code> of every submesh, so a copy changes all its parts at once. A submesh with fewer reductions repeats its coarsest.</p>
+<h3 id="the-steps-for-a-mesh-that-did-not-come-from-meshloader">The steps, for a mesh that did not come from MeshLoader</h3>
+<p>The call above is two public steps. <code>reductions(indices:positions:vertexCount:stride:)</code> simplifies one submesh into <code>[MeshDetail.Reduction]</code>, each with <code>indices</code> into the full mesh's vertices and an <code>error</code>; <code>positions</code> points at the first vertex's three position floats. <code>tiers(_:full:vertices:stride:normalOffset:)</code> turns per-submesh reductions into tiers; <code>full</code> is each submesh's own indices. Every reduction is made from the full mesh, so errors do not add up from tier to tier.</p>
+<h2 id="choose">Choosing a tier: the half-pixel rule</h2>
+<p>Each tier's error is how far its surface strays from the original, in the mesh's units. Seen from far enough away, that covers less than half a pixel and the tier cannot be told from the full mesh. So there is no table of distances to tune per asset.</p>
+<pre class="code-swift"><span class="c">// Your game, per copy, per frame. `fovy` is the vertical field of view your game passes to</span>
+<span class="c">// matrix_perspective_right_hand_reverse_z(fovyRadians:aspectRatio:nearZ:); `viewportHeight` is in pixels,</span>
+<span class="c">// from viewportChanged(width:height:). `box` is the copy's BoundingBox in the world.</span>
+<span class="k">let</span> radius = simd_length(box.maximum - box.minimum) / 2
+<span class="k">let</span> distance = simd_distance(camera.position, box.center) - radius
+<span class="k">let</span> tier = MeshDetail.choose(errors: tiers.map(\.error),
+                             distance: distance,
+                             scale: copyScale,                 <span class="c">// the copy's uniform scale</span>
+                             pixelsPerRadian: Float(viewportHeight) / fovy)</pre>
+<ul><li><code>errors[i]</code> is tier <code>i + 1</code>'s error. A result of 0 means the full mesh; a result of <code>n</code> means <code>tiers[n - 1]</code>, because the array <code>tiers(for:…)</code> returns starts below the full mesh.</li><li><code>distance</code> is from the eye to the nearest the copy can come: its box's center less its radius. A distance of 0 or less returns the full mesh.</li><li><code>scale</code> is the copy's size. A tree scaled up strays further.</li><li><code>pixelsPerRadian</code> is the viewport's height in pixels over its vertical field of view in radians.</li><li><code>pixels</code> defaults to <code>0.5</code>.</li></ul>
+<div class="note"><p><strong>Half a pixel, not one.</strong> At one pixel, a wood of trees six pixels tall visibly lost their tiers of branches: a pixel of error all round an outline that small adds up to a different shape.</p></div>
+<p>The tests check that a farther copy never gets a finer tier than a nearer one.</p>
+<h2 id="normals">Recomputed normals</h2>
+<p>A simplified mesh keeps some vertices and drops the rest, and a kept vertex keeps its normal. On a faceted prop that normal belonged to one face of many, perhaps one facing the ground, so a far copy drew nearly black. Every tier therefore gets <strong>its own vertices, with normals made again from its own faces</strong>: each corner's normal is the area-weighted average of the faces meeting at its position that bend less than 60° from its own face (<code>MeshDetail.creaseCosine</code>), so hard edges stay hard.</p>
+<p>The cost is three vertices per triangle of each tier, which halves with every tier: about 1 MB for every tier of a 19,000-triangle tree together.</p>
+<h2 id="permissive">Permissive simplification</h2>
+<p>The simplifier may collapse across hard edges. Low-poly packs split every vertex at every hard edge, so a careful simplifier finds nothing it may touch. The price is softened shading on a far copy, below half a pixel.</p>
+<h2 id="drawing">Drawing a tier is the game's job</h2>
+<p><code>MeshDetail</code> is the CPU half only, like <code>InstanceBatches</code>. Putting a tier's vertices in a buffer and drawing them is yours, because only your game knows its vertex layout and how it batches.</p>
+<p><strong>Copies at different tiers are different batches.</strong> Key <code>InstanceBatches</code> by mesh <em>and</em> tier:</p>
+<pre class="code-swift"><span class="c">// Your game.</span>
+<span class="k">struct</span> DrawKey: Hashable, Sendable {
+    <span class="k">var</span> mesh: Int
+    <span class="k">var</span> tier: Int
+}
+<span class="k">let</span> batches = InstanceBatches&lt;DrawKey&gt;(copies)   <span class="c">// copies: [(DrawKey, simd_float4x4)]</span></pre>
+<p>See <a href="instancing.html">instancing</a> and <a href="culling.html">culling</a>.</p>
+<h2 id="what-it-does-not-do">What it does not do</h2>
+<ul><li><strong>It is not in the sample.</strong> The sample's meshes are a few hundred triangles seen from a few meters, so no tier would ever be chosen. A test proves it on a mesh loaded through <code>MeshLoader</code>.</li><li><strong>No blending between tiers.</strong> A copy switches tier from one frame to the next; the half-pixel rule keeps the switch out of sight.</li></ul>
+<h2 id="the-license-you-ship">The license you ship</h2>
+<p>The simplifier is meshoptimizer's (MIT), vendored unmodified as the <code>MeshOptimizer</code> target: the engine's first code not written in Swift. <strong>An app that ships <code>MeshDetail</code> ships meshoptimizer's license</strong>, <code>Sources/MeshOptimizer/LICENSE.md</code>, alongside its other notices.</p>
+<p>Added in 0.25.0 (<a href="changelog.html">changelog</a>): 1,000 trees of 19,000 triangles each went from 25 ms a frame to 5.6 ms on an M2.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#tiers">Tiers</a><a href="#choose">Choosing a tier: the half-pixel rule</a><a href="#normals">Recomputed normals</a><a href="#permissive">Permissive simplification</a><a href="#drawing">Drawing a tier is the game&#x27;s job</a><a href="#what-it-does-not-do">What it does not do</a><a href="#the-license-you-ship">The license you ship</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

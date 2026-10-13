@@ -51,7 +51,7 @@ public nonisolated struct Volume {
     /// and a sentry are the same question to a bullet, and they are only asked separately when they
     /// cannot be put in one array.
     ///
-    /// Tested as a *segment* rather than a point because a round moves several metres per simulation
+    /// Tested as a *segment* rather than a point because a round moves several meters per simulation
     /// step — checking only where it ended up lets it pass clean through anything thinner than that.
     public static func firstHit(segmentFrom start: SIMD3<Float>,
                                 to end: SIMD3<Float>,

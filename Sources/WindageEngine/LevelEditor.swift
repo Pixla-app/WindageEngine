@@ -40,7 +40,7 @@ public nonisolated struct LevelEditor {
     /// changes when there are none trains people to ignore it.
     public private(set) var isDirty = false
 
-    /// How far one nudge moves something, in metres.
+    /// How far one nudge moves something, in meters.
     public static let nudge: Float = 0.5
     /// How far one turn rotates something, in radians. 15°, so twenty-four of them is a full circle
     /// and a right angle is reachable exactly.
@@ -143,7 +143,7 @@ public nonisolated struct LevelEditor {
     // **An operation that changes nothing records nothing.** Brightening a placement with no lamp
     // is a no-op, not an undo step and an unsaved change.
 
-    /// How far one press raises or lowers a lamp, in metres.
+    /// How far one press raises or lowers a lamp, in meters.
     public static let lampRaise: Float = 0.1
 
     /// How much one press brightens a lamp. **A third of a stop** — 2^⅓, three presses to double —
@@ -164,7 +164,7 @@ public nonisolated struct LevelEditor {
         edit { $0.light = light }
     }
 
-    /// Raise the selection's lamp — or lower it, with a negative distance — in **metres of the
+    /// Raise the selection's lamp — or lower it, with a negative distance — in **meters of the
     /// world**. The lamp's offset scales with its placement, so on a placement at twice the size the
     /// offset moves half as far; a key that moved it by different amounts on different things would
     /// be a key nobody could judge.
@@ -174,7 +174,7 @@ public nonisolated struct LevelEditor {
     }
 
     /// Brighten the selection's lamp by a factor — below 1 dims it — within ``lampIntensityRange``.
-    /// The colour keeps its hue: every channel scales together.
+    /// The color keeps its hue: every channel scales together.
     public mutating func brightenLight(by factor: Float) {
         guard let light = selected?.light, factor > 0, factor != 1 else { return }
         let intensity = max(light.color.max(), 1e-6)

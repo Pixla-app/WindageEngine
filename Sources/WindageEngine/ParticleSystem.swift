@@ -16,25 +16,25 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
 
     /// How many one burst throws.
     public var count: Int
-    /// Metres per second along the burst's axis, before the per-particle variation.
+    /// Meters per second along the burst's axis, before the per-particle variation.
     public var speed: Float
-    /// Metres per second across it — how wide the cone opens.
+    /// Meters per second across it — how wide the cone opens.
     public var spread: Float
     /// Seconds, before the per-particle variation.
     public var lifetime: Float
-    /// Edge length in metres at birth.
+    /// Edge length in meters at birth.
     public var size: Float
     /// How much the size grows over a lifetime: 0 stays the same, 1 doubles. Smoke spreads as it
     /// thins; a spark does not.
     public var growth: Float = 0
 
-    /// Metres per second squared, **signed and per recipe**. Dirt falls; an ember rises on the heat
+    /// Meters per second squared, **signed and per recipe**. Dirt falls; an ember rises on the heat
     /// it came from; a flash does neither, because it is light rather than matter.
     public var gravity: Float = -6.5
     /// Fraction of velocity shed per second — what stops a particle flying on a parabola for ever.
     public var drag: Float = 2.4
 
-    /// Colour, **linear and unbounded**. Above 1 is how a spark reads as hot rather than as orange
+    /// Color, **linear and unbounded**. Above 1 is how a spark reads as hot rather than as orange
     /// paint: the scene is HDR and the tone map rolls it towards white.
     public var color: SIMD3<Float>
     /// Opacity at birth.
@@ -47,7 +47,7 @@ public nonisolated struct ParticleRecipe: Sendable, Equatable {
     ///
     /// Matter — dust, smoke, dirt — covers what is behind it. Light — a spark, an ember, a flash —
     /// adds to it and covers nothing, so a dozen sparks in front of each other get brighter where a
-    /// dozen dust motes get more opaque. Both go through **one pipeline**: the colour is
+    /// dozen dust motes get more opaque. Both go through **one pipeline**: the color is
     /// premultiplied either way, and light simply writes zero coverage, which turns the "over"
     /// blend into an add. Two pipelines would mean two draws and a sort between them.
     public var glows: Bool = false
@@ -97,7 +97,7 @@ public nonisolated struct ParticleSystem: Sendable {
         public var lifetime: Float
         public var size: Float
         /// Which recipe it came from, by index into the system's ``recipes``. **An index rather than
-        /// a copy**, so a pool of a thousand is not a thousand copies of the same colour and curve.
+        /// a copy**, so a pool of a thousand is not a thousand copies of the same color and curve.
         public var recipe: Int
         /// When it was born, in bursts thrown — what "oldest" means when the pool is full.
         var birth: Int
@@ -188,7 +188,7 @@ public nonisolated struct ParticleSystem: Sendable {
         particles[victim] = particle
     }
 
-    /// How a particle looks at its current age: its colour **premultiplied** by opacity, and its
+    /// How a particle looks at its current age: its color **premultiplied** by opacity, and its
     /// coverage — zero for anything that glows. See ``ParticleRecipe/glows``.
     public func appearance(of particle: Particle) -> (color: SIMD3<Float>, coverage: Float, size: Float) {
         let r = recipes[particle.recipe]

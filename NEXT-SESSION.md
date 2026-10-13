@@ -67,6 +67,20 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-13 — the docs, written (Unreleased)
+
+**windageengine.com's docs are complete**: 29 guides (every sidebar topic, plus loading meshes, the camera,
+sky and environment, particles, instancing, level of detail, culling and saving), a reference page of every
+public type linked to its guide, the changelog as a page, search (box or ⌘K), and a Contents menu on phones.
+Sources in `Brand/web/docs-src/`, built by `Brand/web/build-docs.py` — **run it after changing a guide, the
+changelog or a public type**. Every Swift identifier in the examples exists (checked by script); Your first
+game was built and run. **Doc comments are US English now** (the sweep the owner scheduled for publication),
+and four that had stopped being true were corrected. Comments only — no consumer can be affected.
+
+> **Found while writing, not changed:** `SprintLatch` is public, but has no public `init` and its
+> `isEngaged` is not public, so a game can neither make nor read one. Either it should be internal or it
+> needs both. Raised with the owner.
+
 ## Done 2026-10-13 — the British names removed (0.27.0)
 
 The 0.26.0 aliases and the level reader's `colour` key are deleted, at the owner's word: no one outside the

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The sample game · Windage Engine</title>
+  <meta name="description" content="WindageSample, the small first-person game that ships with the engine — how to run it, its controls, its environment variables and how its code is split.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html" aria-current="page">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html" aria-current="page">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Start</p>
+    <h1>The sample game</h1>
+<p><code>WindageSample</code> is a complete, deliberately dull first-person game that ships in the engine's repository and is built against the engine's public API only. It exists to prove that someone who did not write the engine can build with it, and it is the best place to see how any feature is meant to be used.</p>
+<figure><img src="../images/courtyard.jpg" alt="The courtyard, drawn by the sample"><figcaption>The courtyard level.</figcaption></figure>
+<h2 id="what-is-in-it">What is in it</h2>
+<p>The game is a fetch quest: touch every marked crate before the clock runs out. Around that it carries everything a small game needs:</p>
+<ul><li><strong>Two levels</strong>, COURTYARD and RUINS, shipped as JSON files in <code>Sources/WindageSampleCore/Resources/</code> and loaded with <code>Level.load(named:bundle:)</code>. They differ on purpose: a mesh the courtyard never uses, a different spawn, nine objectives against six, and a sun of their own. Winning moves you on to the next.</li><li><strong>An editor</strong>, built on the engine's <code>LevelEditor</code>, opened in place with <strong>Tab</strong>.</li><li><strong>Sound</strong>: a pickup played at the crate, footsteps by surface, a brazier's crackle, all generated. With no output device the game runs quiet.</li><li><strong>A save</strong>: best times per level through <code>SaveStore</code>, with a version field and a migration from the first format.</li><li><strong>A settings screen</strong> for key and controller bindings, look sensitivity, dead zones, head bob and volume. It saves as you change it.</li><li><strong>Animated figures</strong> that wave as you come near, shadows, lamps, particles and instanced debris.</li></ul>
+<h2 id="run-it">Run it</h2>
+<pre class="code-sh">swift run WindageSample</pre>
+<p>No Xcode project, scheme or signing. The window opens on the engine's splash; any key skips it and still does what it was pressed for. The console prints which level file it loaded.</p>
+<div class="note"><p>Once the editor has saved, its copy lives in Application Support and shadows the file in the repository, so editing <code>courtyard.json</code> appears to do nothing. The console line says so, and <strong>⌘⌫</strong> in the editor throws the copy away.</p></div>
+<h2 id="controls">Controls</h2>
+<p>The movement keys come from the player's bindings, so the on-screen hints are read from them rather than typed in. These are the defaults:</p>
+<div class="table"><table><thead><tr><th>Key</th><th>Does</th></tr></thead><tbody><tr><td>W A S D</td><td>move</td></tr><tr><td>Left Shift</td><td>sprint</td></tr><tr><td>Space</td><td>jump</td></tr><tr><td>C</td><td>crouch (slide when sprinting)</td></tr><tr><td>click / Esc</td><td>capture / release the mouse</td></tr><tr><td>O</td><td>settings</td></tr><tr><td>P</td><td>pause</td></tr><tr><td>R</td><td>restart the run</td></tr><tr><td>N</td><td>next level</td></tr><tr><td>M</td><td>cycle tone mapping: clamp, Reinhard, ACES</td></tr><tr><td>Tab</td><td>in and out of the editor</td></tr></tbody></table></div>
+<p>With a controller connected, the left stick moves, the right stick looks and the menu button opens settings.</p>
+<p>In the editor: aim and <strong>click</strong> (or Space) to pick, arrows move, <strong>Q/E</strong> up and down, <strong>A/D</strong> turn, <strong>-/=</strong> scale, <strong>B</strong> copy, <strong>⌫</strong> delete, <strong>L</strong> lamp on and off, <strong>[ ]</strong> lamp height, <strong>, .</strong> lamp brightness, <strong>T</strong> choose a kind, <strong>I</strong> add one where the crosshair meets the ground, <strong>⌘S</strong> save, <strong>⌘Z</strong> undo, <strong>⌘R</strong> redo, <strong>⌘⌫</strong> revert to the shipped level.</p>
+<h2 id="environment-variables">Environment variables</h2>
+<p>The sample reads its options from the environment, so a check or a screenshot can be repeated exactly.</p>
+<div class="table"><table><thead><tr><th>Variable</th><th>Effect</th></tr></thead><tbody><tr><td><code>WINDAGE_SAMPLE_LEVEL=1</code></td><td>start on that level: 0 courtyard, 1 ruins</td></tr><tr><td><code>WINDAGE_SAMPLE_CAMERA=x,y,z,yaw,pitch</code></td><td>start the camera there (degrees) and fly instead of walk</td></tr><tr><td><code>WINDAGE_SAMPLE_WALK=&quot;d:0.7 w:1.0 wait:1&quot;</code></td><td>play a script of keys and seconds through the keyboard's own path; <code>yaw:</code> and <code>pitch:</code> turn the view</td></tr><tr><td><code>WINDAGE_SAMPLE_RATE=60</code></td><td>simulation steps per second; default 120</td></tr><tr><td><code>WINDAGE_SAMPLE_CHECK=1</code></td><td>run as a check: no window shown, no keyboard, no sound, saves of its own</td></tr><tr><td><code>WINDAGE_SAMPLE_FRAME=&lt;path&gt;</code></td><td>draw one frame to a PNG and quit</td></tr><tr><td><code>WINDAGE_SAMPLE_SPLASH=1</code> or <code>0</code></td><td>show or hide the splash; by default it is off in a check or a frame</td></tr><tr><td><code>WINDAGE_SAMPLE_SILENT=1</code></td><td>run with no audio engine at all</td></tr><tr><td><code>WINDAGE_SAMPLE_FPS=1</code></td><td>print frames and steps per second, and the longest wait between steps</td></tr><tr><td><code>WINDAGE_SAMPLE_CHARACTER=/path/Name</code></td><td>load a rig from <code>Name.usdc</code>, its clips from <code>Name_*.usdc</code> beside it</td></tr><tr><td><code>WINDAGE_SAMPLE_MEASURE_AUDIO=1</code></td><td>render the brazier's crackle offline, print its level at distances, quit</td></tr></tbody></table></div>
+<p>A scripted walk prints where the feet ended each segment, which is what <code>Tools/walks.py</code> checks against its records. See <a href="walks.html">walks</a> and <a href="frames.html">frames</a>.</p>
+<h2 id="split">How the code is split</h2>
+<p>The sample is three targets, and this is the shape the engine recommends for any game:</p>
+<div class="table"><table><thead><tr><th>Target</th><th>Holds</th></tr></thead><tbody><tr><td><code>WindageSampleCore</code></td><td>the logic that needs no window: <code>SampleRun</code> (the clock, objectives, pause, win and lose, the save format), <code>SampleLevel</code> (which level files exist and where an edited copy lives), <code>SampleRubble</code>, and the level files themselves</td></tr><tr><td><code>WindageSampleCoreTests</code></td><td>tests against the core, run by <code>swift test</code> with nothing launched</td></tr><tr><td><code>WindageSample</code></td><td>the app: <code>main.swift</code> (window, view, renderer) and <code>SampleGame</code>, the <code>GameLoop</code> that draws, plays sound and turns keys into calls on the core</td></tr></tbody></table></div>
+<p>A win condition, a clock, a pause and a save fail quietly, and none of them need a drawable, so in the core they run in <code>swift test</code> in milliseconds. The split has paid for itself: parallel tests found <code>SampleRun</code> keeping progress in one shared static store. The store is injected now, which is also what save slots need.</p>
+<p><code>SampleRun.step</code> also returns what happened as a value instead of calling back, so nothing mutates the run mid-step.</p>
+<p>To start your own, see <a href="first-game.html">Your first game</a>.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#what-is-in-it">What is in it</a><a href="#run-it">Run it</a><a href="#controls">Controls</a><a href="#environment-variables">Environment variables</a><a href="#split">How the code is split</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

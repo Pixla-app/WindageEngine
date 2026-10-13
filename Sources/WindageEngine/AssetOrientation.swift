@@ -9,8 +9,8 @@ import simd
 
 /// What space an asset was authored in, and the one matrix that brings it into this engine's.
 ///
-/// **This engine is Y-up and works in metres.** Almost nothing else agrees. A character coming out of
-/// a game-engine toolchain by way of Blender arrives **Z-up and in centimetres** — 176 units tall for
+/// **This engine is Y-up and works in meters.** Almost nothing else agrees. A character coming out of
+/// a game-engine toolchain by way of Blender arrives **Z-up and in centimeters** — 176 units tall for
 /// a person — and neither fact is a mistake anybody made. They are the conventions of the tools it
 /// passed through.
 ///
@@ -44,11 +44,11 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
     /// Which axis the asset treats as up.
     public var upAxis: UpAxis
 
-    /// How many of the asset's units make a metre — 1 for an asset already in metres, 100 for one in
-    /// centimetres.
+    /// How many of the asset's units make a meter — 1 for an asset already in meters, 100 for one in
+    /// centimeters.
     public var unitsPerMeter: Float
 
-    /// An asset already in this engine's space: Y-up, metres.
+    /// An asset already in this engine's space: Y-up, meters.
     public static let identity = AssetOrientation()
 
     public init(upAxis: UpAxis = .y, unitsPerMeter: Float = 1) {
@@ -86,7 +86,7 @@ public nonisolated struct AssetOrientation: Sendable, Equatable {
 
     /// Reads the up axis Model I/O reports, and takes the scale on trust from the caller.
     ///
-    /// - Parameter unitsPerMetre: measure it once — load the asset, read the height of its bounding
+    /// - Parameter unitsPerMeter: measure it once — load the asset, read the height of its bounding
     ///   box, and divide by how tall the thing actually is. A person is about 1.75 m.
     public static func read(from asset: MDLAsset, unitsPerMeter: Float = 1) -> AssetOrientation {
         AssetOrientation(upAxis: upAxis(of: asset), unitsPerMeter: unitsPerMeter)

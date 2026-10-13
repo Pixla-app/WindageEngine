@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clustered lights · Windage Engine</title>
+  <meta name="description" content="Point and spot lights with PunctualLight, checking a level&#x27;s light budget with LightSet, and per-fragment selection with ClusterGrid and ClusteredLights.">
+  <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v0.27.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html" aria-current="page">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html" aria-current="page">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Clustered lights</h1>
+<p>The sun and an environment map light an outdoor scene well, but they do nothing useful indoors: the sun doesn't reach inside, and sky-colored ambient lights a cellar as if the sky were overhead. A <code>PunctualLight</code> is a lamp. <code>ClusteredLights</code> lets each fragment find the few lamps that reach it, and <code>LightSet</code> checks that a level hasn't crowded too many into one place.</p>
+<h2 id="punctual">PunctualLight</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">init</span>(position: SIMD3&lt;Float&gt;,
+            color: SIMD3&lt;Float&gt;,
+            range: Float,
+            cone: Cone? = <span class="k">nil</span>)</pre>
+<ul><li><strong><code>color</code> is color times brightness, unbounded.</strong> It is radiant intensity, not a paint color. A lamp is far brighter than white paper, and the <a href="tone-mapping.html">HDR target and tone map</a> handle that.</li><li><strong><code>range</code> is finite on purpose.</strong> Inverse-square falloff never reaches zero, so without a cutoff, every lamp in a building would count as relevant to every fragment. <code>attenuation(at:)</code> is inverse-square with a smooth window to zero at the range. The denominator has a floor, because a fragment exactly at the lamp would otherwise be <code>NaN</code> and draw black.</li><li><strong><code>cone</code> is <code>nil</code> for a point light.</strong> <code>PunctualLight.Cone(direction:innerAngle:outerAngle:)</code> takes half-angles in radians: full brightness inside the inner angle, nothing beyond the outer, and a smooth fall between. A single cutoff angle would read as a stencil rather than a lamp.</li></ul>
+<p>A point light is just a spot with no cone, and the shader doesn't branch on it. Spot shading is <code>saturate(cosAngle * angleScale + angleOffset)</code>, squared. A light without a cone uses a scale of 0 and an offset of 1, so the same expression comes out as 1 everywhere.</p>
+<p>The sample's lantern light and an uncollected crate's glow:</p>
+<pre class="code-swift">lights.append(PunctualLight(position: SIMD3(at.x, at.y, at.z),
+                            color: SIMD3(1.0, 0.72, 0.42) * 26, range: 6.5))
+lights.append(PunctualLight(position: position + SIMD3(0, 0.6, 0),
+                            color: SIMD3(0.6, 6.0, 2.6), range: 4.5))</pre>
+<p>Three helpers are useful when ranking lamps. <code>influence(at:)</code> is attenuation weighted by luminance. <code>PunctualLight.luminance(_:)</code> is Rec. 709 luminance. <code>reaches(_:)</code> tests a <code>BoundingBox</code> against a light's range and cone, and only ever errs on the side of saying yes.</p>
+<h2 id="clusters">Clustering</h2>
+<p>Choosing a few lights per draw works only while draws are small. The sample's ground is a single 800-meter quad. With per-draw selection, that one draw got four lights for the whole level, and a spot five meters up lost to lamps standing closer to the plane. Clustering picks lights per fragment instead.</p>
+<p><code>ClusterGrid</code> divides the view frustum into tiles across the screen and slices into the distance:</p>
+<pre class="code-swift"><span class="k">private</span> <span class="k">static</span> <span class="k">let</span> clusterGrid = ClusterGrid(tilesX: 16, tilesY: 8, slices: 24,
+                                             nearPlane: 0.1, lightRange: 120)</pre>
+<ul><li><strong>Slices are exponential.</strong> An even cut would make the near slices microscopic and the far ones hundreds of meters deep. <code>depthScale</code> and <code>depthBias</code> let a shader find its slice with one logarithm: <code>slice = log(z) * scale + bias</code>.</li><li><strong><code>lightRange</code> is not a view distance.</strong> The engine's projection has an infinite far plane, but clustering needs a finite end. Geometry beyond <code>lightRange</code> still draws, it just gets no local lights. Choose the distance past which none of your lamps reaches.</li></ul>
+<p>Rebuild <code>ClusteredLights</code> every frame. The grid is in view space, so it changes whenever the camera moves, even if the lights don't:</p>
+<pre class="code-swift"><span class="k">let</span> clustered = ClusteredLights(lights: Array(lightSet.lights.prefix(SampleGame.maxSceneLights)),
+                                grid: SampleGame.clusterGrid,
+                                viewMatrix: camera.viewMatrix,
+                                fovY: projectionFovY,
+                                aspectRatio: aspectRatio,
+                                maximumIndices: SampleGame.maxClusterIndices)</pre>
+<p>It produces two arrays for your shader. <code>ranges</code> holds, for each cluster, an offset and a count into <code>indices</code>, which is a list of light indices grouped by cluster. Upload both, plus your own packed light array. The packed light layout belongs to your game, as does the shader that loops over a cluster's lights. <code>busiestCluster</code> is worth logging, because it sets the cost of the worst fragment. With 64 lights in a test scene, the busiest cluster held 9 and the average was 2.2. The sample's ruins have ten lights, and the busiest cluster holds 6.</p>
+<h2 id="budget">LightSet, and a budget that can't promise much</h2>
+<p><code>LightSet(lights:budget:negligible:)</code> holds a level's lights. It defaults to a budget of 4 and a <code>negligible</code> threshold of 0.02. <code>affecting(_:)</code> ranks the lights that reach a point or a box by influence, strongest first, and returns at most the budget.</p>
+<p>Ranking by influence instead of distance fixes the common problem: a light leaves the set at the point where it had nearly stopped mattering. It can't fix the general case. <strong>A fixed light budget can't promise a smooth hand-over in an arbitrary level.</strong> If five lights all contribute at one point, one of them gets dropped, and a bigger budget only changes where that happens.</p>
+<p>So the promise is conditional, and <code>isOverSubscribed(at:)</code> checks the condition: wherever no more than <code>budget</code> lights are above <code>negligible</code>, nothing the player can see is ever dropped. <code>overSubscribedPoints(among:)</code> runs that check over a list of points. The sample runs it at load, on spawn points and objectives:</p>
+<pre class="code-swift"><span class="k">let</span> crowded = lightSet.overSubscribedPoints(among: points)</pre>
+<p>A level that fails has a lighting fault built into its geometry, and it's better to find that before release than from a report of a flickering corridor.</p>
+<h2 id="placements">Lights that belong to a placement</h2>
+<p><code>Level.Placement.light</code> is a lamp that a placement carries, in the placement's own space: <code>position</code> is an offset from its origin, and the cone points in its frame. <code>Level.resolvedLights(on:)</code> returns every light in world space, the free-standing <code>lights</code> first and then each placement's. Moving, turning or copying a brazier in the <a href="levels.html">editor</a> takes its flame with it. The offset scales with the placement, but range and brightness don't.</p>
+<pre class="code-swift"><span class="k">var</span> lights = level.resolvedLights(on: SampleGame.ground)</pre>
+<h2 id="shadows">Shadows for the lamps</h2>
+<p>Spot lights cast shadows through <code>ShadowAtlas</code> and point lights through <code>ShadowCubes</code>. Both have a fixed number of slots, and the sample gives them to the lights with the highest luminance × range. See <a href="shadows.html">shadows</a>.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#punctual">PunctualLight</a><a href="#clusters">Clustering</a><a href="#budget">LightSet, and a budget that can&#x27;t promise much</a><a href="#placements">Lights that belong to a placement</a><a href="#shadows">Shadows for the lamps</a><a class="news" href="level-of-detail.html"><b>New in 0.25.0</b>Level of detail: simpler versions of each mesh, chosen by distance.</a>
+  </aside>
+</div>
+
+</body>
+</html>

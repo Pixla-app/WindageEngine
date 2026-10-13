@@ -28,16 +28,16 @@ import simd
 ///
 /// ### The geometry is constructed, so there is one drawing of it
 ///
-/// ``outline`` is built from five points on the stroke's centre line and a stroke width measured
-/// across, as type is — each arm's edges are its centre line moved half the width either way, every
+/// ``outline`` is built from five points on the stroke's center line and a stroke width measured
+/// across, as type is — each arm's edges are its center line moved half the width either way, every
 /// corner is where two of those edges meet, and every end is cut flat. **It is the only description of
-/// the mark**: ``draw(into:x:y:height:colour:)`` fills it, every file in `Brand/` is written from it,
+/// the mark**: ``draw(into:x:y:height:color:)`` fills it, every file in `Brand/` is written from it,
 /// and `EngineMarkTests` fails if a file and this disagree. Redrawing the mark means changing a number
 /// here and re-recording, never touching two places.
 ///
 /// ### It has no hue, and that is deliberate
 ///
-/// The studio's brand rules give each title a colour lane, and a title's accent outranks everything
+/// The studio's brand rules give each title a color lane, and a title's accent outranks everything
 /// inside that title. **This mark appears inside somebody else's game**, so a hue of its own would be
 /// a second brand competing with the one the player came for. Achromatic, in two tones: ``display`` on
 /// dark grounds, ``deep`` on light ones. An accent on the carried half was drawn and dropped: it made
@@ -101,7 +101,7 @@ public nonisolated enum EngineMark {
     /// The tone for light grounds — a page, a printed mark, anything that must meet a contrast ratio.
     public static let deep = UIColor(hex: 0x1B2027)
 
-    /// Fills the mark with its top-left corner at `x, y` and the given height, in `colour`.
+    /// Fills the mark with its top-left corner at `x, y` and the given height, in `color`.
     @MainActor
     public static func draw(into hud: HUDRenderer, x: Float, y: Float, height: Float, color: UIColor) {
         guard height > 0, color.srgb.w > 0 else { return }

@@ -27,7 +27,7 @@ public nonisolated struct FixedTimestep: Sendable {
     /// Duration of one simulation step, in seconds.
     public let step: Double
 
-    /// Longest single frame that will be honoured, in seconds.
+    /// Longest single frame that will be honored, in seconds.
     ///
     /// Without this a long stall — a breakpoint, a window drag, a texture upload — hands over a
     /// huge delta, which becomes a burst of steps, which takes longer than a frame, which makes the

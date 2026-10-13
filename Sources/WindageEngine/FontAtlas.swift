@@ -8,28 +8,28 @@ import CoreText
 import Metal
 import simd
 
-/// A rasterised glyph sheet, built at launch from an installed font.
+/// A rasterized glyph sheet, built at launch from an installed font.
 ///
-/// **Why rasterise at runtime rather than ship an atlas file.** A baked atlas is another asset to
+/// **Why rasterize at runtime rather than ship an atlas file.** A baked atlas is another asset to
 /// generate, version, and keep in step with the metrics that describe it — three things that drift
-/// apart. Rasterising at launch costs a few milliseconds once and cannot fall out of sync with
+/// apart. Rasterizing at launch costs a few milliseconds once and cannot fall out of sync with
 /// itself.
 ///
 /// **Why a bitmap and not signed distance fields.** SDF scales to any size from one sheet and is the
 /// right answer eventually. It is also a materially bigger piece of work, and a HUD drawn at a
-/// handful of sizes does not need it. Rasterising generously and scaling *down* covers the range a
+/// handful of sizes does not need it. Rasterizing generously and scaling *down* covers the range a
 /// HUD actually uses; scaling up is what looks bad, and this deliberately avoids it.
 public final class FontAtlas {
 
-    /// Height the glyphs are rasterised at. Drawing smaller than this is a clean downscale; drawing
+    /// Height the glyphs are rasterized at. Drawing smaller than this is a clean downscale; drawing
     /// much larger will soften.
     public static let rasterHeight: CGFloat = 64
 
-    /// Gap between glyphs in the sheet, so linear filtering cannot pull in a neighbour's edge.
+    /// Gap between glyphs in the sheet, so linear filtering cannot pull in a neighbor's edge.
     private static let padding: CGFloat = 4
 
     public struct Glyph: Sendable {
-        /// Position in the sheet, normalised.
+        /// Position in the sheet, normalized.
         public let uvOrigin: SIMD2<Float>
         public let uvSize: SIMD2<Float>
         /// Size and offset in raster pixels, relative to the text origin and baseline.
