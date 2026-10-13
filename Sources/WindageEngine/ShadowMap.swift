@@ -66,7 +66,7 @@ public final class ShadowMap {
         /// The engine binds the cascade's light matrix and the pipeline, then hands over the encoder and
         /// the argument table; the closure binds what its vertex function reads and encodes its draws.
         /// `nil` for an ordinary batch, which the engine draws object by object.
-        public let encode: ((MTL4RenderCommandEncoder, MTL4ArgumentTable) -> Void)?
+        public let encode: ((MTL4RenderCommandEncoder, MTL4ArgumentTable, Pass) -> Void)?
 
         public init(pipeline: MTLRenderPipelineState,
                     count: Int,
@@ -85,7 +85,7 @@ public final class ShadowMap {
 
         /// A batch that encodes its own draws — see ``encode``. Called once per cascade.
         public init(pipeline: MTLRenderPipelineState,
-                    encode: @escaping (MTL4RenderCommandEncoder, MTL4ArgumentTable) -> Void) {
+                    encode: @escaping (MTL4RenderCommandEncoder, MTL4ArgumentTable, Pass) -> Void) {
             self.pipeline = pipeline
             self.count = 1
             self.mesh = { _ in fatalError("a batch that encodes its own draws has no mesh") }
@@ -93,6 +93,21 @@ public final class ShadowMap {
             self.jointPaletteAddress = nil
             self.bounds = nil
             self.encode = encode
+        }
+    }
+
+    /// Which pass a self-drawing batch is being asked to encode for: **so it can draw only what that pass
+    /// can see.** A sun cascade near the eye covers a few metres; drawing a whole wood into it was three
+    /// quarters of a measured frame.
+    public struct Pass {
+        /// The cascade, atlas tile or cube face (`slice × 6 + face`) being recorded.
+        public let index: Int
+        /// World to this pass's light clip space — build a `Frustum` from it to cull.
+        public let viewProjection: matrix_float4x4
+
+        public init(index: Int, viewProjection: matrix_float4x4) {
+            self.index = index
+            self.viewProjection = viewProjection
         }
     }
 
@@ -268,7 +283,10 @@ public final class ShadowMap {
             for batch in batches where batch.count > 0 {
                 encoder.setRenderPipelineState(batch.pipeline)
                 if let encode = batch.encode {
-                    encode(encoder, argumentTable)
+                    let matrix = matrixBuffer.contents()
+                        .advanced(by: matrixBase + cascade * ShadowMap.matrixStride)
+                        .load(as: matrix_float4x4.self)
+                    encode(encoder, argumentTable, Pass(index: cascade, viewProjection: matrix))
                     continue
                 }
                 for index in 0..<batch.count {

@@ -67,6 +67,12 @@ What that means for the next session, concretely:
   Skinned animation was expected to be that case and **was not** — what it needed was a character
   standing *in* the courtyard, not a second scene around it. The bar is higher than it looked.
 
+## Done 2026-10-12 — a self-drawing batch knows its pass (0.24.0)
+
+`ShadowMap.Batch`'s `encode` closure gets a `ShadowMap.Pass` (index, light view-projection), so a batch can
+cull to each cascade, tile or face. Measured in the consumer it came from: a wood's shadows drawn whole into
+four cascades were three quarters of a frame; culled per cascade, the frame went from 75 to 25 ms.
+
 ## Done 2026-10-12 — shadows for self-drawn geometry (0.23.0)
 
 `ShadowMap.Batch(pipeline:encode:)` — a batch that encodes its own draws, for instanced copies and for a

@@ -3313,7 +3313,8 @@ final class SampleGame: GameLoop {
             let uniforms = uniformBuffer.gpuAddress
                 + UInt64(uniformOffset(frameSlot: frameSlot, drawable: SampleGame.rubbleSlot))
             let batchList = rubble.batches
-            batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table in
+            // The debris is small enough to draw whole into every pass; a game with a wood culls per `pass`.
+            batches.append(ShadowMap.Batch(pipeline: instancedShadowPipeline) { encoder, table, _ in
                 table.setAddress(uniforms, index: ShadowMap.BufferIndex.uniforms)
                 for (bufferIndex, vertexBuffer) in box.mesh.vertexBuffers.enumerated() {
                     table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)

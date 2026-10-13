@@ -207,7 +207,7 @@ public final class ShadowAtlas {
                 encoder.setRenderPipelineState(batch.pipeline)
                 // A batch that draws itself — instanced copies, a game-built mesh — see `ShadowMap.Batch.encode`.
                 if let encode = batch.encode {
-                    encode(encoder, argumentTable)
+                    encode(encoder, argumentTable, ShadowMap.Pass(index: caster.tile, viewProjection: caster.viewProjection))
                     continue
                 }
                 for index in 0..<batch.count {

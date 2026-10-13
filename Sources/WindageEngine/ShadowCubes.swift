@@ -282,7 +282,8 @@ public final class ShadowCubes {
                     if let encode = batch.encode {
                         encoder.setRenderPipelineState(batch.pipeline)
                         draws += 1
-                        encode(encoder, argumentTable)
+                        encode(encoder, argumentTable,
+                               ShadowMap.Pass(index: caster.slice * ShadowCubes.faceCount + face, viewProjection: matrix))
                         continue
                     }
                     var bound = false

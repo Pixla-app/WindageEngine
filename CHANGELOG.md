@@ -12,6 +12,24 @@ Every release of Windage Engine, newest first. Format follows
 
 Nothing yet.
 
+## [0.24.0] — 2026-10-12
+
+**A self-drawing shadow batch is told which pass it is drawing**, so it can draw only what that pass can see.
+Measured where it came from — a world editor's scattered wood of 1,000 heavy trees on an M2 — drawing every
+copy into all four sun cascades was three quarters of the frame (75 ms with shadows, 19 without); culling each
+cascade to its own frustum brought the same frame to 25 ms.
+
+### Changed — breaking
+
+- **`ShadowMap.Batch(pipeline:encode:)`'s closure takes a third argument, a `ShadowMap.Pass`**: the cascade,
+  atlas tile or cube face being recorded (`index`) and its light `viewProjection` — build a `Frustum` from it.
+  A batch that draws everything ignores it (`{ encoder, table, _ in … }`). Released hours after 0.23.0, with
+  no consumer outside this repository and the one it came from.
+
+### Added
+
+- **`ShadowMap.Pass`** — `index` and `viewProjection`, passed by `ShadowMap`, `ShadowAtlas` and `ShadowCubes`.
+
 ## [0.23.0] — 2026-10-12
 
 **Shadows for geometry the engine does not draw object by object.** Instanced copies cast now, and so can a
