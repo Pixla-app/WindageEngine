@@ -11,7 +11,7 @@ description: Add Windage Engine to a Swift package, run the sample game, play it
         <h2 id="add">Add the package</h2>
         <p>In your game's <code>Package.swift</code>:</p>
 <pre>dependencies: [
-    .package(url: <span class="p">"https://…/WindageEngine.git"</span>, from: <span class="p">"{{version}}"</span>)
+    .package(url: <span class="p">"https://github.com/Pixla-app/WindageEngine.git"</span>, from: <span class="p">"{{version}}"</span>)
 ]</pre>
       </li>
       <li>

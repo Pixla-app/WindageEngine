@@ -14,7 +14,7 @@ let package = Package(
     name: "MyGame",
     platforms: [.macOS(.v26)],
     dependencies: [
-        .package(url: "https://…/WindageEngine.git", .upToNextMinor(from: "{{version}}"))
+        .package(url: "https://github.com/Pixla-app/WindageEngine.git", from: "{{version}}")
     ],
     targets: [
         .executableTarget(

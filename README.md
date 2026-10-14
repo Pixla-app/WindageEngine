@@ -2300,7 +2300,11 @@ encode. **The engine must run sandboxed or not**, because it is not the thing be
 
 ## How a game consumes it
 
-A Swift package dependency — by URL, or by relative path for a checkout sitting beside the game.
+A Swift package dependency — by URL, or by relative path for a checkout sitting beside the game:
+
+```swift
+.package(url: "https://github.com/Pixla-app/WindageEngine.git", from: "1.0.0")
+```
 
 > **A relative-path dependency means the consuming project does not build from its own checkout
 > alone** — this repository has to be checked out beside it at the expected path. Depending on it by
@@ -2793,33 +2797,25 @@ or not a licence ever happens:
   schedule; that is a business decision, not an engineering one, and it competes directly with
   shipping games.
 
-### The repository says "all rights reserved", on purpose (2026-09-08)
+### The licence is PolyForm Small Business 1.0.0 (decided 2026-09-08, in `LICENSE` from 1.0.0)
 
-`LICENSE` reserves every right and grants nothing. **It is not the licensing decision** — that is
-still the one deferred below. It exists because a repository with no licence file is *already* all
-rights reserved, and leaving the file out means a reader cannot tell whether that was a decision or
-an oversight. Here it was an oversight.
-
-**The asymmetry is the whole argument for reserving first.** A permission granted publicly cannot be
-withdrawn from anyone who already has the code; a reservation can be relaxed whenever you like. So
-the cautious file today costs nothing and keeps every option, and a generous one today closes most of
-them permanently.
-
-### The licence is PolyForm Small Business 1.0.0 (decided 2026-09-08)
-
-Settled. Source-available, not open source: free to use, modify and ship commercially for an
+Source-available, not open source: free to use, modify and ship commercially for an
 organisation under 100 people and under USD 1,000,000 prior-year revenue, a paid licence above
 either, and no royalty, report or audit clause to administer. Attribution rides along on the
-licence's own `Required Notice:` mechanism.
+licence's own `Required Notice:` line.
 
 **What a game must show (owner, 2026-10-13): a credits line, nothing more** — "Uses Windage Engine © 2026
 Pixla LLC" in its credits or legal screen, with where the license can be read. The splash and the mark stay
 available and optional. That is where Unreal and Godot sit today; a mandatory splash on the free tier was
-Unity's old model, which it has since dropped. **The price above the PolyForm thresholds is not set yet.**
+Unity's old model, which it has since dropped.
 
-`LICENSE` reserves every right until the PolyForm text goes in, which happens when the engine is
-actually handed to somebody. That is a five-minute swap on the day, not an open question.
+**Above the thresholds: contact legal@pixla.app (owner, 2026-10-13).** No price is set, and none is needed
+to release: a price is set when a larger studio actually asks. The site's footer and `LICENSE` say where to
+ask.
 
-**Revisit when two things are true:** a game has actually shipped on this engine, and a
-second platform exists. Before that, licensing would be selling an unproven foundation for a
-single platform — which is a worse product than the games it is meant to be making.
+> **Until 1.0.0 `LICENSE` reserved every right** (2026-09-08), because a repository with no licence file is
+> already all rights reserved and leaving it out reads as an oversight. A permission granted publicly cannot
+> be withdrawn from anyone who already has the code, so the grant waited for the day the engine was handed
+> to somebody. An earlier line here deferred that day until a game had shipped and a second platform
+> existed; the owner overruled it (2026-10-13) — the engine is a product in its own right, released when it
+> is ready, not when a game is.
