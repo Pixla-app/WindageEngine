@@ -166,7 +166,7 @@ public nonisolated struct Camera: Sendable, Equatable {
 
         // **Clamped to 1, not normalised**, so holding two keys at once is not faster than one — and
         // a stick pushed a third of the way goes a third as fast. Normalising did the first and
-        // broke the second: every deflection past the dead zone flew at full speed (0.9.0).
+        // broke the second: every deflection past the dead zone flew at full speed (2026-09-11).
         if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
         let speed = input.isSprinting ? tuning.sprintSpeed : tuning.walkSpeed

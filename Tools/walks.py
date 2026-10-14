@@ -2,8 +2,8 @@
 """Run every walk the handoff documents, and fail on any that no longer does what it was measured doing.
 
 A walk proves a feature once, the day it is measured; after that it is a claim in a document, and a
-change to a level can quietly make it false — 0.13.0's slider was put across the walk 0.12.1 was measured
-by, and nothing noticed until it was re-run by hand a version later. So the walks are data
+change to a level can quietly make it false — the courtyard's slider was put across the turned-crate walk
+the day that walk was measured, and nothing noticed until it was re-run by hand later. So the walks are data
 (Tools/walks.json) and this runs them all.
 
 Each runs as a check (WINDAGE_SAMPLE_CHECK=<the walk's name>): no window, no keyboard, no sound, and its

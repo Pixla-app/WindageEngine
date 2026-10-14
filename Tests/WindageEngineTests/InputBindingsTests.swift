@@ -260,7 +260,7 @@ struct PlayerSettingsTests {
         #expect(wild.moveDeadzone == 0.5 && wild.lookDeadzone == 0)
     }
 
-    /// Head bob arrived in 0.8.1; a file from before it has none, and must not lose everything else.
+    /// Head bob arrived later than the settings file; a file from before it has none, and must not lose everything else.
     @Test("Head bob is on by default, off at zero, and clamped")
     func headBob() throws {
         #expect(PlayerSettings().headBobAmount == 1)
@@ -322,7 +322,7 @@ struct PlayerSettingsTests {
         #expect(s.stickLookScale == SIMD2(0.5, -0.5))
     }
 
-    /// A player who set 2.0 and inverted before 0.8.0 had that on both devices, and keeps it.
+    /// A player who set 2.0 and inverted before the per-device settings had that on both devices, and keeps it.
     @Test("A file with one shared sensitivity gives it to both devices")
     func sharedSettingMigrates() throws {
         let s = try decode(PlayerSettings.self, #"{ "lookSensitivity": 2, "invertLook": true }"#)

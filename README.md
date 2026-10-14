@@ -169,8 +169,8 @@ has nothing to build** · and a complete sample game exercising all of it.
 | ~~**Post-processing**~~ | **Tone mapping done 2026-09-10** — an HDR scene target, exposure in stops, and a choice of curve. See below. Bloom and colour grading are a *look* and are not here. |
 | ~~**Particles**~~ | **Done 2026-09-10.** `ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer` — embers, a pickup burst and landing dust in the sample. See below. |
 | ~~**A character controller**~~ | **Done 2026-09-10.** `CharacterController` — walking, standing on things, a step height, gravity, jump, crouch and slide. The sample walks on it. See below. |
-| ~~**Instancing**~~ | **Done 2026-10-12 (0.22.0).** `InstanceBatches` and `InstanceBuffer` — copies grouped by kind, one draw per submesh per kind; the sample strews debris with it. |
-| ~~**LOD**~~ | **Done 2026-10-12 (0.25.0).** `MeshDetail` — simpler *tiers* of a mesh made when it loads (meshoptimizer's simplifier, vendored), and the tier a copy's distance earns: the coarsest whose error is under half a pixel. Extracted from a world editor's woods; not in the sample, whose scenes are too small to need it. |
+| ~~**Instancing**~~ | **Done 2026-10-12.** `InstanceBatches` and `InstanceBuffer` — copies grouped by kind, one draw per submesh per kind; the sample strews debris with it. |
+| ~~**LOD**~~ | **Done 2026-10-12.** `MeshDetail` — simpler *tiers* of a mesh made when it loads (meshoptimizer's simplifier, vendored), and the tier a copy's distance earns: the coarsest whose error is under half a pixel. Extracted from a world editor's woods; not in the sample, whose scenes are too small to need it. |
 | ~~**Input rebinding, settings persistence**~~ | **Done 2026-09-10.** `InputBindings`, `PlayerSettings` and `KeyCode`; the sample has a settings screen that saves as you change it. See below. |
 
 **Contested — defer, and say so rather than pretending they are unwanted.**
@@ -900,7 +900,7 @@ ruins — two casting point lights across thirty-two drawables — that is **35 
 `ShadowBatch` grew an optional `bounds` for this. Nil means draw everything, which is the
 conservative direction: a false positive costs a draw and a false negative deletes a shadow.
 
-> **`Frustum` had no consumer inside this repository until now.** It arrived in 0.4 from two games
+> **`Frustum` had no consumer inside this repository until now.** It arrived on 2026-09-08 from two games
 > that wanted it, and the first thing here to need it was a shadow pass rather than a camera.
 
 ### `right × up == forward`, which looks like the wrong handedness
@@ -932,7 +932,7 @@ and the first person to move a brazier in the in-game editor would have left its
 floor where it had been. Now moving, turning or copying the placement moves the lamp; the offset scales
 with the placement and the lamp's reach does not.
 
-## What things are made of (0.9.1)
+## What things are made of (2026-09-11)
 
 `Level.Placement.surface` is what a placement is made of — `"stone"`, `"wood"`, `"metal"` — and
 `Level.groundSurface` what the ground is. `Level.surface(standingOn:)` answers the one question a
@@ -1048,7 +1048,7 @@ dips the whole 16 cm and 3.4°.
 and a test found it reaching 20% short of where it was kicked; a critically damped spring has a closed
 form, and using it makes the curve the same at any step size.
 
-### An ambience volume (0.11.2)
+### An ambience volume (2026-09-11)
 
 `AudioEngine.loopVolume` scales the loops and nothing else — the output of their own spatialiser,
 which every loop and no one-shot passes through — and `PlayerSettings.ambienceVolume` is the player's
@@ -1059,7 +1059,7 @@ footsteps turning it down**, which one volume made them do.
 With the sample's own sounds, the crackle at 2 m went from −33.10 to −39.12 dBFS and a walking footstep
 stayed at −29.18. The sample's settings screen has an **Ambience** row under Volume.
 
-### The frames are a check (0.20.0)
+### The frames are a check (2026-09-11)
 
 Shadows, the tone map, normal maps, the clustered lights, the lamps that cast: every one was judged by
 looking at a screenshot, and guarded by nothing afterwards — the tests draw no pixel, and neither does the
@@ -1081,9 +1081,9 @@ courtyard). Two levers tried first moved nothing — `ToneMapping`'s default cur
 overrides, and the constant depth bias at 25×, too small to see against a cascade's depth range — and a
 lever that moves nothing proves nothing.
 
-### The Drift W (0.21.0)
+### The Drift W (2026-09-15)
 
-**0.20.2's mark did not survive being looked at as a mark.** Drawn as a splash it was fine; drawn as a 16 px
+**The first mark, drawn on 2026-09-12, did not survive being looked at as a mark.** Drawn as a splash it was fine; drawn as a 16 px
 browser tab it was a smear, and as an app icon it was a chart. Six directions were drawn at the sizes that
 decide a mark and judged side by side — the reasons each lost are in `Brand/README.md` — and the engine's mark
 is now **a W drawn as one continuous stroke with its right half carried up 16% of its height.** The middle apex
@@ -1105,7 +1105,7 @@ a fan fails four tests.
 engine's shipped splash has. The name is still set in the host's font: the engine has a drawn mark and not yet
 a drawn wordmark.
 
-## The engine says its own name (0.20.2)
+## The engine says its own name (2026-09-12)
 
 Every engine somebody else ships with says so somewhere, and this one had no way to: no mark, no
 `Brand/`, nothing a game could show even if it wanted to. **Nothing in `LICENSE` requires it** — that
@@ -1141,7 +1141,7 @@ check's tolerance is sized for a lit scene and is the wrong instrument for a mar
 4% of the mark's own height changes a quarter of a percent of a 640 × 400 frame, which the scene's
 half-percent lets straight through. The splash frame carries its own, and catches it.
 
-## One course, four rates, one set of numbers (0.20.1)
+## One course, four rates, one set of numbers (2026-09-12)
 
 The four fixes below were each won over one thing, from rest, with a test of its own. **The capstone is
 one course that uses all of it** — walk, jump, three treads climbed, sprint, slide, off a cliff, land —
@@ -1166,9 +1166,9 @@ kicked when the feet climb something, and a climb happens on whichever step firs
 moment the step grid rounds by up to 33 ms at 30 a second, which is a third either way on the lag that
 follows. Placing a tread so contact falls exactly on a step boundary at every rate only moves the problem
 into a float comparison. A law whose clock starts at a collision is pinned between two consecutive steps
-of one run, which is what 0.18.0's own test does.
+of one run, which is what the eye-settling fix's own test does.
 
-### A slide covers the ground its curve says (0.19.0)
+### A slide covers the ground its curve says (2026-09-11)
 
 A slide's speed falls from a sprint's to a crouch's along `r^0.35`, and the step read that curve once and
 held the reading for the whole step — so the slide came up shorter the more coarsely a game stepped:
@@ -1181,7 +1181,7 @@ begins at a different moment at each rate, and then the rates are answering diff
 how a first attempt at this had the body jumping from different heights and landing at 6.3 m/s against
 4.66.
 
-### The eye settles as the exponential it is (0.18.0)
+### The eye settles as the exponential it is (2026-09-11)
 
 The eye closes a fraction of its lag per second — which is an exponential, and was taken as `1 − rate·dt`
 a step: the first two terms of it. Short by the rest at every rate, and **zero at `dt = 1/rate`**, so a
@@ -1193,9 +1193,9 @@ above the feet at 30 steps a second against 1.636 at 120.
 no rate at which it snaps. The eye lags a little longer after a step than it did — by exactly the terms the
 old form dropped.
 
-### A landing hits at the ground's speed (0.17.0)
+### A landing hits at the ground's speed (2026-09-11)
 
-0.16.0 made the flight exact; the landing still reported the speed at the *end* of the step that crossed
+*The same jump at any step rate*, below, made the flight exact; the landing still reported the speed at the *end* of the step that crossed
 the ground, which is the speed a little past it — over by as much as g·dt, two thirds of a metre a second
 at 30 steps and a sixth at 120. A fall from exactly 1 m, which reaches the ground at 6.3246 m/s:
 
@@ -1209,7 +1209,7 @@ landing spring is kicked by it**, so a dip is what the fall earns rather than wh
 and a game's landing sounds and dust are the same at any rate. In the sample the drop off the ruins'
 landing now reads **6.9 m/s where it read 7.0** — it is 6.928 — and the walk check reads impacts and dips.
 
-### The same jump at any step rate (0.16.0)
+### The same jump at any step rate (2026-09-11)
 
 The fixed timestep exists so results do not depend on the frame rate — but the *step* rate is a game's
 own choice, and a jump was integrated a step at a time using the velocity each step ended at. That loses
@@ -1226,12 +1226,12 @@ every rate**, the height a 6.3 m/s jump reaches, less only what sampling once a 
 its closed form since it was written: approximate nothing that has an answer.
 
 **Jumps are higher by what the old integration lost**, so the walks' recorded heights were re-recorded:
-0.97 → 0.99 m from the ground, 1.90 → 1.92 off the lift. Which makes 0.12.0's lift jump **1.17 m** above
+0.97 → 0.99 m from the ground, 1.90 → 1.92 off the lift. Which makes the lift jump in *Leaving something that moves* **1.17 m** above
 the deck — exactly the figure it was computed to before it was measured.
 
-### A push in mid-air (0.15.0)
+### A push in mid-air (2026-09-11)
 
-0.14.0 kept a push for a body that left the ground afterwards; a body already in the air was moved while
+*The speed a push leaves you with*, below, kept a push for a body that left the ground afterwards; a body already in the air was moved while
 the pusher overlapped it and then left with whatever it jumped with — measured, shoved mid-jump by a block
 that then stopped, it came down exactly where the block left it. **A push in the air now raises
 `airVelocity` along the push to the pusher's speed.**
@@ -1239,7 +1239,7 @@ that then stopped, it came down exactly where the block left it. **A push in the
 **And what is kept is the pusher's speed, not the step's displacement**, on the ground as well. At first
 contact the displacement depends on the gap the step began with, and read a 1.5 m/s push as much as
 0.30 m/s wrong; a body in the air is usually pushed once and then flies ahead, so for it the first contact
-is everything. A settled push gives the same number either way, so 0.14.0's results are unchanged.
+is everything. A settled push gives the same number either way, so the results measured for it are unchanged.
 
 **Jumping in front of the ruins' piston**, which stops dead just past the landing's edge:
 
@@ -1251,10 +1251,10 @@ is everything. A settled push gives the same number either way, so 0.14.0's resu
 The simulation was wrong the first time — a step early on the jump, and no piston to land on — and the
 game's own numbers said so. Put right, it matched both outcomes to the millimetre.
 
-### A door that turns back (0.14.2)
+### A door that turns back (2026-09-11)
 
 `pinnedBy` said which solid had the player pinned, and nothing read it — which by this repository's own
-rule meant 0.13.0 was not finished. **The courtyard's slider now turns back when it pins someone**, as a
+rule meant *Pushed by something that moves* was not finished. **The courtyard's slider now turns back when it pins someone**, as a
 door does (`SampleLevel.SlideRun`), and a crate is set just past the end of its run, nearer than a body is
 wide, so a player standing there is pinned.
 
@@ -1268,30 +1268,30 @@ gentle one, as an eased door makes, fails it.
 **Walked, computed first:** pinned at the slider's face x −6.5947 (computed −6.595), the feet at −6.3012
 against the stop, 1.2 mm clear of it; the slider turned back at once and the feet stayed put.
 
-### The walks are a check (0.14.1)
+### The walks are a check (2026-09-11)
 
 Every feature here was proved by a scripted walk, the day it was measured. After that a walk is a claim
-in a document, and a change to a level can make it false without failing a single test — 0.13.0's slider
-was put across the walk 0.12.1 was measured by, and it was found by re-running that walk by hand a
-version later. So the walks are data, `Tools/walks.json`, each with what it measured, and
+in a document, and a change to a level can make it false without failing a single test — the slider
+placed for *Pushed by something that moves* was put across the walk *Something set down at an angle* was
+measured by, and it was found by re-running that walk by hand a change later. So the walks are data, `Tools/walks.json`, each with what it measured, and
 
 ```
 python3 Tools/walks.py
 ```
 
 runs them all and fails on anything more than 2 cm from its record. Six walks, 21 expectations, about a
-minute (seven since 0.14.2). **Since 0.15.1 it hears and sees as well**: footstep counts and surfaces
+minute (seven once the slider turned back). **Then it heard and saw as well**: footstep counts and surfaces
 exactly, the head bob to the millimetre, from the lines the walk report prints under each segment — eleven
-walks, 59 expectations, among them every row of 0.8.1's head-bob table and 0.11.0's footsteps down the
-ruins' stairs. Take the tread rule's `abs` out and it fails on 3 footsteps where 5 are recorded. Put the slider back at 0.13.0's place and it fails the crate walk on that exact deflection.
+walks, 59 expectations, among them every row of the head-bob table below and the footsteps down the
+ruins' stairs. Take the tread rule's `abs` out and it fails on 3 footsteps where 5 are recorded. Put the slider back where it first stood and it fails the crate walk on that exact deflection.
 
-**And since 0.16.2 the view's turns**, to the hundredth of a degree: 0.8.0's sensitivities and 0.9.0's
+**And then the view's turns**, to the hundredth of a degree: the per-device sensitivities and the per-stick
 dead zones, each at its defaults and each as the settings screen sets it from a pad — fifteen walks, 79
 expectations. Double the mouse's look scale and both look walks fail on the mouse's turns alone. That
 needed one fix: a check polls the pad from its steps, the settings screen's pad input being read per
 frame, and a check drawing none — a scripted pad pressed its buttons and nothing read them.
 
-**And since 0.20.1 a walk may name the step rates it has to hold at.** The `course` walk — up the ruins'
+**And since 2026-09-12 a walk may name the step rates it has to hold at.** The `course` walk — up the ruins'
 stairs, off the landing, a jump, a sprint and a slide — runs at **30, 60, 120 and 240 steps a second and
 prints the same report at every one of them**, to the centimetre, the footstep and the tenth of a metre a
 second. **Its segments are whole steps of the slowest rate**, because a key can only be held for a whole
@@ -1300,7 +1300,7 @@ That measurement is what found the walk runner rounding *each* segment from the 
 from the script's start, so forty of those roundings could add up; boundaries are absolute now, and every
 recorded walk is unchanged at 120. Sixteen walks, nineteen runs, 98 expectations, 43 s.
 
-**Four at a time since 0.16.1 — 25 s for eleven walks, where one at a time took 122** — and every value
+**Four at a time — 25 s for eleven walks, where one at a time took 122** — and every value
 identical either way, a walk's result being its step count rather than the clock. Two things made that
 work: each check names its saves after its walk, or one walk launching would clear the settings another
 had just set on the settings screen; and a check prefilters no sky, which it never draws — 2.6 s of the
@@ -1316,9 +1316,9 @@ gets.
 **A walk's recorded numbers change only with a reason in the CHANGELOG** — the world it walks through
 changed, and the new numbers were measured and explained. A walk that fails is otherwise a regression.
 
-### The speed a push leaves you with (0.14.0)
+### The speed a push leaves you with (2026-09-11)
 
-0.12.0 made a body keep the speed of a floor it left; a push was not counted, so a body shoved off a
+*Leaving something that moves*, below, made a body keep the speed of a floor it left; a push was not counted, so a body shoved off a
 ledge dropped straight down — measured, pushed at 1.5 m/s off a 1 m ledge it landed at the x it left
 from. **A push now counts toward `groundVelocity` across**, as a carry does: shoved off an edge a body
 flies on, and a jump while being pushed takes the push. On the ground nothing coasts.
@@ -1340,9 +1340,9 @@ landing, simulated first, sent them 0.219 m with the fix and 0.187 m without —
 moving keeps pushing a falling body. A difference of 3 cm proves nothing, so the pusher became a piston
 that stops at the edge.
 
-### Kept out of App Nap (0.13.2)
+### Kept out of App Nap (2026-09-11)
 
-0.12.2's hidden clock was measured on the sample run from a terminal with its audio engine running, and
+The hidden clock below was measured on the sample run from a terminal with its audio engine running, and
 **macOS exempts an app playing sound from App Nap** — a running `AVAudioEngine` counts, audible or not.
 A game with nothing playing is the case that matters, so it was measured again as one:
 `Tools/bundle_sample_app.sh` makes the sample an app bundle, launched with `open`, and
@@ -1363,7 +1363,7 @@ So `runsWhileHidden` holds `[.userInitiatedAllowingIdleSystemSleep, .latencyCrit
 as steady as an app playing sound. Idle sleep is still allowed; the precision's power is paid only by a
 game that asked to keep time hidden.
 
-### Something round (0.13.1)
+### Something round (2026-09-11)
 
 A round thing's box is the square round it, and a turned footprint of that box turns the square with
 it: a 4 m turntable held a body up 0.2 m on air at four corners 0.83 m past its rim. **A footprint can
@@ -1385,7 +1385,7 @@ when the body arrives — computed first:
 face. That is the cost the type's notes name for a box body, and the test pins it down, rather than
 pretending a box glances off a curve.
 
-### Pushed by something that moves (0.13.0)
+### Pushed by something that moves (2026-09-11)
 
 The carry moves a body standing *on* a solid. One moving *into* a body left it inside — measured: a slab
 sliding at 1 m/s ended with its face at the body's centre, 0.30 m in, and the body could not walk out,
@@ -1415,10 +1415,10 @@ player standing in its path, computed first:
 Left at 7.05 m when it went back (computed 7.052). As it eased to a stop the last millimetre came in
 without a push — within the band a walk into a face stops in.
 
-> **The slider has since moved west (0.13.1)**: at z 8 it sat across the crate walk measured for 0.12.1,
+> **The slider has since moved west**: at z 8 it sat across the crate walk measured for *Something set down at an angle*,
 > which it deflected. Pushed again at x −12, the same curve came out to 2 mm, the feet 0.302 m ahead.
 
-### A clock while the window is hidden (0.12.2)
+### A clock while the window is hidden (2026-09-11)
 
 The simulation steps when the display link calls, and **a hidden window's display link does not call
 at all** — measured: hidden for 10.2 s, not one frame, then one frame back reporting 10.23 s, of which
@@ -1444,14 +1444,14 @@ from its first frame until 20 s —
 
 Hidden for 87 s, the rate held at 120 a second throughout. **That was the sample started from a
 terminal, with its audio running** — which macOS exempts from App Nap. Measured as a bundled, silent app
-it was napped a minute in: see 0.13.2.
+it was napped a minute in: see *Kept out of App Nap*.
 
 > **The handoff had the diagnosis wrong, and building its fix would have fixed nothing.** It said a
 > hidden window's display link was *throttled* and the frame-time ceiling threw the time away, and
 > proposed lifting the ceiling while a script ran. Measured first: there are no frames to lift it for.
 > The earlier crawls — a few steps a second — fit a window *behind* others getting an occasional frame.
 
-### Something set down at an angle (0.12.1)
+### Something set down at an angle (2026-09-11)
 
 The controller saw every solid as its world-aligned box, and a turned crate's box is bigger than the
 crate: a 1.5 m crate at 45° has one 2.12 m across. **`Surroundings.Solid.footprint`** gives each solid its
@@ -1482,7 +1482,7 @@ touching) to two out (the clearance a blocked move keeps), axis-aligned or not; 
 rest of its step along the face even as the face ends, so rounding a corner clears it by up to one
 step's slide more than the body's half-width — as Quake's slide move does.
 
-### Leaving something that moves (0.12.0)
+### Leaving something that moves (2026-09-11)
 
 The carry moved a body with its ground and then forgot the ground's speed the moment the body left
 it: a jump from a rising lift went no higher than from the floor, and stepping off a sliding platform
@@ -1502,10 +1502,10 @@ no motion that step, or whoever leaves it next leaves at the speed of the jump b
 | from the lift, before | 0.75 | 1.72 | 0.97 | — the lift forgotten |
 | from the lift, after | 0.75 | 1.90 | **1.15** | 6.84²/2g = 1.17, less 2.5 cm |
 
-> **Since 0.16.0 a step of flight is exact**, and these are 0.99 and 1.92 — the lift jump rising the
+> **A step of flight is exact now** (*The same jump at any step rate*), and these are 0.99 and 1.92 — the lift jump rising the
 > computed 1.17 m, with no stepper's shortfall to subtract.
 
-### Something that turns underfoot (0.11.1)
+### Something that turns underfoot (2026-09-11)
 
 `Surroundings.Solid.turn` says how far each solid turned since the last step, and about which centre. A body
 standing on one is carried round it — through collision, like any carry, and with no footsteps — and
@@ -1516,7 +1516,7 @@ one number serves both. A solid that moves and turns is moved first, then turned
 centre is now.
 
 **Ridden in the sample**: a 4 m stone turntable in the courtyard (`Tools/make_sample_turntable.py` —
-made round so its box would not swell as it turned, **which it did anyway**: see 0.12.1), at 30° a second. Standing 1.2 m from its centre for three
+made round so its box would not swell as it turned, **which it did anyway**: see *Something set down at an angle*), at 30° a second. Standing 1.2 m from its centre for three
 seconds, the table turned 90.0°, the feet 90.0° round its centre at the same 1.21 m, and the view 89.9°.
 
 **Two things found**: a test measured against the *reported* turn passed with the turning switched off,
@@ -1524,9 +1524,9 @@ because both were zero — it is measured against the table's own turn now; and 
 turntables stood still in photo mode, because they advanced inside the walking branch — two frames 1.5 s
 apart came out identical.
 
-### A foot on the way down, as on the way up (0.11.0)
+### A foot on the way down, as on the way up (2026-09-11)
 
-The climb has had a footfall on every tread since 0.6.9: at these speeds a stride is longer than a
+The climb has had a footfall on every tread since footsteps were added (2026-09-10): at these speeds a stride is longer than a
 tread, so distance alone would float up the middle ones. **The descent never had it** — the rule counted
 only a rise, and four treads coming down sounded one footstep where going up sounded four. A step
 *down* a tread counts now too, from the same ground-following that reports the rise.
@@ -1537,7 +1537,7 @@ The invariant tested is **symmetry** — from mirrored starts, the same number c
 (0 against 4 before; 4 and 4 after). On the ruins' stairs the walk down from the landing went from 3
 footsteps to 5 — wood, then stone, then dirt.
 
-### Sounds that belong to a place (0.10.2)
+### Sounds that belong to a place (2026-09-11)
 
 `AudioEngine.startLoop(_:at:volume:)`, `moveLoop`, `stopLoop` play a sound for as long as a thing is
 there; `Level.Placement.sound` is one a placement carries, at an offset in its own space like its lamp,
@@ -1568,7 +1568,7 @@ The sample reconciles its loops on every rebuild rather than restarting them, **
 where first**: placements have no identity but their index, and a copy inserted before a brazier
 renumbers it — keyed by index, an edit to one brazier restarted the other's fire.
 
-### And something that moves underfoot (0.10.1)
+### And something that moves underfoot (2026-09-11)
 
 `Surroundings.Solid.motion` says how far each solid moved since the last step, in the order of `solids`; a
 body standing on one that moved **goes with it, first**, before its own walking — so walking on a
@@ -1587,7 +1587,7 @@ it `"lift"`). The scripted ride logged the feet against the lift's top: 0.30/0.3
 0.75/0.75 halfway, 1.20/1.20 at the top, back to 0.30 still riding through the turn, up again, and a
 walk off onto the landing at 1.20 — no footsteps the whole ride.
 
-### And room to stand (0.10.0)
+### And room to stand (2026-09-11)
 
 **Letting go of crouch is a request, not a promise of room.** Under a beam the controller keeps the
 body down — at crouched height, a crouched walk's speed, no sprint, a crouched stride — and stands the
@@ -1604,7 +1604,7 @@ ruins' new lintel, *standing*, pushed the player into a crouch. Driven in the ru
 stopped at the lintel standing (eye 1.70), crouched under it (1.05), let go — held at 1.05, "NO ROOM TO
 STAND" — then walked out and stood the moment the body was clear.
 
-### And a head that bobs, which a player can turn down or off (0.8.1)
+### And a head that bobs, which a player can turn down or off (2026-09-11)
 
 `headBob` is a view offset in metres — across the view and up — **locked to the stride phase**, the
 same distance-driven phase that sounds the footsteps. So the head dips as each foot lands, stops when
@@ -1635,7 +1635,7 @@ step sound like stone, and what a moving platform will need to carry you.
 ## Keys a player can change (2026-09-10)
 
 `InputBindings` says which key does what; `PlayerSettings` holds that plus a sensitivity and an invert
-**for the mouse and for the stick separately** (since 0.8.0), volume and brightness; `SaveStore` keeps
+**for the mouse and for the stick separately** (since 2026-09-11), volume and brightness; `SaveStore` keeps
 them. The sample has a settings screen on **O**.
 
 ### The bug it found: Shift had never worked in the sample
@@ -1672,7 +1672,7 @@ binding, and a hand-edited file with two actions on one key keeps the first.
 
 Keys are stored **by name**, so the file reads `"forward" : "W"` rather than `13`.
 
-### A sensitivity per device, and an invert per device (0.8.0)
+### A sensitivity per device, and an invert per device (2026-09-11)
 
 **A mouse and a stick are different kinds of input, so one number cannot suit both.** A mouse reports a
 displacement and a stick a rate (`Camera.look(mouseDelta:)` against `Camera.turn(rate:deltaTime:)`);
@@ -1681,7 +1681,7 @@ player who uses both choose which to leave wrong. Invert is split for the same r
 often invert a stick and not a mouse. `mouseLookScale` goes in front of the mouse path and
 `stickLookScale` in front of the stick's, and neither touches the other.
 
-**A file from before 0.8.0 has one `lookSensitivity` and one `invertLook`**, and both devices inherit
+**A file written before each device had its own has one `lookSensitivity` and one `invertLook`**, and both devices inherit
 them, since that is what the player had on both. They are read and never written; a device's own key
 wins where a file has both.
 
@@ -1692,7 +1692,7 @@ exactly. With the mouse at 2.0, the stick at 0.5 and the stick inverted, set thr
 from the virtual pad, they are 45.84°, 126.05°, and a stick-up that looks *down* while the mouse's
 vertical stays put. An old-style file at 1.5, inverted, turns both devices 1.5× with both flipped.
 
-### A dead zone per stick, and a stick that walks at the speed it is pushed to (0.9.0)
+### A dead zone per stick, and a stick that walks at the speed it is pushed to (2026-09-11)
 
 **A worn stick drifts**: it rests a few percent off centre, and past the dead zone that is a view
 creeping round with nobody touching it. `PlayerSettings.moveDeadzone` and `lookDeadzone` let the player
@@ -2230,7 +2230,7 @@ bind or keep resident.
 **The scene target cannot be memoryless**, unlike the depth buffer beside it: the tone map pass reads
 it after the scene pass has ended, so it has to survive into main memory.
 
-> **Upgrading past 0.3.0: a pipeline with the wrong format renders static, not an error.** Metal 4
+> **Code written before the HDR scene target (2026-09-10): a pipeline with the wrong format renders static, not an error.** Metal 4
 > builds pipelines apart from passes, so a scene pipeline still declaring `colorPixelFormat` is
 > accepted and writes eight-bit pixels into a sixteen-bit-float target — magenta and blue noise,
 > nothing logged. Measured on a real consumer, 2026-09-11. Any pipeline drawn in `encode` wants
@@ -2306,62 +2306,65 @@ A Swift package dependency — by URL, or by relative path for a checkout sittin
 > alone** — this repository has to be checked out beside it at the expected path. Depending on it by
 > URL avoids that entirely and is the better default for anybody who is not developing both at once.
 
-## Versioning (2026-09-09)
+## Versioning
 
-**`0.1.0` is the first version with a number**, and everything before it had nothing for a version to
-mean: the engine was a folder inside a studio repository, consumed by one game developed alongside
-it, where "the current commit" was always the answer. It stopped being that the day it got its own
-repository, and a dependency by URL is unusable without tags.
+**Nothing has been released yet, and the first public release is `1.0.0`.** Until then the engine reports
+the version that release will be, `CHANGELOG.md` holds one *Unreleased* section describing what 1.0.0 contains,
+and there are no tags. How the engine got here is in the git log, not in version numbers.
+
+> **Why there are no 0.x releases (2026-10-13).** The engine was numbered from 0.1.0 to 0.28.0 while it had
+> never left this machine — 69 "releases" in five weeks, 33 of them on one day, each one an edit. A version
+> number is for somebody receiving a release, and nobody had received one. They were removed, with their
+> tags, and every mention of them rewritten to say what changed and when.
 
 ### The number lives in one place
 
 `Engine.semanticVersion`. The window title formats it; `CHANGELOG.md` records it; a **test fails if
-they disagree**. A version that also lives in a build setting and a document is a version that will
-eventually contradict itself, and it will do so on somebody else's machine.
+they disagree** once there is a release to disagree with. A version that also lives in a build setting and
+a document is a version that will eventually contradict itself, and it will do so on somebody else's machine.
 
-### What a bump promises before 1.0
+### What a number promises
 
-Semantic Versioning gives `0.x` no compatibility guarantee at all, which is honest and useless to
-depend on. This repository narrows it to what everybody actually does before 1.0:
+Ordinary Semantic Versioning, from 1.0.0:
 
 | | means |
 |---|---|
-| **minor** — 0.1 → 0.2 | Something changed that can break a build: a signature, a type, a removed declaration, or a default that alters behaviour. |
-| **patch** — 0.1.0 → 0.1.1 | Additions and fixes only. What compiled still compiles and still does the same thing. |
+| **major** — 1 → 2 | Something changed that can break a build: a signature, a type, a removed declaration, or a default that alters behaviour. |
+| **minor** — 1.0 → 1.1 | Additions. What compiled still compiles and still does the same thing. |
+| **patch** — 1.0.0 → 1.0.1 | Fixes only. |
 
-So a consumer pins `.upToNextMinor(from: "0.1.0")` and gets fixes without surprises. After 1.0 this
-becomes ordinary Semantic Versioning, with the major carrying the breakage.
+So a consumer pins `.upToNextMajor(from: "1.0.0")` and gets additions and fixes without surprises.
+
+> **The conventions count as API, even though they are not signatures.** Reversed-Z, the depth clear
+> value, and the vertex-descriptor contract with `MeshLoader` are all things a consumer builds
+> against; change one and their game compiles and then draws nothing, which is worse than a compile
+> error. Those move the **major**.
 
 ### Releases come in batches, and the owner decides them (2026-10-13)
 
 **The table above says what a number means, not that every change gets one.** Work lands in
 `CHANGELOG.md` under *Unreleased*, and `Engine.semanticVersion` stays put. When a meaningful batch is done,
 it is proposed as one release, numbered by the highest level among its changes — a batch with one breaking
-change and ten fixes is one minor bump, not eleven — and **the owner decides whether and when it ships**.
-Never more than one release in a day. (0.22.0 to 0.28.0 went out in under two days, one per edit, which is
-what this rule exists to stop.)
-
-> **The conventions count as API, even though they are not signatures.** Reversed-Z, the depth clear
-> value, and the vertex-descriptor contract with `MeshLoader` are all things a consumer builds
-> against; change one and their game compiles and then draws nothing, which is worse than a compile
-> error. Those move the **minor**.
+change and ten fixes is one major bump, not eleven — and **the owner decides whether and when it ships**.
+Never more than one release in a day.
 
 ### The changelog is not optional, and a test is what makes that true
 
 Nothing in a build cares whether `CHANGELOG.md` was updated, so a changelog left to discipline falls
 behind — and one that has fallen behind is worse than none, because a reader believes it.
-`ChangelogTests` checks that its newest entry is the version the engine reports, that entries are in
-order, and that an `Unreleased` section exists to write into. Releasing without writing the entry
-fails the suite.
+`ChangelogTests` checks that its newest entry is the version the engine reports (1.0.0 while there is
+none), that entries are in order, and that an `Unreleased` section exists to write into. Releasing without
+writing the entry fails the suite.
 
 **Entries are written for somebody upgrading**, which is why *Changed* and *Removed* carry the weight.
-A new type costs a reader nothing; a changed one costs them a build.
+A new type costs a reader nothing; a changed one costs them a build. The first entry is the exception: 1.0.0
+says what the engine does, because nobody is upgrading to it.
 
-### Releasing
+### Releasing, when the owner says so
 
-1. Move `Unreleased` into a dated version heading in `CHANGELOG.md`.
-2. Bump `Engine.semanticVersion` to match — the test will tell you if you forget.
-3. `swift test`, then tag: **`git tag 0.2.0`**, no `v` prefix, which is what SwiftPM resolves and
+1. Move `Unreleased` into a dated version heading in `CHANGELOG.md` — the first is `## [1.0.0] — <date>`.
+2. Set `Engine.semanticVersion` to match — the test will tell you if you forget.
+3. `swift test`, then tag: **`git tag 1.0.0`**, no `v` prefix, which is what SwiftPM resolves and
    what `SemanticVersion.init(_:)` deliberately refuses to parse leniently.
 
 ## The sample game (2026-09-07)
@@ -2435,7 +2438,7 @@ Deliberately absent: gizmos, snapping, multi-select, prefabs, a scene graph. Tho
 correctly before a second game has pushed on them — the same rule the rest of this engine is built
 under.
 
-### The selection's lamp (0.8.2)
+### The selection's lamp (2026-09-11)
 
 `setLight(_:)` gives the selection a lamp, replaces it or takes it away; `raiseLight(by:)` and
 `brightenLight(by:)` set the two things a person adjusts by eye; `add(mesh:at:tags:light:)` drops in
@@ -2459,7 +2462,7 @@ brightening 45 → 56.7 → 71.4 → 90.0 — each the prediction. A frame diffe
 without it shows the new pool of light on the ground under the crate, with the green crates' shadows
 cut out of it.
 
-### Adding more of what a level already has (0.9.2)
+### Adding more of what a level already has (2026-09-11)
 
 `LevelEditor.kinds()` is one of each kind of thing in a level — two placements are the same kind when all but
 *where* they are matches: mesh, scale, anchor, tags, lamp, surface. `LevelEditor.add(_:at:)` drops

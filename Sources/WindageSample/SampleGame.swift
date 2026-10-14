@@ -2555,7 +2555,7 @@ final class SampleGame: GameLoop {
     /// come out a little quieter and from somewhere odd.
     private func playFootfalls() {
         // **From the level**: the placement stood on, or the ground. This was "every solid is stone,
-        // the ground is dirt" until 0.9.1 — true of both levels only because nobody had laid a board.
+        // the ground is dirt" until 2026-09-11 — true of both levels only because nobody had laid a board.
         let placement = body.groundSolid.flatMap { solidPlacements.indices.contains($0) ? solidPlacements[$0] : nil }
         var surface = level.surface(standingOn: placement) ?? "stone"
         if level.surface(standingOn: placement) == nil, let placement, unnamedSurfaces.insert(placement).inserted {

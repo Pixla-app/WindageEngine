@@ -160,7 +160,7 @@ public final class FrameRenderer {
     /// On, the simulation is stepped from a timer while the display link is quiet: the same fixed
     /// steps, the same clock — credited once, whichever of the two credits it — with no frame drawn
     /// and ``GameLoop/beginFrame()`` not called, because no frame begins. **And the app is kept out of
-    /// App Nap** while it is on (0.13.2), which otherwise coalesces that timer a minute into hiding.
+    /// App Nap** while it is on (2026-09-11), which otherwise coalesces that timer a minute into hiding.
     public var runsWhileHidden = false {
         didSet {
             guard runsWhileHidden != oldValue else { return }
@@ -530,7 +530,7 @@ public final class FrameRenderer {
         // may sample a shadow map the shadow pass has not finished writing. It looked right in play —
         // the previous frame's maps are there to sample — and the first frame of all, with nothing in
         // them yet, came out differently on every run: shadows from another run's memory, or a black
-        // scene. Found by drawing a frame into a texture with no window (0.20.0).
+        // scene. Found by drawing a frame into a texture with no window (2026-09-11).
         encoder.barrier(afterQueueStages: .fragment, beforeStages: .fragment, visibilityOptions: .device)
         game.encode(into: encoder, frameSlot: frameSlot, interpolation: alpha)
         encoder.endEncoding()

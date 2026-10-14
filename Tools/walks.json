@@ -1,10 +1,10 @@
 {
-  "about": "The walks the handoff and README document, each with what it measured. Tools/walks.py runs them all as a check. A walk's numbers are the ones recorded when it was measured; change one only with the reason, in the CHANGELOG, that the world it walks through changed. Jump heights were re-recorded at 0.16.0, when a step of flight became exact: they rose by the Euler error the old integration lost (0.97 \u2192 0.99 at the ground, 1.90 \u2192 1.92 off the lift).",
+  "about": "The walks the handoff and README document, each with what it measured. Tools/walks.py runs them all as a check. A walk's numbers are the ones recorded when it was measured; change one only with the reason, in the CHANGELOG, that the world it walks through changed. Jump heights were re-recorded on 2026-09-11, when a step of flight became exact: they rose by the Euler error the old integration lost (0.97 \u2192 0.99 at the ground, 1.90 \u2192 1.92 off the lift).",
   "tolerance": 0.02,
   "walks": [
     {
       "name": "crate",
-      "recorded": "0.12.1 \u2014 a turned crate stops you at its face",
+      "recorded": "2026-09-11 \u2014 a turned crate stops you at its face",
       "level": 0,
       "script": "wait:0.5 yaw:-14.84 w:2.0915 wait:0.2 yaw:-44.16 w:0.25 w:0.25 w:0.25 w:0.25 w:0.5 w:0.5 wait:0.3",
       "expect": [
@@ -34,14 +34,14 @@
     },
     {
       "name": "crate behind the splash",
-      "recorded": "0.20.2 \u2014 the crate walk again, run under the engine's splash, which must take nothing from it",
+      "recorded": "2026-09-12 \u2014 the crate walk again, run under the engine's splash, which must take nothing from it",
       "like": "crate",
       "splash": true,
       "about": "Not a second set of numbers: `like` takes the crate walk's script and expectations, so the two cannot be corrected apart. What it checks is that the splash is an overlay and a clock, never a mode and never a consumer of input \u2014 a splash that swallowed the press that skipped it would swallow this walk's first step, and it would end short of the crate."
     },
     {
       "name": "head bob",
-      "recorded": "0.8.1 \u2014 head bob: a walk, back, a sprint, a crouch, then turned off on the settings screen",
+      "recorded": "2026-09-11 \u2014 head bob: a walk, back, a sprint, a crouch, then turned off on the settings screen",
       "level": 0,
       "script": "wait:0.5 w:1.5 wait:0.8 s:1.5 wait:0.8 w+shift:0.8 wait:0.8 c:0.05 wait:0.4 s:1.5 wait:0.8 c:0.05 wait:0.5 o:0.1 wait:0.1 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 o:0.1 wait:0.3 w:1.5 wait:0.5",
       "expect": [
@@ -114,7 +114,7 @@
     },
     {
       "name": "head bob at half",
-      "recorded": "0.8.1 \u2014 the setting at 50%, set here on the settings screen (0.8.1 set it in the file)",
+      "recorded": "2026-09-11 \u2014 the setting at 50%, set here on the settings screen (when head bob arrived, it was set in the file)",
       "level": 0,
       "script": "wait:0.5 o:0.1 wait:0.1 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 down:0.05 wait:0.05 left:0.05 wait:0.05 left:0.05 wait:0.05 o:0.1 wait:0.3 w:1.5 wait:0.5",
       "expect": [
@@ -138,7 +138,7 @@
     },
     {
       "name": "stairs down",
-      "recorded": "0.11.0 \u2014 a foot on every tread going down, as going up",
+      "recorded": "2026-09-11 \u2014 a foot on every tread going down, as going up",
       "level": 1,
       "script": "wait:0.5 d:0.75 wait:0.5 w:1.0 wait:0.6 s:1.0 wait:0.6",
       "expect": [
@@ -174,7 +174,7 @@
     },
     {
       "name": "lift jump",
-      "recorded": "0.12.0 \u2014 a jump keeps the platform's motion (and 0.10.1's: no footsteps riding it)",
+      "recorded": "2026-09-11 \u2014 a jump keeps the platform's motion (and, from earlier that day, no footsteps riding it)",
       "level": 1,
       "script": "wait:0.5 d:1.25 w:0.8 space:0.05 wait:1.2 wait:4.3 w:0.2 wait:1.1 wait:1.35 space:0.05 wait:1.2 wait:1.5",
       "expect": [
@@ -212,7 +212,7 @@
     },
     {
       "name": "stairs and jump",
-      "recorded": "0.6.6 \u2014 a body with feet: the README's walk (with 0.17.0's landing speeds)",
+      "recorded": "2026-09-10 \u2014 a body with feet: the README's walk (with landing speeds read at the ground, 2026-09-11)",
       "level": 1,
       "script": "d:0.75 w:1.0 w:0.4 wait:1 space:0.05 wait:1.2",
       "expect": [
@@ -250,7 +250,7 @@
     },
     {
       "name": "course",
-      "recorded": "0.20.1 \u2014 one course, four rates, one set of numbers; also 0.19.0's slide, walked at last",
+      "recorded": "2026-09-12 \u2014 one course, four rates, one set of numbers; also the slide read once a step, walked at last",
       "level": 1,
       "rates": [
         30,
@@ -340,7 +340,7 @@
     },
     {
       "name": "push",
-      "recorded": "0.13.1 \u2014 pushed by the courtyard's slider, at its place since 0.13.1 (and 0.13.0's: no footsteps being pushed)",
+      "recorded": "2026-09-11 \u2014 pushed by the courtyard's slider, at the place it was moved to that day (and no footsteps being pushed)",
       "level": 0,
       "script": "wait:0.3 yaw:69.44 w:1.424 yaw:90 wait:2.516 wait:0.5 wait:0.5 wait:0.5 wait:1.5",
       "expect": [
@@ -384,7 +384,7 @@
     },
     {
       "name": "turntable rim",
-      "recorded": "0.13.1 \u2014 round solids are round",
+      "recorded": "2026-09-11 \u2014 round solids are round",
       "level": 0,
       "script": "wait:0.3 yaw:18.435 w:0.52705 yaw:45 wait:1.63 w:1.0 wait:0.5",
       "expect": [
@@ -413,7 +413,7 @@
     },
     {
       "name": "piston",
-      "recorded": "0.14.0 \u2014 a body pushed off an edge keeps the push's speed",
+      "recorded": "2026-09-11 \u2014 a body pushed off an edge keeps the push's speed",
       "level": 1,
       "script": "wait:0.5 d:0.75 w:1.1 d:0.175 wait:1.0 wait:1.0 wait:1.5",
       "expect": [
@@ -452,7 +452,7 @@
     },
     {
       "name": "pinned",
-      "recorded": "0.14.2 \u2014 the slider turns back from a player it pins against its stop",
+      "recorded": "2026-09-11 \u2014 the slider turns back from a player it pins against its stop",
       "level": 0,
       "script": "wait:0.3 yaw:72.53 w:1.1095 yaw:0 w:0.2667 wait:3.0 wait:0.5 wait:1.0 wait:3.0",
       "expect": [
@@ -495,7 +495,7 @@
     },
     {
       "name": "air push",
-      "recorded": "0.15.0 \u2014 shoved by the ruins' piston mid-jump, and kept going",
+      "recorded": "2026-09-11 \u2014 shoved by the ruins' piston mid-jump, and kept going",
       "level": 1,
       "script": "wait:0.5 d:0.75 w:1.1834 d:0.175 wait:1.242 space:0.05 wait:1.5",
       "expect": [
@@ -529,7 +529,7 @@
     },
     {
       "name": "look",
-      "recorded": "0.8.0 \u2014 a mouse sensitivity and a stick sensitivity, at their defaults",
+      "recorded": "2026-09-11 \u2014 a mouse sensitivity and a stick sensitivity, at their defaults",
       "level": 0,
       "script": "wait:0.5 pitch:0 pad.lookRight:0.5 wait:0.2 pitch:0 pad.lookUp:0.25 wait:0.2 pitch:0 mousex:500 wait:0.1 mousey:-200 wait:0.3",
       "expect": [
@@ -565,7 +565,7 @@
     },
     {
       "name": "look, set from the pad",
-      "recorded": "0.8.0 \u2014 mouse 2.0, stick 0.5, stick inverted, set on the settings screen from the pad",
+      "recorded": "2026-09-11 \u2014 mouse 2.0, stick 0.5, stick inverted, set on the settings screen from the pad",
       "level": 0,
       "script": "wait:0.5 pad.menu:0.1 wait:0.1 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.left:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.south:0.05 wait:0.1 pad.east:0.1 wait:0.3 pitch:0 pad.lookRight:0.5 wait:0.2 pitch:0 pad.lookUp:0.25 wait:0.2 pitch:0 mousex:500 wait:0.1 mousey:-200 wait:0.3",
       "expect": [
@@ -601,7 +601,7 @@
     },
     {
       "name": "dead zones",
-      "recorded": "0.9.0 \u2014 a stick dead zone the player sets, at the defaults (look 10%, move 16%)",
+      "recorded": "2026-09-11 \u2014 a stick dead zone the player sets, at the defaults (look 10%, move 16%)",
       "level": 0,
       "script": "wait:0.5 yaw:0 pitch:0 pad.lookRight@0.08:1 wait:0.2 pad.lookRight@0.2:1 wait:0.2 pad.lookRight@0.5:0.5 wait:0.2 pad.lookRight:0.5 wait:0.2 yaw:0 pad.moveUp@0.2:1 wait:0.3 pad.moveUp@0.6:1 wait:0.3",
       "expect": [
@@ -653,7 +653,7 @@
     },
     {
       "name": "dead zones, set from the pad",
-      "recorded": "0.9.0 \u2014 look 26%, move 30%, set on the settings screen from the pad",
+      "recorded": "2026-09-11 \u2014 look 26%, move 30%, set on the settings screen from the pad",
       "level": 0,
       "script": "wait:0.5 pad.menu:0.1 wait:0.1 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.down:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.right:0.05 wait:0.05 pad.east:0.1 wait:0.3 yaw:0 pitch:0 pad.lookRight@0.2:1 wait:0.2 pad.lookRight@0.5:0.5 wait:0.2 pad.lookRight:0.5 wait:0.2 yaw:0 pad.moveUp@0.2:1 wait:0.3 pad.moveUp@0.6:1 wait:0.3",
       "expect": [

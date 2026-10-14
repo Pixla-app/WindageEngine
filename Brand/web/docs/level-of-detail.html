@@ -19,7 +19,7 @@
   <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
   <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
-  <span class="ver">v0.28.0</span>
+  <span class="ver">v1.0.0</span>
 </header>
 
 <div class="docs">
@@ -77,11 +77,11 @@
 <ul><li><strong>It is not in the sample.</strong> The sample's meshes are a few hundred triangles seen from a few meters, so no tier would ever be chosen. A test proves it on a mesh loaded through <code>MeshLoader</code>.</li><li><strong>No blending between tiers.</strong> A copy switches tier from one frame to the next; the half-pixel rule keeps the switch out of sight.</li></ul>
 <h2 id="the-license-you-ship">The license you ship</h2>
 <p>The simplifier is meshoptimizer's (MIT), vendored unmodified as the <code>MeshOptimizer</code> target: the engine's first code not written in Swift. <strong>An app that ships <code>MeshDetail</code> ships meshoptimizer's license</strong>, <code>Sources/MeshOptimizer/LICENSE.md</code>, alongside its other notices.</p>
-<p>Added in 0.25.0 (<a href="changelog.html">changelog</a>): 1,000 trees of 19,000 triangles each went from 25 ms a frame to 5.6 ms on an M2.</p>
+<p>When it was added, 1,000 trees of 19,000 triangles each went from 25 ms a frame to 5.6 ms on an M2.</p>
   </main>
 
   <aside class="docs-toc" aria-label="On this page">
-    <h2>On this page</h2><a href="#tiers">Tiers</a><a href="#choose">Choosing a tier: the half-pixel rule</a><a href="#normals">Recomputed normals</a><a href="#permissive">Permissive simplification</a><a href="#drawing">Drawing a tier is the game&#x27;s job</a><a href="#what-it-does-not-do">What it does not do</a><a href="#the-license-you-ship">The license you ship</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
+    <h2>On this page</h2><a href="#tiers">Tiers</a><a href="#choose">Choosing a tier: the half-pixel rule</a><a href="#normals">Recomputed normals</a><a href="#permissive">Permissive simplification</a><a href="#drawing">Drawing a tier is the game&#x27;s job</a><a href="#what-it-does-not-do">What it does not do</a><a href="#the-license-you-ship">The license you ship</a>
   </aside>
 </div>
 

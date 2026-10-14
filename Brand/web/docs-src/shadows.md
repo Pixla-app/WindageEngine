@@ -72,7 +72,7 @@ The second initializer, `ShadowBatch(pipeline:encode:)`, is for geometry that is
 
 A shadow pass reads the same `model` matrix and joint palette as the main pass. Write them in `encodePrePasses`, before any shadow is recorded. If you write them in `encode`, every shadow is recorded from the previous frame's positions and lags behind its caster. The sample's `encodePrePasses` writes uniforms, debris transforms and light matrices first, then encodes the three shadow passes. See [game loop](game-loop.html).
 
-> **Every shadow was a frame stale, and it looked right.** Metal 4 tracks no hazards between passes. Until 0.20.0 the scene pass sampled shadow maps a pass in the same command buffer was still writing, so every shadow was a frame stale, and the very first frame differed on every run: once black, once blotched in cluster-sized squares. `FrameRenderer` now places barriers so the scene waits for the shadow passes. The [frame check](frames.html) caught it.
+> **Every shadow was a frame stale, and it looked right.** Metal 4 tracks no hazards between passes. At first, the scene pass sampled shadow maps a pass in the same command buffer was still writing, so every shadow was a frame stale, and the very first frame differed on every run: once black, once blotched in cluster-sized squares. `FrameRenderer` now places barriers so the scene waits for the shadow passes. The [frame check](frames.html) caught it.
 
 ## Spot lights: ShadowAtlas {#atlas}
 

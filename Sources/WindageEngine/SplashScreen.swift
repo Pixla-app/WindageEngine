@@ -15,7 +15,7 @@ import simd
 /// to build. It does not owe the decision: nothing here runs unless a game runs it, and
 /// ``SplashScreen`` does not install itself in the frame loop.
 ///
-/// ### What goes on it, and what does not (0.21.0)
+/// ### What goes on it, and what does not (2026-09-15)
 ///
 /// **One line across: a lead, the mark, the name** — `MADE WITH`, the W, `WINDAGE` over `ENGINE`. The
 /// shape most players have already seen on an engine splash, and for a reason: it reads in one glance.

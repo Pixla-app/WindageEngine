@@ -554,7 +554,7 @@ struct CharacterEventTests {
         #expect(climbSteps >= 4, "\(climbSteps) footsteps for four treads")
     }
 
-    /// **The mirror of the climb**: descending the same four treads sounded one footstep until 0.10.3,
+    /// **The mirror of the climb**: descending the same four treads sounded one footstep at first,
     /// against the climb's four. Walked from mirrored starts — a metre short of the stairs either way —
     /// so the stride arrives at the first tread edge in the same phase, down as well as up.
     @Test("Coming down stairs sounds as many footsteps on the treads as going up")

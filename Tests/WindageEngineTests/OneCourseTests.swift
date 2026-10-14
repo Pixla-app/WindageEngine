@@ -9,8 +9,8 @@ import simd
 
 /// **One course that uses the whole body, at four step rates, giving one set of numbers.**
 ///
-/// The rate independence was won a piece at a time — the flight (0.16.0), a landing's impact (0.17.0),
-/// the eye's settling (0.18.0), the slide (0.19.0) — and each of those has a test of its own, over the
+/// The rate independence was won a piece at a time — the flight, a landing's impact, the eye's
+/// settling, the slide, all on 2026-09-11 — and each of those has a test of its own, over the
 /// one thing it fixed, from rest. This is the capstone: eight seconds of walking, jumping, climbing,
 /// sprinting, sliding, falling and landing, one after another, with every error the course collects
 /// carried forward into the next thing rather than started afresh.
@@ -35,10 +35,10 @@ import simd
 ///
 /// | | what fails |
 /// |---|---|
-/// | the flight taken at the velocity a step ends at (0.16.0) | the jump at all four rates, every landing at all four, the footsteps at 30 and 60 |
-/// | a landing's speed read at the end of its step (0.17.0) | every landing at all four rates — 0.41 m/s out at 30 |
-/// | the slide read once a step (0.19.0) | the ending, at all four — 0.246 m short at 30, 0.033 at 240 |
-/// | the eye settled by `1 − rate·dt` (0.18.0) | **nothing here.** See below |
+/// | the flight taken at the velocity a step ends at | the jump at all four rates, every landing at all four, the footsteps at 30 and 60 |
+/// | a landing's speed read at the end of its step | every landing at all four rates — 0.41 m/s out at 30 |
+/// | the slide read once a step | the ending, at all four — 0.246 m short at 30, 0.033 at 240 |
+/// | the eye settled by `1 − rate·dt` | **nothing here.** See below |
 ///
 /// ### The one it cannot catch, and why that is not a gap to fill
 ///

@@ -95,4 +95,4 @@ See [instancing](instancing.html) and [culling](culling.html).
 
 The simplifier is meshoptimizer's (MIT), vendored unmodified as the `MeshOptimizer` target: the engine's first code not written in Swift. **An app that ships `MeshDetail` ships meshoptimizer's license**, `Sources/MeshOptimizer/LICENSE.md`, alongside its other notices.
 
-Added in 0.25.0 ([changelog](changelog.html)): 1,000 trees of 19,000 triangles each went from 25 ms a frame to 5.6 ms on an M2.
+When it was added, 1,000 trees of 19,000 triangles each went from 25 ms a frame to 5.6 ms on an M2.

@@ -82,7 +82,7 @@ A game with more settings, such as a field of view, a difficulty or subtitles, k
 
 `SaveStore` does not version what it stores; the type you save does. Two patterns, both in the engine and its sample:
 
-**Decode field by field.** `PlayerSettings` decodes every field as optional: a missing field takes its default, an unknown one is ignored, and a key name this build does not recognize costs only that one binding. A settings file from an older build loads into a newer one with everything it did say intact. A file from before 0.8.0 has one sensitivity and one invert, and both devices inherit them.
+**Decode field by field.** `PlayerSettings` decodes every field as optional: a missing field takes its default, an unknown one is ignored, and a key name this build does not recognize costs only that one binding. A settings file from an older build loads into a newer one with everything it did say intact. A file written before the mouse and the stick had separate settings has one sensitivity and one invert, and both devices inherit them.
 
 **Carry a version from the first save.** The sample's `SampleRun.Progress` has a `version` field and `currentVersion = 2`. Version 1 held a single best time; version 2 keeps one per level. A version 1 save migrates when it loads instead of being discarded, and the encoder never writes the old field, so migration is one way.
 

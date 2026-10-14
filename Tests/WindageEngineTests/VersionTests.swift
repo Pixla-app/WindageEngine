@@ -17,7 +17,7 @@ struct SemanticVersionTests {
         #expect(SemanticVersion("1.12.3") == version)
     }
 
-    /// `v0.1.0` is a common habit and it is not what SwiftPM resolves, so it is rejected here rather
+    /// `v1.0.0` is a common habit and it is not what SwiftPM resolves, so it is rejected here rather
     /// than parsed leniently and disagreeing with the tag it came from.
     @Test("Anything that is not major.minor.patch is refused")
     func badVersionsAreRefused() {
@@ -28,8 +28,8 @@ struct SemanticVersionTests {
 
     @Test("A version is a key and a lossless string")
     func hashableAndLossless() {
-        let versions: Set<SemanticVersion> = [SemanticVersion(major: 0, minor: 28, patch: 0),
-                                              SemanticVersion(major: 0, minor: 28, patch: 0),
+        let versions: Set<SemanticVersion> = [SemanticVersion(major: 0, minor: 9, patch: 0),
+                                              SemanticVersion(major: 0, minor: 9, patch: 0),
                                               SemanticVersion(major: 1, minor: 0, patch: 0)]
         #expect(versions.count == 2)
         func roundTrip<T: LosslessStringConvertible & Equatable>(_ value: T) -> Bool { T(value.description) == value }
@@ -74,11 +74,16 @@ struct ChangelogTests {
         }
     }
 
+    /// Before the first release there is nothing to match, and the version is the one that release will be.
     @Test("The newest release in the changelog is the version the engine reports")
     func changelogMatchesTheVersion() throws {
         let listed = releases(in: try changelog)
-        let newest = listed.first?.description ?? "none"
-        #expect(listed.first == Engine.semanticVersion,
+        guard let newest = listed.first else {
+            #expect(Engine.semanticVersion == SemanticVersion(major: 1, minor: 0, patch: 0),
+                    "nothing is released yet, so the engine should report 1.0.0, not \(Engine.version)")
+            return
+        }
+        #expect(newest == Engine.semanticVersion,
                 "CHANGELOG.md's newest entry is \(newest) but Engine.version is \(Engine.version)")
     }
 

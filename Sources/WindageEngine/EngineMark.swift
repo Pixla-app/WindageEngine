@@ -21,7 +21,7 @@ import simd
 /// height. The middle apex sits well below both shoulders, which is what makes it read as a W and not
 /// as two Vs; the lift is the windage.
 ///
-/// **What it replaced (0.21.0).** 0.20.2's mark was a diagram: a thin rule, a curve and two squares,
+/// **What it replaced (2026-09-15).** The mark before it was a diagram: a thin rule, a curve and two squares,
 /// 2.4 times as wide as it was high. It read as a chart going up, it had no silhouette at a browser
 /// tab's size, and it could not be an app icon. Directions drawn before settling here, and why each
 /// lost, are recorded in `Brand/README.md`.

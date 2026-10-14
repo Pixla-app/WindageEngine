@@ -91,7 +91,7 @@ See [shadows](shadows.html) and [lights](lights.html).
 
 ### A batch that draws itself culls itself
 
-A batch built with `ShadowBatch(pipeline:encode:)` — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:
+A batch built with `ShadowBatch(pipeline:encode:)` — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, the closure is told which pass it is drawing:
 
 ```swift
 public struct ShadowPass {

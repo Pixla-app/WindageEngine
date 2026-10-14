@@ -38,9 +38,9 @@ deploy needs that opening the file does not.
 - **The button and the license line stay as they are** (owner, 2026-10-13): "Get the engine" goes to the
   docs, and the footer keeps "Free for small studios under PolyForm Small Business 1.0.0".
 - **The package URL.** There is no public repository, so the docs show `https://…/WindageEngine.git`.
-- **The numbers.** 645 tests, 20 walk runs and 5 recorded frames are 0.27.0's (measured 2026-10-13). They move every release;
+- **The numbers.** 645 tests, 20 walk runs and 5 recorded frames were measured 2026-10-13. They move every release;
   check them against `swift test`, `Tools/walks.py` and `Tools/frames.py` when publishing.
-- **The imagery.** Every picture is the sample's placeholder art, and taken before 0.22.0 strewed debris through it. A launch wants a scene built to be looked
+- **The imagery.** Every picture is the sample's placeholder art, and taken before instancing strewed debris through it. A launch wants a scene built to be looked
   at, and the showcase that the product concept had is left out until a title built on the engine has been
   announced — **no game is named on the engine's site before it is**.
 

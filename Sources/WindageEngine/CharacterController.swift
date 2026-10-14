@@ -33,7 +33,7 @@ import simd
 /// **A solid turned about the vertical is still a box, on its side of the ground plane** — see
 /// ``Surroundings/Solid/footprint``. Two rectangles are tested by their separating axes (the world's two
 /// and the solid's own two), and the one face that is not square to the world, the turned one, is the
-/// one contact that needs a normal: a move into it slides along it for the rest of the step (0.12.1).
+/// one contact that needs a normal: a move into it slides along it for the rest of the step (2026-09-11).
 ///
 /// ### Vertical movement is smoothed; the body is not
 ///
@@ -89,12 +89,12 @@ public nonisolated struct CharacterController: Sendable {
             /// through the same collision as walking, so a platform does not carry anyone through a
             /// wall.
             ///
-            /// **And the body keeps it on leaving** (0.12.0): a jump adds the ground's speed to its own,
+            /// **And the body keeps it on leaving** (2026-09-11): a jump adds the ground's speed to its own,
             /// and a step off an edge falls away at it — ``CharacterController/groundVelocity``. So this
             /// is *movement*: a solid put back at its start in one step must report no motion that
             /// step, or whoever leaves it next goes at the speed of the jump back.
             ///
-            /// **And a body it moves into is pushed out of its way** (0.13.0) — along the way it went,
+            /// **And a body it moves into is pushed out of its way** (2026-09-11) — along the way it went,
             /// just clear of it, through collision with everything else. Pushed into a wall, the body
             /// stays out of the wall and ``CharacterController/pinnedBy`` names the solid; what a door
             /// or a crusher does about that is the game's. A solid low enough to step onto is stood on
@@ -264,7 +264,7 @@ public nonisolated struct CharacterController: Sendable {
         /// per second: a second of it leaves `e^(−12)` of the gap, a step of `dt` leaves `e^(−12·dt)`.
         /// See the type's notes on smoothing.
         ///
-        /// **The exponential, not `1 − rate·dt`** (0.18.0): that is its first two terms, it is short by
+        /// **The exponential, not `1 − rate·dt`** (2026-09-11): that is its first two terms, it is short by
         /// the rest, and at `dt = 1/rate` it closes the whole gap in one step — a game stepping 12 times a
         /// second snapped where one stepping 120 eased. Measured up four treads, the eye ended 1.640 m
         /// above the feet at 30 steps a second against 1.636 at 120; now 1.636 at both.
@@ -500,7 +500,7 @@ public nonisolated struct CharacterController: Sendable {
     public private(set) var turned: Float = 0
 
     /// How fast the ground was carrying the body this step, meters a second — and, across, anything
-    /// pushing it (0.14.0). Zero on still ground with nothing in the way. **What the body keeps when it
+    /// pushing it (2026-09-11). Zero on still ground with nothing in the way. **What the body keeps when it
     /// leaves**: added to a jump, and the speed a step off an edge — or a shove off one — falls at.
     public private(set) var groundVelocity = SIMD3<Float>.zero
 
@@ -629,8 +629,8 @@ public nonisolated struct CharacterController: Sendable {
         // underfoot. Before the body's own walking, like the carry, and making no footsteps.
         pinnedBy = nil
         let pushedBy = push(in: world)
-        // **A push is kept, as a carry is.** On the ground, on leaving (0.14.0): shoved off an edge a body
-        // flies on rather than dropping straight down. In the air, at once (0.14.3): shoved mid-jump, it
+        // **A push is kept, as a carry is.** On the ground, on leaving: shoved off an edge a body
+        // flies on rather than dropping straight down. In the air, at once: shoved mid-jump, it
         // goes on at the pusher's speed after the pusher stops — measured before, it came down exactly
         // where the pusher left it, 0.29 s of flight still to go. Across only: a push that climbs a step
         // has not thrown anyone upward.
@@ -682,7 +682,7 @@ public nonisolated struct CharacterController: Sendable {
         // and a stick pushed a third of the way walks a third as fast. Normalising did the first and
         // broke the second: any deflection past the dead zone walked at full speed, so the stick's
         // response curve reached the look and never the feet. Measured before the fix: a stick at 5%
-        // covered the same 6 m a second as one pushed all the way (0.9.0).
+        // covered the same 6 m a second as one pushed all the way (2026-09-11).
         if lengthSquared > 1 { direction /= lengthSquared.squareRoot() }
 
         // A slide goes where it was aimed when it started, nudged by the stick and no more.
@@ -698,7 +698,7 @@ public nonisolated struct CharacterController: Sendable {
         // Unless you are sliding, in which case the sprint's speed bleeds off into the crouch's —
         // held early and let go late, which reads as momentum rather than as being dragged to a halt.
         //
-        // **The speed over the step, not the speed at one end of it** (0.19.0). What is left of the slide
+        // **The speed over the step, not the speed at one end of it** (2026-09-11). What is left of the slide
         // falls steadily, so `pow(remaining, easing)` is a curve across the step, and taking one reading
         // of it made the whole slide shorter the more coarsely a game stepped: 15.847 m at 30 steps a
         // second against 16.093 at 240, where the curve integrates to 16.138. Its integral is as plain as
@@ -750,7 +750,7 @@ public nonisolated struct CharacterController: Sendable {
             let pace = crouched ? tuning.walkSpeed * tuning.crouchedSpeedFraction : tuning.walkSpeed
             wantBob = gait * min(1, groundSpeed / max(pace, 1e-3))
         }
-        // **Closed as the exponential it is** (0.18.0): a fraction closed per second leaves `e^(−rate·dt)`
+        // **Closed as the exponential it is** (2026-09-11): a fraction closed per second leaves `e^(−rate·dt)`
         // of the gap after a step, not `1 − rate·dt`, which is its first two terms — and which reaches
         // zero at `dt = 1/rate` and would go negative past it, so a game stepping slowly snapped where a
         // fast one eased. See ``Tuning/settleRate``.
@@ -939,7 +939,7 @@ public nonisolated struct CharacterController: Sendable {
                 // the one it trails. One moving away from a body it is still into, as a door turning back
                 // from someone it pinned is, neither pushes nor pins them: "just clear of it, the way it
                 // went" was out through its far side, and the sample's slider carried a pinned player
-                // 1.8 m through itself and home (0.14.2).
+                // 1.8 m through itself and home (2026-09-11).
                 guard clear.leaving < -clear.fraction else { continue }
                 let shove = across * max(0, clear.leaving)
                 move(along: SIMD3(shove.x, 0, 0), in: world, sliding: false, ignoring: index)
@@ -1078,7 +1078,7 @@ public nonisolated struct CharacterController: Sendable {
     /// ``bobCatchUp``, which eases out at the eye's own settling rate: the head bob follows a step the
     /// way the eye does.
     ///
-    /// > **Down as well, since 0.10.3.** The first version counted only a rise, so four treads climbed
+    /// > **Down as well.** The first version counted only a rise, so four treads climbed
     /// > sounded four footsteps and the same four descended sounded one — measured, with the other
     /// > three the body floating down. Stepping off a tread onto the one below is a foot coming down
     /// > as surely as stepping up onto one; the ground-following reports it as a negative change.
@@ -1177,7 +1177,7 @@ public nonisolated struct CharacterController: Sendable {
             airVelocity = SIMD2(groundVelocity.x, groundVelocity.z)
         }
 
-        // **Stepped by the exact answer, not by the velocity it ends at** (0.16.0). Gravity is constant,
+        // **Stepped by the exact answer, not by the velocity it ends at** (2026-09-11). Gravity is constant,
         // so a step of flight has one: y + v·dt − ½g·dt². Taking the new velocity across the whole step
         // loses that half every step, and a jump's height then depended on how often a game steps —
         // measured, apex 0.890 m at 30 steps a second, 0.940 at 60, 0.966 at 120, 0.979 at 240, where the
@@ -1200,7 +1200,7 @@ public nonisolated struct CharacterController: Sendable {
             // cannot skip through a thin floor between two steps.
             let (support, solid) = supportHeight(at: feet, below: feet.y, in: world)
             if next <= support {
-                // **Speed at the ground, not at the end of the step** (0.17.0) — the number a landing's
+                // **Speed at the ground, not at the end of the step** (2026-09-11) — the number a landing's
                 // loudness, a camera dip or fall damage all want, and it belongs to the moment of
                 // contact, which is somewhere inside the step. `v² = v₀² + 2g·h` gives it exactly, h
                 // being the drop from where the feet began the step to what they landed on. Taking the

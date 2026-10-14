@@ -19,7 +19,7 @@
   <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
   <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
-  <span class="ver">v0.28.0</span>
+  <span class="ver">v1.0.0</span>
 </header>
 
 <div class="docs">
@@ -64,7 +64,7 @@
 <p>The second initializer, <code>ShadowBatch(pipeline:encode:)</code>, is for geometry that isn't one <code>MTKMesh</code> per object: instanced copies, or a mesh your game builds into its own buffers. The engine binds the pipeline and the light matrix, then calls your closure once per pass with the encoder, the argument table and a <code>ShadowPass</code>: its <code>target</code> says which pass — <code>.cascade(i)</code>, <code>.atlasSlot(i)</code> or <code>.cubeFace(slot:face:)</code> — and <code>viewProjection</code> is its light matrix, from which a <code>Frustum</code> can cull. Such a batch has no mesh or count of its own (<code>objectCount</code> is <code>nil</code>). The sample draws its debris this way, binding copies at <code>ShadowBufferIndex.instances</code>.</p>
 <h2 id="order">Write uniforms before any pass</h2>
 <p>A shadow pass reads the same <code>model</code> matrix and joint palette as the main pass. Write them in <code>encodePrePasses</code>, before any shadow is recorded. If you write them in <code>encode</code>, every shadow is recorded from the previous frame's positions and lags behind its caster. The sample's <code>encodePrePasses</code> writes uniforms, debris transforms and light matrices first, then encodes the three shadow passes. See <a href="game-loop.html">game loop</a>.</p>
-<div class="note"><p><strong>Every shadow was a frame stale, and it looked right.</strong> Metal 4 tracks no hazards between passes. Until 0.20.0 the scene pass sampled shadow maps a pass in the same command buffer was still writing, so every shadow was a frame stale, and the very first frame differed on every run: once black, once blotched in cluster-sized squares. <code>FrameRenderer</code> now places barriers so the scene waits for the shadow passes. The <a href="frames.html">frame check</a> caught it.</p></div>
+<div class="note"><p><strong>Every shadow was a frame stale, and it looked right.</strong> Metal 4 tracks no hazards between passes. At first, the scene pass sampled shadow maps a pass in the same command buffer was still writing, so every shadow was a frame stale, and the very first frame differed on every run: once black, once blotched in cluster-sized squares. <code>FrameRenderer</code> now places barriers so the scene waits for the shadow passes. The <a href="frames.html">frame check</a> caught it.</p></div>
 <h2 id="atlas">Spot lights: ShadowAtlas</h2>
 <p><code>ShadowAtlas(device:resolution:tilesPerSide:rasterBias:)</code> cuts one texture into tiles (2048 texels and 4 per side by default, so <code>slotCount</code> is 16). All casters share <strong>one render pass</strong>. <code>ShadowAtlas.viewProjection(for:nearPlane:)</code> builds a spot's matrix from its cone, and returns <code>nil</code> for a light with no cone. Pass <code>ShadowAtlas.Caster(slot:viewProjection:)</code> values to <code>encode(into:frameSlot:casters:batches:)</code>, reusing the batches from the cascades. In the shader, <code>tile(forSlot:).uvTransform(atlasResolution:)</code> gives the offset and scale for a slot's tile; a slot outside <code>0..&lt;slotCount</code> stops there rather than borrowing another light's tile.</p>
 <h2 id="cubes">Point lights: ShadowCubes</h2>
@@ -74,7 +74,7 @@
   </main>
 
   <aside class="docs-toc" aria-label="On this page">
-    <h2>On this page</h2><a href="#split">The split</a><a href="#cascades">Cascades for the sun</a><a href="#pass">The pass</a><a href="#order">Write uniforms before any pass</a><a href="#atlas">Spot lights: ShadowAtlas</a><a href="#cubes">Point lights: ShadowCubes</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
+    <h2>On this page</h2><a href="#split">The split</a><a href="#cascades">Cascades for the sun</a><a href="#pass">The pass</a><a href="#order">Write uniforms before any pass</a><a href="#atlas">Spot lights: ShadowAtlas</a><a href="#cubes">Point lights: ShadowCubes</a>
   </aside>
 </div>
 

@@ -60,7 +60,7 @@ the drawing works hardest not to be.
 
 ## What it replaced, and what else was drawn
 
-**0.20.2's mark** was a thin rule, a curve and two squares, 2.4 times as wide as it was high. It read as a
+**The first mark (2026-09-12)** was a thin rule, a curve and two squares, 2.4 times as wide as it was high. It read as a
 chart going up, had no silhouette at a tab's size, and could not be an app icon.
 
 Drawn on the way here, and why each lost:

@@ -19,7 +19,7 @@
   <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
   <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
-  <span class="ver">v0.28.0</span>
+  <span class="ver">v1.0.0</span>
 </header>
 
 <div class="docs">
@@ -77,7 +77,7 @@
 <div class="table"><table><thead><tr><th>Pass</th><th>What it culls</th></tr></thead><tbody><tr><td><code>ShadowCubes</code> (point lights)</td><td>Casters outside the light's range skip all six faces; casters outside a face's <code>Frustum</code> skip that face.</td></tr><tr><td><code>ShadowMap</code> (sun cascades)</td><td>Ordinary batches are drawn whole: a cascade covers what the camera covers, so there is little to remove.</td></tr></tbody></table></div>
 <p>See <a href="shadows.html">shadows</a> and <a href="lights.html">lights</a>.</p>
 <h3 id="a-batch-that-draws-itself-culls-itself">A batch that draws itself culls itself</h3>
-<p>A batch built with <code>ShadowBatch(pipeline:encode:)</code> — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, since 0.24.0, the closure is told which pass it is drawing:</p>
+<p>A batch built with <code>ShadowBatch(pipeline:encode:)</code> — instanced copies, or geometry your game builds into its own buffers — encodes its own draws, so the engine cannot cull it per object. Instead, the closure is told which pass it is drawing:</p>
 <pre class="code-swift"><span class="k">public</span> <span class="k">struct</span> ShadowPass {
     <span class="k">public</span> <span class="k">enum</span> Target {
         <span class="k">case</span> cascade(Int)                       <span class="c">// a sun cascade, nearest first</span>
@@ -100,7 +100,7 @@ ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass <span clas
   </main>
 
   <aside class="docs-toc" aria-label="On this page">
-    <h2>On this page</h2><a href="#why-cull-an-open-scene">Why cull an open scene</a><a href="#frustum">Frustum</a><a href="#the-asymmetry-behind-every-detail">The asymmetry behind every detail</a><a href="#boundingbox-in-world-space">BoundingBox, in world space</a><a href="#culling-shadow-passes">Culling shadow passes</a><a href="#what-it-does-not-do">What it does not do</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
+    <h2>On this page</h2><a href="#why-cull-an-open-scene">Why cull an open scene</a><a href="#frustum">Frustum</a><a href="#the-asymmetry-behind-every-detail">The asymmetry behind every detail</a><a href="#boundingbox-in-world-space">BoundingBox, in world space</a><a href="#culling-shadow-passes">Culling shadow passes</a><a href="#what-it-does-not-do">What it does not do</a>
   </aside>
 </div>
 

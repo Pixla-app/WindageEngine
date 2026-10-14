@@ -467,7 +467,7 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
 
     /// How much of the head bob to show, 0…1 — **0 is off**. Multiplies ``CharacterController/headBob``.
     ///
-    /// **Stored under `headBob`**, the name it had before 0.29, so a settings file keeps it.
+    /// **Stored under `headBob`**, the name it had before the API audit, so a settings file keeps it.
     ///
     /// **An amount rather than a switch, with off at the bottom of it.** Bob is a known cause of
     /// motion sickness, so off has to exist and be easy to find; but most players who find the full
@@ -523,14 +523,14 @@ public nonisolated struct PlayerSettings: Sendable, Equatable, Codable {
         case bindings, padBindings, mouseSensitivity, stickSensitivity, invertMouse, invertStick
         case moveDeadzone, lookDeadzone, volume, ambienceVolume, brightness
         case headBobAmount = "headBob"
-        /// Read, never written: one sensitivity and one invert for both devices, before 0.8.0.
+        /// Read, never written: one sensitivity and one invert for both devices, before 2026-09-11.
         case lookSensitivity, invertLook
     }
 
     /// **Every field optional**, for the reason ``InputBindings`` gives: a settings file from an
     /// older build must load into a newer one with everything it did say intact.
     ///
-    /// **A file from before 0.8.0 has one sensitivity and one invert**, and both devices inherit
+    /// **A file from before the per-device settings has one sensitivity and one invert**, and both devices inherit
     /// them — that is what the player had, on both, the last time they played. A device's own key
     /// wins where a file has both.
     public init(from decoder: Decoder) throws {

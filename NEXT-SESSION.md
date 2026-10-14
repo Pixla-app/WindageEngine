@@ -26,7 +26,7 @@ pull it to the floor before the first frame.
 
 **Walk it without a keyboard — or a controller:** `WINDAGE_SAMPLE_LEVEL=1 WINDAGE_SAMPLE_WALK="d:0.75 w:1.0 w:0.4 wait:1"
 swift run WindageSample` — key names and seconds, **pressed through the same path a keyboard uses**,
-and the log says where the feet ended each segment. **It keeps time with its window hidden** (0.12.2). `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
+and the log says where the feet ended each segment. **It keeps time with its window hidden** (2026-09-11). `o:0.1 return:0.1 i:0.1 o:0.1` opens settings and
 rebinds forward to I; `pad.south`, `pad.menu`, `pad.down` press a virtual controller, which then
 counts as connected. **A script that changes settings writes the real settings file** in Application
 Support; delete it afterwards.
@@ -57,7 +57,7 @@ What that means for the next session, concretely:
 - **`WindageSample` is the proving ground.** A capability is not finished until the sample uses it
   through the public API. That is what has caught every real bug so far.
 - **A game that an engine change reaches is brought up to date in the same pass** (2026-09-11,
-  replacing "on that game's schedule", which is how one fell fourteen versions behind). If a change
+  replacing "on that game's schedule", which is how one fell so far behind it no longer compiled). If a change
   breaks a game's build, changes what it draws or how it behaves, or makes a copy it holds wrong, the
   pass is not done until that game builds, passes its own tests and has been run and looked at — in
   **its** repository, through **its** handoff, never from here. Swapping a game's *working* copy of
@@ -71,13 +71,14 @@ What that means for the next session, concretely:
 
 **`API-AUDIT.md` is the record**: 133 findings across the public API, reviewed before 1.0 and fixed with the
 owner's approval in four area passes plus a consistency pass — **128 done, 5 declined with reasons, none left
-for the owner.** Every change is in `CHANGELOG.md` under *Unreleased* (mostly *Changed — breaking*). Every
+for the owner.** Every change is in `CHANGELOG.md` under *Unreleased*, which is now the 1.0.0 entry. Every
 consumer was followed in the same pass: Coldkeel now owns its sniper controls (`ColdkeelCore/Controls.swift`),
 Worldra follows the new shadow and math API, and the rigs build. Checks: 666 + 50 tests, 20 walks and 5 frames
 as recorded; Worldra's forest frame byte-identical to before.
 
-**Not released — releases are the owner's call, in batches** (see README, "Releases come in batches"). The
-audit is one breaking batch; propose it as one release when the owner asks. The credit policy is decided: a
+**Not released — nothing is.** The engine reports 1.0.0, the version its first release will be;
+`CHANGELOG.md` has one *Unreleased* section ("Initial release") and there are no tags. When 1.0.0 ships is the
+owner's call (README, "Versioning") — never cut a release unasked. The credit policy is decided: a
 credits line required, the splash optional (README, licensing). The price above PolyForm's thresholds is not.
 
 ## Done 2026-10-13 — the docs, written (Unreleased)
@@ -94,16 +95,16 @@ and four that had stopped being true were corrected. Comments only — no consum
 > `isEngaged` is not public, so a game can neither make nor read one. Either it should be internal or it
 > needs both. Raised with the owner.
 
-## Done 2026-10-13 — the British names removed (0.27.0)
+## Done 2026-10-13 — the British names removed
 
-The 0.26.0 aliases and the level reader's `colour` key are deleted, at the owner's word: no one outside the
+The deprecated British aliases (2026-10-12) and the level reader's `colour` key are deleted, at the owner's word: no one outside the
 studio uses the engine yet, and every game here was already on the new names. A rule for later, once there are
-outside users: **deprecate for a release before removing**, as 0.26.0 did.
+outside users: **deprecate for a release before removing**, as the renaming on 2026-10-12 did.
 
-## Done 2026-10-12 — public names in US English (0.26.0)
+## Done 2026-10-12 — public names in US English
 
-`color`, `center`, `unitsPerMeter` throughout the public API; the British names forward, deprecated, for this
-one release (`Deprecated.swift`) — deleted in 0.27.0. Level files write a light's
+`color`, `center`, `unitsPerMeter` throughout the public API; the British names forward, deprecated
+(`Deprecated.swift`) — deleted the next day. Level files write a light's
 `color` and still read `colour`; the sample's levels are converted. Renamed in code only: **doc comments are
 still British, to be swept when the docs are published** (owner, 2026-10-12). 596 tests (2 new: old levels
 open, old names forward); 20 walks and 5 frames as recorded. **The consumers caught two faults in the aliases
@@ -111,7 +112,7 @@ before anyone else could:** they inherited the package's main-actor default, so 
 stopped compiling (now `nonisolated`, as their types are), and `ring`'s alias renamed a `color:` label that was
 never British.
 
-## Done 2026-10-12 — level of detail (0.25.0)
+## Done 2026-10-12 — level of detail
 
 **`MeshDetail`**: up to ten tiers of a loaded mesh, each with its own vertices and normals recomputed from its
 own faces, and `choose` — the coarsest tier under half a pixel of error. Built on **meshoptimizer 1.3's
@@ -122,13 +123,13 @@ every vertex at every hard edge; **recomputed normals**, because kept ones drew 
 pixel**, because at one a wood of six-pixel trees visibly lost its tiers of branches. 6 new tests, one loading a
 real mesh. **Not in the sample** — nothing there is far enough away to switch; see the CHANGELOG.
 
-## Done 2026-10-12 — a self-drawing batch knows its pass (0.24.0)
+## Done 2026-10-12 — a self-drawing batch knows its pass
 
 `ShadowMap.Batch`'s `encode` closure gets a `ShadowMap.Pass` (index, light view-projection), so a batch can
 cull to each cascade, tile or face. Measured in the consumer it came from: a wood's shadows drawn whole into
 four cascades were three quarters of a frame; culled per cascade, the frame went from 75 to 25 ms.
 
-## Done 2026-10-12 — shadows for self-drawn geometry (0.23.0)
+## Done 2026-10-12 — shadows for self-drawn geometry
 
 `ShadowMap.Batch(pipeline:encode:)` — a batch that encodes its own draws, for instanced copies and for a
 mesh a game builds itself; `ShadowAtlas` and `ShadowCubes` draw it whole. `BufferIndex.instances` (4).
@@ -136,7 +137,7 @@ mesh a game builds itself; `ShadowAtlas` and `ShadowCubes` draw it whole. `Buffe
 The sample's debris casts through it. 638 tests; 20 walks and 5 frames as recorded (redrawn for the debris's
 shadows). Followed into every consumer the same day.
 
-## Done 2026-10-12 — instancing (0.22.0)
+## Done 2026-10-12 — instancing
 
 **`InstanceBatches` and `InstanceBuffer`**: copies grouped by kind in a fixed order, and a per-frame
 buffer of their transforms that grows and keeps its residency. Extracted from a world editor's scatter
@@ -165,13 +166,13 @@ reversed-Z convention, `Camera`, `InputState` (keyboard, mouse, gamepad), `MeshL
 `ToneMapping`, `ProceduralSky` and `EnvironmentMap`, `PunctualLight` and `LightSet`,
 `ClusterGrid` and `ClusteredLights`, `TransformHierarchy`, `CharacterController`, `ParticleSystem`
 and `ParticleRenderer`, `InputBindings`, **`PadBindings`** and `PlayerSettings`, and — for the lamps that cast —
-`ShadowMap`, `ShadowAtlas` and `ShadowCubes` — and, since 0.20.2, **`EngineMark` and `SplashScreen`**,
+`ShadowMap`, `ShadowAtlas` and `ShadowCubes` — and, since 2026-09-12, **`EngineMark` and `SplashScreen`**,
 with the mark itself in `Brand/`.
 
-## Done 2026-09-15 — the Drift W (0.21.0)
+## Done 2026-09-15 — the Drift W
 
 **The mark is a W with its right half carried up 16%** — chosen from six directions drawn as a 1024 icon, a
-Dock, a 16 px tab rendered into real pixels, and a splash on dark and on white. 0.20.2's diagram of a mark read
+Dock, a 16 px tab rendered into real pixels, and a splash on dark and on white. The 2026-09-12 diagram of a mark read
 as a chart and died at tab size. `EngineMark.outline` is the construction (five centre-line points, a stroke
 width, corners where edges meet, ends cut flat); every file in `Brand/` — two one-tone marks, the app icon, the
 favicon — is written from it and checked. **No hue, no accent** (an accent split the letter in two). The whole
@@ -191,7 +192,7 @@ game engine that shows its work": the jump at four rates, the stale shadows, wha
 checked), and the docs' first page in their own shape. **Four things in it are ahead of the facts** — the
 licence, the package URL, the numbers, the placeholder imagery — listed in its README. No game is named on it.
 
-## Done 2026-09-12 — the engine says its own name (0.20.2)
+## Done 2026-09-12 — the engine says its own name
 
 **`EngineMark`** (the device, as geometry — a straight rule where a shot was aimed, a square where it
 left, a path carried off it, a square where it arrived; drawn from the HUD's own primitives, so no
@@ -225,7 +226,7 @@ seconds, and less time fading than being read.
 behind it with its clock already counting — the sample deliberately does not pause, which is what makes
 the walk worth anything.
 
-## Done 2026-09-12 — one course, four rates, one set of numbers (0.20.1)
+## Done 2026-09-12 — one course, four rates, one set of numbers
 
 **No engine code changed, and that is the result.** The capstone (`OneCourseTests`) walks, jumps, climbs
 three treads, sprints, slides, goes off a cliff and lands, at 30 / 60 / 120 / 240 steps a second: it ends
@@ -250,11 +251,11 @@ straight line lands 0.1 mm from 48 m at 30 steps a second, 0.6 mm at 240, 1.8 mm
 is as tight as a course this long can be asked, and the course's 1.5 mm is that and nothing else. And
 **a law whose clock starts at a collision cannot be pinned by a course**: the eye's settling is kicked by
 a climb, the climb lands on whichever step first overlaps the tread, and `e^(−12·Δ)` over a 33 ms rounding
-is a third either way. Switching 0.18.0 back to `1 − rate·dt` leaves the course untouched; it does move
+is a third either way. Switching the eye's exponential settling back to `1 − rate·dt` leaves the course untouched; it does move
 what the sample prints (eye 1.70 m above the feet at the top of the stairs at 30, where it reads 1.69),
 and that number is deliberately **not** recorded — it sits on the rounding of the printed centimetre.
 
-## Done 2026-09-11 — the frames are a check, and a missing barrier (0.20.0)
+## Done 2026-09-11 — the frames are a check, and a missing barrier
 
 **`FrameRenderer.render(into:)`** (a frame into your own texture, GPU waited for), **`WINDAGE_SAMPLE_FRAME`**
 (one frame to a PNG, no window, before any step), **`Tools/frames.py` + `frames.json` + four recorded
@@ -270,7 +271,7 @@ it: four runs, identical bytes.
 the constant depth bias × 25 (too small against a cascade's range) both left the frames identical. The
 levers that do move it: the sample's own curve (98% of pixels) and the sun's casters not drawn (5.5–7.6%).
 
-## Done 2026-09-11 — a slide covers the ground its curve says (0.19.0)
+## Done 2026-09-11 — a slide covers the ground its curve says
 
 **The step takes the slide speed's average over the step** (`∫ r^e dr`), not one reading of a falling
 curve; a slide ending inside a step is spent for the part it lasted. The curve integrates to **16.138 m**:
@@ -282,7 +283,7 @@ looked at — 0.088 m at 30 a second, exactly the gap). One test, all four rates
 different moment at each rate; and a tolerance of `sprintSpeed·dt` (0.6 m at 30 a second) would have
 passed the old code at every rate — it is the crouched walk of one step, 0.09 m, that bounds the window.
 
-## Done 2026-09-11 — the eye settles as the exponential it is (0.18.0)
+## Done 2026-09-11 — the eye settles as the exponential it is
 
 **`settling`, `bobCatchUp` and the bob's easing take `e^(−rate·dt)`** — a rate per second is an
 exponential, and `1 − rate·dt` is its first two terms, zero at `dt = 1/rate`: at twelve steps a second the
@@ -297,7 +298,7 @@ demanded there be a lag at all: both its readings were zero, which is the snap i
 
 **Nothing the walks record moved** — 15 walks, 79 expectations, the head bob included.
 
-## Done 2026-09-11 — a landing hits at the ground's speed (0.17.0)
+## Done 2026-09-11 — a landing hits at the ground's speed
 
 **`√(v² + 2g·h)`**, the speed at the surface, not at the end of the step that crossed it (over by up to
 g·dt). A fall from 1 m: **6.3246 m/s at 30, 60, 120 and 240 steps a second**, where it read 6.667 / 6.333 /
@@ -312,11 +313,11 @@ walk carries both, and fails on the old reading, at 120 steps a second.
 and the sample would not show it. It is up to g·dt — a sixth of a metre a second — and the sample showed
 it in the first run.
 
-## Done 2026-09-11 — the walk check sees the look (0.16.2)
+## Done 2026-09-11 — the walk check sees the look
 
 **The view's turns are checked** (to the hundredth of a degree; a segment that reports none is no turn —
-a stick inside its dead zone). **Four walks recovered**: 0.8.0's sensitivities at defaults (91.67 / 45.84 /
-63.03 / 25.21) and set from the pad (45.84 / −22.92 / 126.05 / 50.42); 0.9.0's dead zones at defaults
+a stick inside its dead zone). **Four walks recovered**: the sensitivity item's at defaults (91.67 / 45.84 /
+63.03 / 25.21) and set from the pad (45.84 / −22.92 / 126.05 / 50.42); the dead-zone item's at defaults
 (none / 2.26 / 18.11 / 91.67, and 0.11 m / 2.59 m) and at 26%–30% from the pad (none / 9.64 / 91.67, 0 m /
 1.99 m). **15 walks, 79 expectations, 33 s.** Failing on purpose: the mouse's look scale doubled fails the
 mouse's turns in both look walks, the stick's untouched.
@@ -326,7 +327,7 @@ input is read in `beginFrame`, and a check draws no frames — so a scripted pad
 nothing read them. A check polls the pad from its steps now. (The keyboard was never affected: its keys go
 straight to the game, which is why the head-bob walk could set the bob.)
 
-## Done 2026-09-11 — the walks run four at a time (0.16.1)
+## Done 2026-09-11 — the walks run four at a time
 
 **25 s for eleven walks, where one at a time took 122** — and `--serial` still there: **all 60 measured
 values identical either way**. Two things it needed: **saves named after the walk**
@@ -335,40 +336,40 @@ lesson again), and **no environment map in a check** (2.6 s of the 3.3 before a 
 also took the serial run to 87 s). Found on the way: `--record` and `--serial` were being read as walk-name
 filters, so `--serial` ran nothing.
 
-**Still fails when it should**: the slider back at 0.13.0's place fails the crate walk on (3.22, 5.28) and
+**Still fails when it should**: the slider back where it was first placed fails the crate walk on (3.22, 5.28) and
 now the head-bob walk too, whose path it also crosses; a wrong recorded number exits 1.
 
-## Done 2026-09-11 — the same jump at any step rate (0.16.0)
+## Done 2026-09-11 — the same jump at any step rate
 
 **A step of flight is stepped by its exact answer** (`y + v·dt − ½g·dt²`), not by the velocity the step
 ends at, which lost ½g·dt² a step. Apex **0.992 m at 30, 60, 120 and 240 steps a second** (less the
 sampling: 2.8 mm at 30), where it was 0.890 / 0.940 / 0.966 / 0.979. Two tests over four rates; all eight
 cases fail on the old integration.
 
-**The walks' jump heights re-recorded** — 0.97 → 0.99 and 1.90 → 1.92 — which makes 0.12.0's lift jump
+**The walks' jump heights re-recorded** — 0.97 → 0.99 and 1.90 → 1.92 — which makes the lift jump
 rise the **1.17 m** it was computed to. Nothing else moved. **`Tools/walks.py --record`** (new) prints
 what each walk gives now: the check's 2 cm tolerance would have let this change pass unseen, and did
 until I looked.
 
-## Done 2026-09-11 — the walk check hears footsteps and sees the head bob (0.15.1)
+## Done 2026-09-11 — the walk check hears footsteps and sees the head bob
 
 **`Tools/walks.py` checks the lines under each segment**: footsteps (exact), surfaces (exact), head bob
-(± the printed millimetre). **Three walks recovered from the transcript and logs, not retyped** — 0.8.1's
-head bob (walk 2.8 × 1.8, sprint 4.7 × 3.0, crouch 1.4 × 0.9, then off on the settings screen), the same at
-50% (1.4 × 0.9, now set on the screen), 0.11.0's stairs down (4 up, 5 down, dirt/stone/wood) — plus no
-footsteps riding the lift (0.10.1) and none being pushed (0.13.0). **11 walks, 59 expectations, all hold.**
+(± the printed millimetre). **Three walks recovered from the transcript and logs, not retyped** — the head-bob
+item's (walk 2.8 × 1.8, sprint 4.7 × 3.0, crouch 1.4 × 0.9, then off on the settings screen), the same at
+50% (1.4 × 0.9, now set on the screen), the tread item's stairs down (4 up, 5 down, dirt/stone/wood) — plus no
+footsteps riding the lift and none being pushed. **11 walks, 59 expectations, all hold.**
 Failing on purpose: tread `abs` out → 3 against 5; bob a fifth smaller → all three gaits caught.
 
 **A claim of mine, checked and wrong**: I wrote into `walks.json` that the head-bob walk's settings-screen
 part had to be left out because the screen's rows had moved. Read: without a pad every row added since
 (dead zones, stick rows, ambience) is pad-only or below Head bob, so the old key presses still land on it.
-The full walk went in, and reproduced 0.8.1's "off" exactly.
+The full walk went in, and reproduced the head-bob item's "off" exactly.
 
-## Done 2026-09-11 — a push in mid-air is kept (0.15.0)
+## Done 2026-09-11 — a push in mid-air is kept
 
 **Air push → `airVelocity`**, up to the pusher's speed along the push. **And the kept speed is the
 pusher's** everywhere, not the step's displacement: at first contact that read a 1.5 m/s push 0.24 and
-0.30 m/s wrong at two of five gaps (measured). 0.14.0's numbers unchanged (a settled push agrees). Three
+0.30 m/s wrong at two of five gaps (measured). The push-on-leaving numbers unchanged (a settled push agrees). Three
 tests, each failing without its part.
 
 **In the ruins**, jumping as the piston arrives: before, the player came down **on top of the piston**
@@ -376,7 +377,7 @@ tests, each failing without its part.
 the jump a step early, and no piston to land on (it predicted −2.164 on the ground, and the ground for the
 before case too); fixed, it matched both outcomes to the mm. Frames of both. Eighth walk added; 8 of 8.
 
-## Done 2026-09-11 — the sample uses `pinnedBy`, and a push bug it found (0.14.2)
+## Done 2026-09-11 — the sample uses `pinnedBy`, and a push bug it found
 
 **The slider turns back when it pins the player** (`SampleLevel.SlideRun`, three tests; state kept outside
 the rebuild, since collecting a crate rebuilds the level), against a **`"stop"`** crate at (−5.3, 7.9) —
@@ -393,23 +394,23 @@ old code by 3.76 m. Every earlier push test and walk unchanged.
 slider went home. **Seventh walk in `Tools/walks.py`** — which also had to learn a last segment label can
 repeat (it stopped at the first `wait:3.0`). 7 of 7 hold.
 
-## Done 2026-09-11 — the documented walks are a check (0.14.1)
+## Done 2026-09-11 — the documented walks are a check
 
 **`Tools/walks.json`** (six walks — crate, lift jump, stairs and jump, push, turntable rim, piston — with
 21 expectations: feet after segments, highest points, report numbers) and **`Tools/walks.py`** (runs them,
 fails on > 2 cm). All six hold, ~60 s. **Proved by failing**: slider back at (1, 8) → the crate walk fails
 on (3.22, 5.28), the deflection found by hand, and the push walk fails too; exit 1. Restored.
 
-**Checked, not guessed, on the way**: the stairs walk was labelled "0.6" from memory — `git log -S` found
-it at **0.6.6**, and the README's version of it went on to a jump that peaked at 0.97; the check uses that
+**Checked, not guessed, on the way**: the stairs walk was dated from memory — `git log -S` found
+it in **the body-with-feet item (2026-09-10)**, and the README's version of it went on to a jump that peaked at 0.97; the check uses that
 whole walk now.
 
 **`WINDAGE_SAMPLE_CHECK=1`** runs the sample invisibly: accessory app (a regular one became frontmost at
 launch with no `activate` — measured), window never shown, silent, saves in `WindageSample-check`, cleared.
-That needed **an engine fix (0.14.1)**: the hidden clock waited for a first frame, which a never-shown
+That needed **an engine fix**: the hidden clock waited for a first frame, which a never-shown
 window never gets — it starts at the timer's first tick now. One test, failing on the old clock by 10 s.
 
-## Done 2026-09-11 — a push is kept on leaving (0.14.0)
+## Done 2026-09-11 — a push is kept on leaving
 
 **A push counts toward `groundVelocity` across** — shoved off an edge a body flies on; a jump while
 pushed takes it. **And a found fix in the same line**: the vertical part was the carry's whole
@@ -422,14 +423,14 @@ edge: before 0.050 m beyond (computed 0.050), after **0.512 m** (computed 0.512)
 (computed −2.314). Frames of both, looking back from where they came down.
 
 **Placed after checking the documented walks**: a pusher across the landing's middle would have crossed
-the stairs walk (x 4.5), the regression 0.13.0 made in the courtyard; this one runs at x 5.1–6.0. The
-lift walk came out identical to 0.12.0 and the stairs walk as recorded. **The first design — an eased
+the stairs walk (x 4.5), the regression the slider made in the courtyard; this one runs at x 5.1–6.0. The
+lift walk came out identical to its first recording and the stairs walk as recorded. **The first design — an eased
 slider — was simulated first and dropped**: 0.219 m against 0.187 m, since a moving slider keeps pushing a
 falling body. Only a pusher that stops shows what is kept.
 
-## Done 2026-09-11 — kept out of App Nap (0.13.2)
+## Done 2026-09-11 — kept out of App Nap
 
-**The item's premise needed a correction first**: 0.12.2's "no App Nap in 87 s" had the sample's audio
+**The item's premise needed a correction first**: the hidden clock's "no App Nap in 87 s" had the sample's audio
 engine running, and an app playing sound is exempt. So the measurement was of a **bundled, silent** app:
 `Tools/bundle_sample_app.sh` (new; `.build/WindageSample.app`, ad hoc, `open`-launched) with
 `WINDAGE_SAMPLE_SILENT=1` (new). And the rate report now gives the **longest wait between steps** —
@@ -443,7 +444,7 @@ clicked into view ten seconds in — and was run again rather than counted.
 
 No test: the activity is the operating system's, and the measurement is the check.
 
-## Done 2026-09-11 — round solids are round (0.13.1)
+## Done 2026-09-11 — round solids are round
 
 **`Footprint.radius`**, `Footprint(center:radius:)`, `Footprint(discOf:)`; a disc collided as a rounded
 square against the body's square (slabs and corner circles, entering at the first). The sample marks
@@ -455,8 +456,8 @@ approach, and square and disc agreed (2.418 both) — computed before running, a
 so the square's corner pointed along it. Then: square **3.068 m** (computed 3.068), disc **2.418 m**
 (computed 2.418). Frames of both at the step up.
 
-**A regression of mine, found by the rule of re-running old walks**: 0.13.0's slider sat across the
-0.12.1 crate walk (ended (3.22, 5.28), not (3.21, −0.13)). Moved to x −12, z 9; the crate walk
+**A regression of mine, found by the rule of re-running old walks**: the push item's slider sat across the
+turned-crate walk (ended (3.22, 5.28), not (3.21, −0.13)). Moved to x −12, z 9; the crate walk
 reproduces again, and the push re-measured there matches. **A new placement in a level re-runs the walks
 documented for that level.**
 
@@ -465,13 +466,13 @@ printing; four reruns did not. The window takes the keyboard when it opens, and 
 in its editor — reproduced with System Events (walk frozen at (−0.74, 9.77)), gone with the guard. That
 it was the cause of those two is likely, not proven.
 
-## Done 2026-09-11 — pushed by something that moves (0.13.0)
+## Done 2026-09-11 — pushed by something that moves
 
 **A moved or turned solid that runs into a body pushes it** — along its displacement at the body, just
 clear (2 mm), through collision with everything else, before walking, no footsteps; a low solid is stood
 on instead. **`pinnedBy`** when a push is stopped — a property, because a new `Event` case would break
-every exhaustive switch (the sample has one). **Minor**: worlds with motion now come out differently next
-to moving things, as 0.12.0 did for jumps.
+every exhaustive switch (the sample has one). **A change in behaviour**: worlds with motion now come out differently next
+to moving things, as keeping the platform's motion did for jumps.
 
 Six tests: four fail with the push off (checked), two are guards. **Pushed in the courtyard** by a new
 slider (`"slider"` tag, `SampleLevel.slideOffset`, 5 m eased over 4 s): its face within 3 mm of the
@@ -484,7 +485,7 @@ spawn.
 stored where the report reads them, at the start of a step; and the first screenshots failed, the window
 looked up before macOS listed it.
 
-## Done 2026-09-11 — a clock while the window is hidden (0.12.2)
+## Done 2026-09-11 — a clock while the window is hidden
 
 **The item's diagnosis was wrong, and measuring first is what showed it.** It said a hidden window's
 display link was throttled and the 0.25 s ceiling threw the time away, and proposed lifting the ceiling
@@ -510,13 +511,13 @@ Measured (`hiddenrun`: the crate walk, window hidden from its first frame to 20 
 87 s hidden: 120 steps/s throughout, no App Nap — for the sample as a terminal-started executable. A
 bundled app hidden is unmeasured; if one ever naps, `ProcessInfo.beginActivity` is the answer, measured.
 
-## Done 2026-09-11 — a turned crate stops you at its face (0.12.1)
+## Done 2026-09-11 — a turned crate stops you at its face
 
 **`Surroundings.footprints`** — each solid's plan, a rectangle turned about the vertical
 (`Footprint(of: Volume)`, nil for a tilted one) — and collision against it by separating axes. Standing,
 headroom and support use it too. **A move into a turned face slides along it** for the rest of the
 step: at an angle both axis moves hit the face, and without the slide the body stuck. Additive — a world
-without footprints passed all 557 earlier tests untouched, so a patch.
+without footprints passed all 557 earlier tests untouched.
 
 Six tests: four fail with footprints ignored (checked), two with the slide off (checked); the other two
 check `Footprint(of:)` and that an unturned footprint collides exactly as its box.
@@ -531,7 +532,7 @@ face of the crate turned 45.8°, window in front:
 | box alone | z −1.64 (computed −1.637) | **0.70 m** short | slid along a wall of air, round the crate, never touching it |
 | footprint | at the face | **0.000 m**, 1.174 from its centre (computed 1.174) | stayed there, inside the crate's box |
 
-A frame of each: the whole crate in view, held off; and nose to its face. The ruins' 0.12.0 lift walk
+A frame of each: the whole crate in view, held off; and nose to its face. The ruins' lift-jump walk
 came out identical line for line. The walk reports the nearest turned solid's gap now, measured by the
 sample from the two outlines, not asked of the controller.
 
@@ -542,11 +543,11 @@ README corrected. Its footprint is that square turning with it — which is the 
 **Two test lessons**: a stop lands anywhere between a millimetre inside a face and two out (true of the
 old code as well); and rounding a corner overshoots by up to one step's slide.
 
-## Done 2026-09-11 — a jump keeps the platform's motion (0.12.0)
+## Done 2026-09-11 — a jump keeps the platform's motion
 
 **`groundVelocity`** (the ground's speed this step) and **`airVelocity`** (the horizontal part, kept
 through the air). A jump adds the ground's speed to its own; a step off an edge falls away at it; a
-landing clears it and a wall stops the part that runs into it. **Minor, not patch**: jumping off
+landing clears it and a wall stops the part that runs into it. **A change in behaviour, not only an addition**: jumping off
 anything a game reports moving now comes out differently. `motion` has to be movement — a solid put
 back at its start in one step must report none that step (in the `motion` doc).
 
@@ -566,7 +567,7 @@ separately.
 It came back down onto the still-rising lift and rode it to the top. No frame taken: a still cannot
 show a height a log measures to the centimetre.
 
-## Done 2026-09-11 — an ambience volume (0.11.2)
+## Done 2026-09-11 — an ambience volume
 
 **`AudioEngine.ambienceVolume`** (the loops' spatialiser's output — every loop, no one-shot) and
 **`PlayerSettings.ambienceVolume`**. Two tests, one rendering audio offline.
@@ -579,7 +580,7 @@ saved `ambienceVolume 0.5`, `volume` untouched at 0.8; the row photographed. Not
 **Every game checked, clean builds**: none uses `PlayerSettings`; the one using `AudioEngine` has no
 loops, and its one-shots are untouched. All five build and pass.
 
-## Done 2026-09-11 — a platform that turns (0.11.1)
+## Done 2026-09-11 — a platform that turns
 
 **`Surroundings.turns`** (per-solid turn and centre) and **`turned`** (the angle, for the game to add to
 its view). Carried round the centre through collision, no footsteps; a solid that moves and turns is moved
@@ -600,7 +601,7 @@ window hidden stalled again, and ran on time once in front: the throttling noted
 
 **Every game checked, clean builds**: none uses the controller; all five build and pass.
 
-## Done 2026-09-11 — a foot on every tread going down (0.11.0)
+## Done 2026-09-11 — a foot on every tread going down
 
 **The tread rule counts a drop as well as a rise** — a one-word fix (`abs`) with a real reason behind
 it. Two tests: descending matches climbing from mirrored starts (**0 against 4 before, 4 and 4 after** —
@@ -621,12 +622,12 @@ start sounds three). Symmetry is what the test holds.
 took over 20 s — and a profile showed the main thread waiting, not working. **`WINDAGE_SAMPLE_FPS=1`**
 (new) showed 60 frames a second at every viewpoint in photo mode and on the landing in a later run: the
 crawl was the window hidden behind others, where macOS throttles the display timer the simulation runs
-on. A slow scripted run is a hidden window until the frame count says otherwise. *(Since 0.12.2 a
+on. A slow scripted run is a hidden window until the frame count says otherwise. *(Since 2026-09-11 a
 scripted run keeps time hidden; and a fully hidden window turned out to get no frames at all.)*
 
 **Every game checked**: none uses the controller; all five build and pass.
 
-## Done 2026-09-11 — a brazier that crackles (0.10.2)
+## Done 2026-09-11 — a brazier that crackles
 
 **Loops in `AudioEngine`** (start, move, stop; each from a different point in its sound) through **a
 second spatialiser** — inverse law from 2 m — and **offline rendering** to measure any of it.
@@ -661,7 +662,7 @@ started across that whole edit, where it had been 5).
 **The engine's own tests hit the stale-build crash too** (a sample test failing nonsensically after
 `Placement` gained a field); a clean build cleared it. Every game checked from clean builds.
 
-## Done 2026-09-11 — standing on something that moves (0.10.1)
+## Done 2026-09-11 — standing on something that moves
 
 **`Surroundings.motion`** (per-solid displacement since the last step) and **`carried`**. A body on a
 solid that moved goes with it before walking: rigid vertically, through collision across. Six tests;
@@ -684,7 +685,7 @@ landing a raised deck) and at the top (flush with it).
 
 **Every game checked, clean builds**: none uses the controller; all five build and pass.
 
-## Done 2026-09-11 — standing up under something low (0.10.0)
+## Done 2026-09-11 — standing up under something low
 
 **Measured before touching it**: letting go of crouch under a beam with a 1.5 m underside raised the
 eye to 1.7 and the head 35 cm into the beam, and the player was then **stuck** — every move refused,
@@ -709,7 +710,7 @@ The frame shows the underside of the lintel overhead and "NO ROOM TO STAND".
 
 **Every game checked**: none uses `CharacterController`; all five build and pass.
 
-## Done 2026-09-11 — adding from the editor (0.9.2)
+## Done 2026-09-11 — adding from the editor
 
 **`Level.kinds`** (one of each kind of thing — all but `x`, `z`, yaw) and **`LevelEditor.add(_:at:yaw:)`**
 (another of a kind, with its height, scale, tags, surface and lamp). Two tests. In the sample **t** steps
@@ -729,7 +730,7 @@ told apart); and the palette's "×" was dropped by the HUD's ASCII font.
 
 **Every game checked**: none uses `LevelEditor` or `Level.kinds`; all five build and pass.
 
-## Done 2026-09-11 — what things are made of, from the level file (0.9.1)
+## Done 2026-09-11 — what things are made of, from the level file
 
 **`Level.Placement.surface`, `Level.groundSurface`, `Level.surface(standingOn:)`** — game-named, optional,
 left out of the file when unset. A placement that names none answers `nil` rather than the ground's.
@@ -748,7 +749,7 @@ landings from `Tools/make_sample_sounds.py` — the dirt and stone ones regenera
 **Checking the games found two build hazards, and the first is fixed in the engine.**
 
 - **A new defaulted parameter changes an initialiser's symbol.** The first version added `surface:` to
-  `Placement.init`; a consumer's test target compiled against 0.9.0 then failed to link. The surface
+  `Placement.init`; a consumer's test target compiled against the engine before it then failed to link. The surface
   variants are **separate initialisers** now, so the old symbols are unchanged.
 - **A new stored field changes a public struct's size, and SwiftPM did not rebuild the consumer's
   objects** that were compiled against the old one. The consumer's tests then *crashed* — signal 5, then
@@ -760,9 +761,9 @@ landings from `Tools/make_sample_sounds.py` — the dirt and stone ones regenera
 > public type, build each consumer **clean**, not incrementally. A crash in a consumer's tests after
 > such a change is a stale build until proven otherwise.
 
-All five games build and pass against 0.9.1; the one with a window was built clean, run and looked at.
+All five games build and pass against the change; the one with a window was built clean, run and looked at.
 
-## Done 2026-09-11 — a stick dead zone the player sets, and a stick that walks at its speed (0.9.0)
+## Done 2026-09-11 — a stick dead zone the player sets, and a stick that walks at its speed
 
 **`PlayerSettings.moveDeadzone`, `lookDeadzone`** (0…0.5, defaults 0.16 and 0.10), read by
 **`InputState.moveDeadzone`, `lookDeadzone`**. On the sample's settings screen beside the stick rows,
@@ -770,7 +771,7 @@ in 2% steps. The scripted walk holds a stick part-way: `pad.lookRight@0.2:1`, `p
 
 **It found a real bug first**: `CharacterController` and `Camera.advance` *normalised* the movement
 direction, so a stick at 5% walked 6 m a second, the same as full. Measured by a probe before touching
-anything; clamped to 1 now (two keys still no faster than one). **Minor version for that.**
+anything; clamped to 1 now (two keys still no faster than one). **A change in behaviour, for that.**
 
 **Measured in the running sample:**
 
@@ -789,7 +790,7 @@ Every figure is the response curve's, computed before the run.
 from — and its left stick was an on/off switch. **Fixed there in the same pass**, with a test that fails
 on the old line; built, run and looked at. The four rigs pass unchanged.
 
-## Done 2026-09-11 — a lamp from the editor (0.8.2)
+## Done 2026-09-11 — a lamp from the editor
 
 **`LevelEditor.setLight`, `raiseLight(by:)`, `brightenLight(by:)`**, and `add(mesh:…, light:)`. Raised
 in world metres whatever the placement's scale; brightened in thirds of a stop, never to zero; all
@@ -809,9 +810,9 @@ Every figure is the prediction: the box mesh is 1 m, so the lamp sits at 1.6 in 
 without the lamp shows the new pool of light on the ground under the crate, with the objective crates'
 shadows cut out of it — in daylight the change is subtle to the eye and plain in the difference.
 
-**Every game checked**: none uses `LevelEditor`; all five build and pass against 0.8.2.
+**Every game checked**: none uses `LevelEditor`; all five build and pass.
 
-## Done 2026-09-11 — head bob, and a setting for it (0.8.1)
+## Done 2026-09-11 — head bob, and a setting for it
 
 **`CharacterController.headBob`**, a view offset locked to the stride phase — the head lowest as each
 foot lands, swaying toward the carrying leg, two dips per sway — scaled by gait, eased, and absent in
@@ -834,15 +835,14 @@ test fails without it (checked by removing the fix).
 **Not seen as motion.** The numbers are the bob that reached the screen; a still frame cannot show a
 bob, and no video was captured.
 
-**Every game checked**: none uses `CharacterController` or `PlayerSettings`; all five build and pass
-against 0.8.1.
+**Every game checked**: none uses `CharacterController` or `PlayerSettings`; all five build and pass.
 
-## Done 2026-09-11 — a mouse sensitivity and a stick sensitivity (0.8.0)
+## Done 2026-09-11 — a mouse sensitivity and a stick sensitivity
 
 **`PlayerSettings.mouseSensitivity`, `stickSensitivity`, `invertMouse`, `invertStick`**, with
 `mouseLookScale` and `stickLookScale` in front of the camera's two look paths. **Breaking**:
 `lookSensitivity`, `invertLook` and `lookScale` are gone — no game used them (checked). A file from
-before 0.8.0 loads with its one setting on both devices.
+before the split loads with its one setting on both devices.
 
 **Proved by rates in the running sample**, three runs with the same scripted turns
 (`pad.lookRight:0.5`, `pad.lookUp:0.25`, `mousex:500`, `mousey:-200`):
@@ -860,45 +860,45 @@ keys and the stick rows beside the pad's buttons, only while a pad is connected.
 1/120 s add to a hair under 0.5 in a Float. The first stick turn came out 1.53° — one step — over.
 Half a step of slack now.
 
-**Every game checked, per the rule**: none uses `PlayerSettings`, and all five build and pass against
-0.8.0 — the four rigs (5, 2, 3, 10 tests) and the game with a window (306 + 493, Debug build, run and
+**Every game checked, per the rule**: none uses `PlayerSettings`, and all five build and pass —
+the four rigs (5, 2, 3, 10 tests) and the game with a window (306 + 493, Debug build, run and
 looked at; it renders as before).
 
-## Done 2026-09-11 — lights that belong to a placement (0.7.0, 0.7.1)
+## Done 2026-09-11 — lights that belong to a placement
 
-**Two releases, because the first was found on the way.**
+**Two steps, because the first was found on the way.**
 
-**0.7.0 — `Level.transform(of:on:)`, and bedding turned the right way.** A carried light needs its
+**First — `Level.transform(of:on:)`, and bedding turned the right way.** A carried light needs its
 placement's transform, and there was no definition of one: the sample built it, a game built it twice,
 and **the engine's `beddedFootprint` bedding turned the opposite way from all of them** — sampling the
 ground under the corners of the placement's mirror image. It uses `Level.turned(_:by:)` now, the
 matrix's own turn; a test with an asymmetric footprint turned on a slope fails against the old
-rotation. Minor version, because a bedded placement can now sit at a different height.
+rotation. A change in behaviour, because a bedded placement can now sit at a different height.
 
 > **For the game this was extracted from:** its installation bedding and its collision masks use the
 > same backwards turn, while its renderer draws with the standard one. Its parity test against the
 > engine will now disagree, and that disagreement is the bug. **Fixed in that game the same day**, in
 > its own repository — see below.
 
-## Done 2026-09-11 — every game built against 0.7.1, and what that found about the engine
+## Done 2026-09-11 — every game rebuilt against the engine, and what that found about the engine
 
 **The five games depending on this engine were rebuilt, tested and — the one with a window — run.**
-Four built and passed untouched. **The fifth had fallen from 0.1.0 to 0.7.1 without a rebuild, and
+Four built and passed untouched. **The fifth had not been rebuilt since 2026-09-09, through two days of engine changes, and
 came back three ways broken.** All three are about this engine's surface, which is why they are here
 without the game's name:
 
-- **A public type name is a namespace shared with every consumer.** 0.1.0 shipped `Material`. The game
+- **A public type name is a namespace shared with every consumer.** The engine added `Material` on 2026-09-09. The game
   had a C struct called `Material` in its shader-types module, and a Swift file importing both no
   longer compiles. A game's own *Swift* types shadow the engine's quietly (it has its own
   `ShadowMap` and `ParticleRenderer`, and those still compile) — **it is a second imported module that
   makes the name ambiguous**, and a game's shader-types module is always one. Worth remembering
   before the next generic name goes public.
-- **The 0.3.0 break fails as noise, not as an error.** A scene pipeline still declaring
+- **The tone-mapping break (2026-09-10) fails as noise, not as an error.** A scene pipeline still declaring
   `colorPixelFormat` inside the HDR scene pass is not refused by Metal 4 — pipelines and passes are
   decoupled — so the game rendered magenta and blue static with nothing logged. The CHANGELOG said
   "breaking" and was right; the symptom is what a consumer needs told. **And a game that already tone
   maps in its own shader wants `ToneMapping.off`**, or the picture goes through two curves.
-- **The 0.7.0 bedding fix reached the game's copies of the turn**, as the note above predicted: its
+- **The bedding fix reached the game's copies of the turn**, as the note above predicted: its
   bedding and collision were mirror images of what it drew. Fixing them also exposed a separate bug
   of the game's own (corners rejected before the mask was read), because its tests finally looked.
 
@@ -906,12 +906,12 @@ without the game's name:
 earlier, one still held a `LightSet` that the engine had extracted *and corrected* — deleted there
 now, with a test pinning the correction.
 
-**0.7.1 — `Placement.light`, `resolvedLights(on:)`, `carriedLights(on:)`.** The ruins' braziers carry
+**Then — `Placement.light`, `resolvedLights(on:)`, `carriedLights(on:)`.** The ruins' braziers carry
 their flames; free lights with no cone are gone from the level, and a test keeps them gone. **Driven in
 the editor by the scripted walk** (which gained `click`): select a brazier, nudge it six times, and the
 lamp is logged moving with each nudge; before-and-after frames show its pool, shadow and embers moved.
 
-## Done 2026-09-11 — the landing dip (0.6.12)
+## Done 2026-09-11 — the landing dip
 
 **A landing shows now.** `CharacterController` kicks a critically damped spring by the impact: the eye
 drops (`landingDrop`, in `eye`) and the view nods (`landingCameraDip`, view only, like the slide's).
@@ -923,7 +923,7 @@ the curve is the same at 60 and 240 Hz. **Driven in the sample**: the drop off t
 and a 7 cm, 1.5° dip, as the tuning predicts; a frame paused mid-dip shows the horizon 1.5° higher
 than the settled one.
 
-## Done 2026-09-10 — controller rebinding (0.6.11)
+## Done 2026-09-10 — controller rebinding
 
 **`PadButton` and `PadBindings`**: jump, crouch, sprint and brace onto any face button, shoulder or L3,
 stored by position (`south`, not "A" or "Cross"). Sticks, triggers, d-pad and menu stay the convention;
@@ -945,7 +945,7 @@ does nothing; relaunch, same; reset from the pad, Cross jumps again. Settings fi
 **Not tried with a physical controller** — the names shown on a DualSense ("Cross") are the framework's
 and were not seen here; the virtual pad reports "A".
 
-## Done 2026-09-10 — braziers (0.6.10)
+## Done 2026-09-10 — braziers
 
 **The ruins' lamps stand over iron braziers** (`brazier.usda`, from `Tools/make_sample_brazier.py`)
 with coals glowing from an emissive map, and the embers come off the coals. **USD because Model I/O
@@ -961,7 +961,7 @@ Also: a test that every coneless lamp stands over a brazier and every brazier ha
 lamp had been floating over a crate, so both pairs moved to open ground; the iron blackened because a
 bare metal's grey blew out to cream under a lamp half a metre away; glow ×2.5, since ×6 read white.
 
-## Done 2026-09-10 — footsteps and landings (0.6.9)
+## Done 2026-09-10 — footsteps and landings
 
 **`CharacterController.events`** — strides, landings with impact speed, jumps — and **`groundSolid`**,
 what is underfoot. The sample plays three dirt and three stone footsteps in a six-step order, heavier
@@ -980,12 +980,12 @@ the four treads, a 7.0 m/s landing off the 1.2 m drop, 5 over 12 m walking, 3 ov
 18 m sprinting. **Not verified by ear** — this session cannot hear the output; the files load, play
 through `AudioEngine` without error, and measure as intended.
 
-## Done 2026-09-10 — keys a player can change (0.6.8)
+## Done 2026-09-10 — keys a player can change
 
 **`KeyCode`, `InputBindings`, `PlayerSettings`**, `InputState.bindings` and `flagsChanged`, and
 `AudioEngine.masterVolume`. The sample has a settings screen on **O** — eight keys, look sensitivity,
 invert look, volume, brightness, reset — saved the instant anything changes. *(Look sensitivity and
-invert are per device since 0.8.0.)*
+invert are per device since 2026-09-11.)*
 
 **It found that Shift had never worked in the sample.** macOS sends modifiers as a flags change, not a
 key press, and the window never listened. Modifiers are keys now, read by their device-specific bit;
@@ -1000,7 +1000,7 @@ fails to decode is every setting reset.
 forward to I in the screen, walk 6.05 m with I, W does nothing, Shift sprints 18.15 m; quit, relaunch,
 I still walks. Reset from the screen puts W back. The test settings file was deleted afterwards.
 
-## Done 2026-09-10 — particles (0.6.7)
+## Done 2026-09-10 — particles
 
 **`ParticleSystem`, `ParticleRecipe`, `ParticleEmitter` and `ParticleRenderer`.** Embers rise off the
 ruins' braziers and the figures' lanterns, a collected crate throws green sparks, a landing from a
@@ -1023,7 +1023,7 @@ burst, and the landing dust is a dim tan puff after the lighting fix, a white bl
 scripted walk gained `yaw:` and `pitch:`, because a replay that ignores the mouse otherwise cannot look
 at its own feet.
 
-## Done 2026-09-10 — a body with feet (0.6.6)
+## Done 2026-09-10 — a body with feet
 
 **`CharacterController`**: walking, standing on things, a 0.45 m step, gravity, a jump of about a
 metre, crouch and slide. The sample walks on it; it used to pin the camera to one height.
@@ -1045,7 +1045,7 @@ fails without the fix.
 **Driven in the running sample**, with the new `WINDAGE_SAMPLE_WALK`: up four steps to 1.20 m, off the
 end to 0.00, a jump peaking at 0.97 m, and stopped exactly at a crate's face walking and sprinting.
 
-## Done 2026-09-10 — things that hang off other things (0.6.5)
+## Done 2026-09-10 — things that hang off other things
 
 **`TransformHierarchy` is parenting**, and the sample's figures carry lanterns. A list of attachments
 and a list of matrices, owning no objects — so the same hierarchy places a drawable, a light and a
@@ -1073,7 +1073,7 @@ not:** the drawn limb stops a hand's length short, and the lantern floats above 
 belongs to the asset, not the engine; the lesson is that **a grip derived from bind-pose arithmetic
 is a guess**, and it is a number set by looking.
 
-### What it found in 0.6.4
+### What it found in the point-light shadows
 
 **The sample assigned cube slices once, at level load** — correct for lamps that do not move, and the
 first lamp that did move exposed it. A cube recorded from where the lamp *was* is a shadow that lags
@@ -1085,12 +1085,12 @@ Two frames of the same figure, waving and not: the lantern is at the end of the 
 one and raised with it in the other. The lantern lights change **24.5% of the frame** against having
 none; their own cube shadows a further **4.7%**.
 
-## Done 2026-09-10 — point lights cast too (0.6.4)
+## Done 2026-09-10 — point lights cast too
 
 **Every lamp in the sample stops at a wall now**, aimed or not. `ShadowCubes` is a cube-array depth
 texture, the six face matrices, and the pass that records them.
 
-**A cube array, not tiles of the atlas — which is not what 0.6.3 predicted.** Two of the three things
+**A cube array, not tiles of the atlas — which is not what the spot-light shadows predicted.** Two of the three things
 that entry listed survived; the tiles did not, for two reasons that only appear once the shader is
 written. **The face maths would have to agree with six matrices exactly** — which axis becomes *u*,
 which becomes *v*, which of the six sign flips applies — and a mirrored face still casts a shadow, just
@@ -1127,7 +1127,7 @@ changed **1.77% of it**, around the two braziers.
 > position, because the walk clamps to the ground every step — set as a position it would be true for
 > one frame and then quietly gone.
 
-## Done 2026-09-10 — shadows for the lamps (0.6.3)
+## Done 2026-09-10 — shadows for the lamps
 
 **A spot light casts now**, so a wall stops it. `ShadowAtlas` is one depth texture cut into tiles, a
 spot's view-projection, and the pass that records every caster into its own tile.
@@ -1159,7 +1159,7 @@ frame with the per-light flag on and off: **1.2% of the frame changed**, confine
 > answered "is this working" in one step, so the time afterwards went into making it visible rather
 > than into wondering whether there was anything to see.
 
-## Done 2026-09-10 — clustered shading (0.6.2)
+## Done 2026-09-10 — clustered shading
 
 **A fragment asks which lights reach *it*** rather than inheriting a list chosen for the whole mesh.
 `ClusterGrid` cuts the frustum into 16×8×24 cells; `ClusteredLights` bins the scene's lights into the
@@ -1197,7 +1197,7 @@ from the wrong address. It compiled, ran, and looked exactly like a feature nobo
 > alignment and the tone-map uniform's packing. The test pins size, stride **and** alignment, because
 > the first two only catch half of it.
 
-## Done 2026-09-10 — spot lights (0.6.1)
+## Done 2026-09-10 — spot lights
 
 **A cone, for the lamps that are aimed.** A direction and two angles — full brightness within the
 inner, nothing beyond the outer, smooth between; one cutoff gives a hard edge that reads as a stencil.
@@ -1229,7 +1229,7 @@ around, and the sample aims its spot at a pillar instead.
 > **The check earned its place by being negative.** A tool that said "not that" is what stopped an
 > afternoon of adjusting intensities looking for a problem that was never there.
 
-## Done 2026-09-10 — lights that are not the sun (0.6.0)
+## Done 2026-09-10 — lights that are not the sun
 
 **A sun and an environment map have no answer for an interior.** `PunctualLight` and `LightSet` are
 extracted from the probe built to ask this, stripped of the game that asked it. `Level.lights` is a
@@ -1266,7 +1266,7 @@ written, including any a player saved into Application Support.
 > linking against the old mangled name. Same rule: delete the build directory when a shared type
 > changes shape.
 
-## Done 2026-09-10 — emission (0.5.2)
+## Done 2026-09-10 — emission
 
 **The last material slot with nothing reading it.** Every slot `Material` carries now reaches a pixel.
 The figure has glowing seams from an emissive map; objectives emit instead of swapping albedo, so a
@@ -1295,7 +1295,7 @@ nothing: an OBJ material's emission is always zero — `Ke` and `map_Ke` are bot
 property comes back an always-black `.color` — so a crate the game wanted lit was zero times whatever
 it asked for.
 
-## Done 2026-09-10 — packed material maps (0.5.1)
+## Done 2026-09-10 — packed material maps
 
 **Occlusion, roughness and metalness from a texture** — the last slots with nothing behind them.
 Packed R/G/B, which is glTF's packing, so one file serves three slots. `TextureSlot.packedChannel`
@@ -1325,7 +1325,7 @@ multiplied factor. The base-colour case already needed that rule; it is applied 
 White is exactly the right fallback because the three are multiplied. And occlusion applies to the
 ambient terms only — applying it to the sun would darken a surface the sun is plainly shining into.
 
-## Done 2026-09-10 — a level says what sky it is under (0.5.0)
+## Done 2026-09-10 — a level says what sky it is under
 
 **It said where the sun was and nothing else about the light.** `Level.sky` is a `ProceduralSky` now,
 written as its own block — three colours, two angles and a sun size — so the two sample levels are a
@@ -1357,7 +1357,7 @@ stronger, which is physically true and now free. The default radiance moved 28 �
   gave `signal code 11`, no summary, and a crash log pointing at an unrelated assertion. **Delete the
   build directory when a shared type gains a field.**
 
-## Done 2026-09-10 — image-based lighting (0.4.1)
+## Done 2026-09-10 — image-based lighting
 
 **Metal reflects its surroundings now, not a gradient.** `ProceduralSky` is a sky as a function of
 direction; `EnvironmentMap` convolves it twice — a GGX-prefiltered cube whose mips are roughness
@@ -1381,7 +1381,7 @@ running `swift run` sees, and it is the honest price. It prefilters a *function*
   form — a uniform sky of radiance L integrates to πL.
 - **The lower hemisphere must not be black**, or every lit object looks like it is floating.
 
-## Done 2026-09-10 — a microfacet specular (0.4.0)
+## Done 2026-09-10 — a microfacet specular
 
 **The sample shades with GGX now** — Cook-Torrance, Smith height-correlated visibility, Schlick
 Fresnel, Karis's analytic environment BRDF, and a two-colour analytic sky standing in for an
@@ -1408,7 +1408,7 @@ Fold `1/(4 NdotL NdotV)` into the visibility term or grazing angles fill with fi
 roughness away from zero or a smooth surface is one crawling pixel. And `kD = 1 − F`, or a shiny
 surface is brighter than the light falling on it.
 
-## Done 2026-09-10 — tone mapping (0.3.0)
+## Done 2026-09-10 — tone mapping
 
 **The scene stops being written straight to the screen.** Shading does not stop at 1 — the sample's
 own lit faces reach about 1.13 before anything shiny is involved — and everything above it was
@@ -1442,7 +1442,7 @@ which there is no picture.
 > and `ToneMapShaders.metal` transcribes it. The tests pin specific input-output pairs, so a change
 > to one and not the other shows up in the numbers rather than only on screen.
 
-## Done 2026-09-10 — normal mapping (0.2.1)
+## Done 2026-09-10 — normal mapping
 
 **The last material slot with nothing behind it.** `MeshLoader` generates a tangent basis when the
 pipeline asks for one and the file did not bring it; the sample is normal mapped throughout — crate,
@@ -1470,14 +1470,14 @@ and is a normal-mapping one.
 drift; a normal map that disagrees with the colour under it reads as bad lighting rather than as a
 mistake.
 
-## Done 2026-09-09 — every texture was upside down (0.2.0)
+## Done 2026-09-09 — every texture was upside down
 
 **Metal puts texture (0, 0) at an image's top-left; USD and OBJ put `st` (0, 0) at its bottom-left.**
 Nothing reconciled them, so every textured asset had loaded flipped since the day textures were
 added. `TextureStore` now loads with a bottom-left origin by default; `.topLeft` is available for
 glTF-derived UVs.
 
-**Minor bump, not patch** — it changes what existing code does, correctly.
+**A change in behaviour, not only a fix** — it changes what existing code does, correctly.
 
 ### Why it survived
 
@@ -1490,7 +1490,7 @@ limb. The character tool photographs what it made, so there was a reference to c
 > regression fixture is red on top and blue on the bottom now, because an image that looks the same
 > either way up tests nothing about which way up it is.
 
-## Done 2026-09-09 — a real character, actually run (0.1.4)
+## Done 2026-09-09 — a real character, actually run
 
 **Not probed with a script this time — loaded into the sample and looked at.** A 93-joint,
 39,360-vertex character with six clips renders: skinned, textured, shadowed, animating, at the right
@@ -1512,7 +1512,7 @@ scale, standing on the ground.
 extension, `<path>.usdc` plus `<path>_*.usdc` clips and `<path>_ColorMap.png`. Not shipped: a real
 character is tens of megabytes and belongs to whoever made it.
 
-## Done 2026-09-09 — node transforms, and a correction (0.1.3)
+## Done 2026-09-09 — node transforms, and a correction
 
 **A wrong diagnosis, corrected, and the real defect behind it fixed.** The handoff below said a real
 character "is Z-up and in centimetres — 176 units tall". The centimetres half was wrong in its
@@ -1535,7 +1535,7 @@ so any exported asset came in a hundred times too big.
 > the half of the answer sitting one level up. **A probe that reports a number without reporting the
 > space it is in will eventually be believed.**
 
-## Done 2026-09-09 — the shadow pass is extracted (0.1.2)
+## Done 2026-09-09 — the shadow pass is extracted
 
 **One thing implemented twice is now implemented once.** `ShadowMap` owns the depth texture array,
 the reversed-Z depth state, the front-face cull, the slope-scaled bias, the per-cascade descriptors,
@@ -1561,7 +1561,7 @@ consumers had only hinted at.
 > **The rule protects against *designing* with no evidence. It says nothing about code that already
 > exists in two places** — and reaching for it there is how duplication acquires a justification.
 
-## Done 2026-09-09 — what a real character needs (0.1.1)
+## Done 2026-09-09 — what a real character needs
 
 **An 87-joint character from a real toolchain was loaded, and it arrived in three shapes the engine
 had no answer for.** All three are now handled, and the sample ships the untidy version so the path
@@ -1590,22 +1590,24 @@ proved by the sample alone.
 
 ## Done 2026-09-09 — versioning and a changelog
 
-**`0.1.0` is the first version with a number**, and the repository can now be depended on by URL.
+**The engine got a version number**, and the repository can now be depended on by URL.
 
 - **`Engine.semanticVersion`** is the single source of truth; `Engine.version` formats it, and
   `SemanticVersion` is `Comparable` and refuses to parse anything that is not `major.minor.patch` —
-  `v0.1.0` included, because that is not what SwiftPM resolves.
-- **`CHANGELOG.md`**, Keep a Changelog format, with 0.1.0 covering everything so far and a list of
+  a `v` prefix included, because that is not what SwiftPM resolves.
+- **`CHANGELOG.md`**, Keep a Changelog format, with everything so far and a list of
   the gaps a consumer will look for and not find.
-- **A test is what keeps it honest.** `ChangelogTests` fails if the newest entry is not the version
+- **A test is what keeps it honest.** `ChangelogTests` fails if the newest entry (1.0.0 while there is none) is not the version
   the engine reports, if entries are out of order, or if there is no `Unreleased` section. Nothing
   in a build cares whether a changelog was updated, so discipline was never going to be enough — and
   a changelog that has fallen behind is worse than none, because a reader believes it.
-- **The pre-1.0 rule is written down**: minor carries breakage, patch is additions and fixes, so a
-  consumer pins `.upToNextMinor(from: "0.1.0")`. **The conventions count as API** — reversed-Z, the
-  depth clear value, the vertex-descriptor contract — because changing one makes a consumer's game
-  compile and then draw nothing.
-- **Tagged `0.1.0`**, no `v` prefix.
+- **The conventions count as API** — reversed-Z, the depth clear value, the vertex-descriptor
+  contract — because changing one makes a consumer's game compile and then draw nothing.
+
+> **The numbers were withdrawn on 2026-10-13.** Nothing had been released, so the 0.x versions and their
+> tags were deleted: the engine reports 1.0.0, the version its first release will be; `CHANGELOG.md` has one
+> *Unreleased* section ("Initial release"); there are no tags. When 1.0.0 ships is the owner's call — never
+> cut a release unasked. See README, "Versioning".
 
 ## Done 2026-09-09 — materials and textures
 
@@ -1749,7 +1751,7 @@ below, never in this list.
    the same answer twice. **Proved by** a second course walk, at the same four rates, riding the ruins'
    lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
 
-3. **Lines and rings that are as smooth as fills.** 0.21.0 feathered `HUDRenderer.fill(polygon:)` because the
+3. **Lines and rings that are as smooth as fills.** The Drift W (2026-09-15) feathered `HUDRenderer.fill(polygon:)` because the
    HUD has no multisampling and the W came out stair-stepped. `line(from:to:)` and `ring(center:…)` are drawn
    as bare quads in the same pipeline, so every diagonal line and every ring edge is still aliased — and a
    game's HUD is mostly those: a reticle, a mil ladder, a chevron, a scope's surround. Draw them through the

@@ -12,7 +12,7 @@ public nonisolated enum Engine {
     /// **One source of truth**, and everything else formats it. A version that also lives in a
     /// window title, a build setting and a changelog is a version that will eventually disagree
     /// with itself, and the disagreement surfaces in a bug report from somebody else's machine.
-    public static let semanticVersion = SemanticVersion(major: 0, minor: 28, patch: 0)
+    public static let semanticVersion = SemanticVersion(major: 1, minor: 0, patch: 0)
 
     /// The version as `major.minor.patch`.
     public static var version: String { semanticVersion.description }
@@ -22,23 +22,21 @@ public nonisolated enum Engine {
 ///
 /// ### What the numbers promise here
 ///
-/// **The engine is pre-1.0, and that changes what a bump means.** Semantic Versioning gives `0.x`
-/// no compatibility guarantee at all, which is honest but useless to depend on, so this repository
-/// narrows it to the convention everybody actually uses before 1.0:
+/// Ordinary Semantic Versioning, from 1.0.0:
 ///
 /// | | means |
 /// |---|---|
-/// | **minor** — 0.1 → 0.2 | Something changed that can break a build: a signature, a type, a
-/// removed declaration, or a default that alters behavior. |
-/// | **patch** — 0.1.0 → 0.1.1 | Additions and fixes only. Code that compiled still compiles and
-/// still does the same thing. |
+/// | **major** — 1 → 2 | Something changed that can break a build: a signature, a type, a removed
+/// declaration, or a default that alters behavior. |
+/// | **minor** — 1.0 → 1.1 | Additions. Code that compiled still compiles and still does the same
+/// thing. |
+/// | **patch** — 1.0.0 → 1.0.1 | Fixes only. |
 ///
-/// So a consumer pins `.upToNextMinor(from: "0.1.0")` and gets fixes without surprises. After 1.0
-/// this becomes ordinary Semantic Versioning and the major carries the breakage.
+/// So a consumer pins `.upToNextMajor(from: "1.0.0")` and gets additions and fixes without surprises.
 ///
 /// **The reversed-Z convention, the depth clear value and the vertex-descriptor contract count as
 /// API even though they are not signatures.** Changing any of them breaks a consumer in a way that
-/// compiles and then renders nothing, which is worse than a compile error, so they move the minor.
+/// compiles and then renders nothing, which is worse than a compile error, so they move the major.
 public nonisolated struct SemanticVersion: Sendable, Hashable, Comparable, LosslessStringConvertible {
     public let major: Int
     public let minor: Int

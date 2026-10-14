@@ -19,7 +19,7 @@
   <a class="brand" href="../index.html"><img src="../../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
   <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
-  <span class="ver">v0.28.0</span>
+  <span class="ver">v1.0.0</span>
 </header>
 
 <div class="docs">
@@ -63,7 +63,7 @@
 <p>A game with more settings, such as a field of view, a difficulty or subtitles, keeps them <strong>beside</strong> <code>PlayerSettings</code> rather than inside it.</p>
 <h2 id="versioning">Versioning saved data</h2>
 <p><code>SaveStore</code> does not version what it stores; the type you save does. Two patterns, both in the engine and its sample:</p>
-<p><strong>Decode field by field.</strong> <code>PlayerSettings</code> decodes every field as optional: a missing field takes its default, an unknown one is ignored, and a key name this build does not recognize costs only that one binding. A settings file from an older build loads into a newer one with everything it did say intact. A file from before 0.8.0 has one sensitivity and one invert, and both devices inherit them.</p>
+<p><strong>Decode field by field.</strong> <code>PlayerSettings</code> decodes every field as optional: a missing field takes its default, an unknown one is ignored, and a key name this build does not recognize costs only that one binding. A settings file from an older build loads into a newer one with everything it did say intact. A file written before the mouse and the stick had separate settings has one sensitivity and one invert, and both devices inherit them.</p>
 <p><strong>Carry a version from the first save.</strong> The sample's <code>SampleRun.Progress</code> has a <code>version</code> field and <code>currentVersion = 2</code>. Version 1 held a single best time; version 2 keeps one per level. A version 1 save migrates when it loads instead of being discarded, and the encoder never writes the old field, so migration is one way.</p>
 <div class="note"><p>The first save format that needs changing is always one that did not have a version. Add the field before you need it.</p></div>
 <p><code>Engine.version</code> is the engine's version, not your save's: a save's format changes when your data does.</p>
@@ -73,7 +73,7 @@
   </main>
 
   <aside class="docs-toc" aria-label="On this page">
-    <h2>On this page</h2><a href="#savestore">SaveStore</a><a href="#settings">PlayerSettings</a><a href="#versioning">Versioning saved data</a><a href="#what-it-does-not-do">What it does not do</a><a class="news" href="changelog.html#v0-28-0"><b>New in 0.28.0</b><code>SprintLatch</code> is internal</a>
+    <h2>On this page</h2><a href="#savestore">SaveStore</a><a href="#settings">PlayerSettings</a><a href="#versioning">Versioning saved data</a><a href="#what-it-does-not-do">What it does not do</a>
   </aside>
 </div>
 

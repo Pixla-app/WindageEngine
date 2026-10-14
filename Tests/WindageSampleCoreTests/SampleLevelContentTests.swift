@@ -196,7 +196,7 @@ struct SampleLevelContentTests {
     /// **The courtyard's stop pins whoever the slider pushes to it**: clear of the slider's own run — it
     /// never touches the slider — but nearer the run's end than a body is wide, so a player pushed there
     /// cannot fit, and the slider must turn back. And off to one side of the run, clear of the push walk
-    /// (z 9, from 0.13.1), so that walk is still pushed the whole way.
+    /// (z 9, since 2026-09-11), so that walk is still pushed the whole way.
     @Test("The courtyard's stop is nearer the slider's end than a body is wide, and clear of it")
     func stop() throws {
         let courtyard = try SampleLevel.bundled(0)

@@ -40,7 +40,7 @@ public nonisolated enum AudioEngineError: Error, CustomStringConvertible, Sendab
 /// is a listener each frame and a world position per sound.
 ///
 /// **One-shots, and loops that belong to a place** — a brazier's crackle, a generator's hum — since
-/// 0.10.2. Still no music, no buses and no mixing groups: those arrive when a title needs them.
+/// 2026-09-11. Still no music, no buses and no mixing groups: those arrive when a title needs them.
 ///
 /// ### Two spatialisers, because one distance curve cannot serve both
 ///

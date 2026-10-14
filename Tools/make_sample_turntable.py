@@ -3,9 +3,9 @@
 
 **Round — and not, as first written here, for collision.** It was made a disc on the belief that a
 disc's box is the same at every angle, so the controller's world-aligned box would not swell as it
-turned. **That was wrong** (found 2026-09-11, engine 0.12.1): a placed mesh's world box is its *local*
+turned. **That was wrong** (found 2026-09-11): a placed mesh's world box is its *local*
 box's eight corners turned, and a disc's local box is the square around it — so the table's box
-swelled exactly like a square's, 5.66 m across at 45°, its corners 2 m past the rim. Since 0.12.1 the
+swelled exactly like a square's, 5.66 m across at 45°, its corners 2 m past the rim. Since then the
 controller stands on the table's footprint instead: that same square, turning with it — air to stand
 on at four corners, 0.83 m past the rim, which go round with the table. Twenty-four sides: round to
 the eye at the sample's distances, and still faceted like everything else here.

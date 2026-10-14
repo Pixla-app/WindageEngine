@@ -232,7 +232,7 @@ public final class HUDRenderer {
 
     /// A filled polygon, **concave or convex**, given as its outline in order, either way round.
     ///
-    /// **Arrived with the engine's mark (0.21.0)**, which is a letter and not a set of rectangles. Until
+    /// **Arrived with the engine's mark (2026-09-15)**, which is a letter and not a set of rectangles. Until
     /// then this renderer drew rectangles, lines, rings and text, and a shape was approximated out of
     /// those — which is how a curve built from quads came out hatched with a hairline seam at every
     /// joint. A polygon is triangulated once, here, and its triangles share their vertices exactly, so
