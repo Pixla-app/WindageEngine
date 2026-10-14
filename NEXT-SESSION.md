@@ -76,12 +76,10 @@ consumer was followed in the same pass: Coldkeel now owns its sniper controls (`
 Worldra follows the new shadow and math API, and the rigs build. Checks: 666 + 50 tests, 20 walks and 5 frames
 as recorded; Worldra's forest frame byte-identical to before.
 
-**Not released — nothing is.** The engine reports 1.0.0, the version its first release will be;
-`CHANGELOG.md` has one *Unreleased* section ("Initial release") and there are no tags. When 1.0.0 ships is the
-owner's, in **Pixla Games Control's Releases window** (2026-10-13): Cut runs the tests and tags, Publish pushes,
-Make Public is the one-time switch — a session never does any of them. Ready for it: `LICENSE` is PolyForm
-Small Business with the credits line as its Required Notice, the docs name `github.com/Pixla-app/WindageEngine`,
-and `web/` is the site to upload. **No repository is backed up yet** — Repos ▸ Create backup, before anything.
+**1.0.0 is released and public (2026-10-14)** — cut, tagged and published from **Pixla Games Control's Releases
+window**, `github.com/Pixla-app/WindageEngine`, public, under PolyForm Small Business with the credits line as its
+Required Notice; windageengine.com is up. Releases are the owner's clicks there — Generate or Edit the notes,
+bump, Cut, Publish — and a session never does any of them; it may add notes under *Unreleased*.
 Above PolyForm's thresholds: legal@pixla.app, no price set (owner, 2026-10-13).
 
 ## Done 2026-10-13 — the docs, written (Unreleased)

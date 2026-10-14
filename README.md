@@ -2312,9 +2312,8 @@ A Swift package dependency — by URL, or by relative path for a checkout sittin
 
 ## Versioning
 
-**Nothing has been released yet, and the first public release is `1.0.0`.** Until then the engine reports
-the version that release will be, `CHANGELOG.md` holds one *Unreleased* section describing what 1.0.0 contains,
-and there are no tags. How the engine got here is in the git log, not in version numbers.
+**The first public release is `1.0.0` (2026-10-14)**, tagged and public at `github.com/Pixla-app/WindageEngine`.
+How the engine got there is in the git log, not in version numbers.
 
 > **Why there are no 0.x releases (2026-10-13).** The engine was numbered from 0.1.0 to 0.28.0 while it had
 > never left this machine — 69 "releases" in five weeks, 33 of them on one day, each one an edit. A version
