@@ -12,6 +12,8 @@ cut in Pixla Games Control's Releases window, never by hand.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-10-14
+
 **Initial release.** A Swift 6 and Metal 4 game engine for the Mac, extracted from working games.
 
 ### Added
