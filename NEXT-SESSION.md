@@ -1733,7 +1733,16 @@ and sorts what is missing into three buckets:
 done it comes off, and the one below it moves up. Anything not being built goes under *Parked*
 below, never in this list.
 
-1. **The editor is checked — and its edited copy must follow the check's container first.** The editor is
+1. **Textures inside a `.usdz` draw white.** Model I/O names a packaged texture
+   `Prop.usdz[textures/x.png]` (`stringValue`), while `urlValue` is the `.usdz` itself — so `Material.textureSource`
+   hands `TextureStore` the archive, `MTKTextureLoader` cannot read it as an image, and the fallback (white) is
+   drawn. Found 2026-10-14 when an editor wrote its converted props as `.usdz`; it writes loose `.usda` instead
+   now. **Fix without breaking `TextureSource`** (adding a case would break a consumer's exhaustive switch): keep
+   `.url`, carry the entry as the URL's fragment, and have `TextureStore` read an uncompressed entry out of the
+   archive (USDZ never compresses) into `newTexture(data:)`. **Proved by** a `.usdz` fixture whose texture loads,
+   failing with the fragment ignored.
+
+2. **The editor is checked — and its edited copy must follow the check's container first.** The editor is
    the one large thing in the sample with no automated cover at all: adding by kind, the lamp keys, undo,
    ⌘S, and the edited copy that shadows the shipped level. **A hazard to clear before any of that**:
    `SampleLevel`'s edited-level path (Sources/WindageSampleCore/SampleLevel.swift, the
@@ -1744,7 +1753,7 @@ below, never in this list.
    and a frame with the editor's overlay open. **Proved by** the level file matching, the frame matching,
    and both failing when the lamp's step or the added kind changes.
 
-2. **A course that is pushed, carried and turned.** The capstone covers what the body does on its own;
+3. **A course that is pushed, carried and turned.** The capstone covers what the body does on its own;
    it says nothing about the three things the world does *to* it — a lift under the feet, a slider into
    the ribs, a turntable beneath them — and every one of those is a game-supplied `motion` with its own
    claim to being rate-independent. The sample's movers are functions of absolute time, which is the
@@ -1752,7 +1761,7 @@ below, never in this list.
    the same answer twice. **Proved by** a second course walk, at the same four rates, riding the ruins'
    lift and taking the piston's shove — and by failing when a mover is stepped by its step count.
 
-3. **Lines and rings that are as smooth as fills.** The Drift W (2026-09-15) feathered `HUDRenderer.fill(polygon:)` because the
+4. **Lines and rings that are as smooth as fills.** The Drift W (2026-09-15) feathered `HUDRenderer.fill(polygon:)` because the
    HUD has no multisampling and the W came out stair-stepped. `line(from:to:)` and `ring(center:…)` are drawn
    as bare quads in the same pipeline, so every diagonal line and every ring edge is still aliased — and a
    game's HUD is mostly those: a reticle, a mil ladder, a chevron, a scope's surround. Draw them through the

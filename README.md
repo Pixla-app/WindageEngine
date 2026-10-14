@@ -137,7 +137,7 @@ needs to ship* — the picture is a real product with real gaps.
 ### Present
 
 Frame pacing and frames in flight · fixed timestep · reversed-Z depth · camera · keyboard, mouse and
-gamepad input with stick shaping · mesh loading through Model I/O · **skinned animation — skeletons,
+gamepad input with stick shaping · mesh loading through Model I/O, **and glTF through the engine's own reader** · **skinned animation — skeletons,
 clips, cross-fading and a joint palette, loaded from USD, with clips in files of their own and an
 asset-orientation correction for Z-up centimetre exports** · **materials and textures — the
 metallic-roughness set read from a file, and a caching texture store that knows colour from
@@ -302,6 +302,57 @@ is exactly what was left out.
 > **The rule this seemed to break, and did not.** "Nothing enters this package speculatively" is
 > about architecture with no single right answer. Applied to skinning it would have kept the engine
 > unusable by any game with a person in it, waiting for a game that could not be built.
+
+## glTF (2026-10-14)
+
+**`MeshLoader` reads `.gltf` and `.glb`**, and `ImportedModel.read(gltf:)` gives a tool the same file as plain
+values. Nothing Apple ships reads glTF, and it is how most packs and most other engines exchange models, so a
+Mac-native engine without it turns every bought asset into a conversion step.
+
+**Extracted from a character-creator app's reader, not written for the engine** — the extraction rule: the
+reader had been parsing real packs, gltfpack's and Blender's compressed output included, with tests against
+each, before it came here. **The rig was taken out on the way.** No skeleton, skins, joints, morph targets or
+clips: a skinned mesh arrives in its bind pose, placed where its joints stand at rest. A prop has no rig, and
+reading glTF skins into `Skeleton` is a separate piece of work for when a game asks for it — the rig still
+comes from USD through `RigLoader`.
+
+| | what it is |
+|---|---|
+| `ImportedModel` and its types | A model as plain values — meshes, materials, images — in metres, Y up, counter-clockwise, v down, linear colours. What a reader makes; what `MeshLoader` turns into an `MDLAsset` — from glTF, or from a game's own reader through `MeshLoader.load(model:named:…)`. |
+| `GLTFReader` (internal) | glTF 2.0: data URIs, `.bin` files beside a `.gltf`, quantized attributes, meshopt (decoded in Swift), Draco, KTX2, WebP, texture transforms, emissive strength. Refuses a file that *requires* an extension it does not read, by name (`GLTFError`). |
+| `Draco`, `Basis` targets | Google's Draco 1.5.7 decoder and Binomial's Basis Universal 2.50 transcoder with Zstandard, vendored unmodified, each behind a few C functions (`we_draco_*`, `we_basis_*`). |
+
+### Why `ImportedModel` exists rather than going straight to Model I/O
+
+**Model I/O's exporter drops every texture** (measured 2026-10-14): an `MDLAsset` written out as USD keeps its
+geometry and loses its maps. A tool that reads a pack and writes it out again therefore cannot use Model I/O as
+its in-between form. `ImportedModel` keeps everything, including each image's own encoded bytes, so a JPEG is
+never re-encoded. `MeshLoader` builds an `MDLAsset` from it in memory so that tangents, the game's vertex layout,
+bounds and materials take one path for every format.
+
+### Three decisions made on the way in
+
+- **A glTF texture lands the same way up as the same model's from USD.** glTF's v runs down the image and
+  everything Model I/O imports runs up; the coordinates are turned (`v → 1 − v`) so `TextureStore`'s default
+  origin is right for both, and no game has to know which format a mesh came from. A test loads
+  `textured-quad.usda` and a glTF written to mean the same thing and compares the coordinates at every corner.
+- **glTF's factors stay with their textures.** Model I/O gives a textured slot an identity scalar, because USD's
+  preview surface has no factor beside its texture. glTF does, and Blender writes a metallic-roughness map under
+  a metallic factor of 0 for a surface with painted roughness and no metal — read the USD way, it comes out chrome.
+- **Images become files in the temporary folder**, named by their contents, because `Material` names textures
+  by URL and that is what keeps it a cheap, comparable value. Inside the container, so a sandboxed game is
+  unaffected; a `.bin` beside a `.gltf` is read through a related-item file presenter, which is what a sandboxed
+  app needs for a file it was not given.
+
+### No `unsafeFlags`, and why it matters here
+
+The engine is consumed by URL, and **SwiftPM refuses a package fetched from a repository if any of its targets
+uses `unsafeFlags`**. The reader this came from silenced Draco's 64-to-32-bit conversion warnings with one;
+here they are silenced with `.disableWarning("shorten-64-to-32")`, the safe setting tools 6.2 added. Vendored
+code is never edited to quiet it.
+
+**FBX is still not read.** The only complete reader is Autodesk's SDK, a binary a public source repository cannot
+carry. A game or tool that has it can write its own reader into an `ImportedModel` and load that.
 
 ## Materials and textures (2026-09-09)
 
@@ -2814,6 +2865,12 @@ Source-available, not open source: free to use, modify and ship commercially for
 organisation under 100 people and under USD 1,000,000 prior-year revenue, a paid licence above
 either, and no royalty, report or audit clause to administer. Attribution rides along on the
 licence's own `Required Notice:` line.
+
+**Third-party code inside it, each under its own license, which ships with any game built on the engine:**
+meshoptimizer's simplifier (MIT, `Sources/MeshOptimizer/LICENSE.md`), Google's Draco decoder (Apache 2.0,
+`Sources/Draco/LICENSE`) and Binomial's Basis Universal transcoder with Meta's Zstandard (Apache 2.0 and BSD,
+`Sources/Basis/LICENSE`, `NOTICE` and `LICENSES/`). Apache 2.0 asks that a binary carry the license and the
+notice; a game's legal screen or bundled notices file is the place.
 
 **What a game must show (owner, 2026-10-13): a credits line, nothing more** — "Uses Windage Engine © 2026
 Pixla LLC" in its credits or legal screen, with where the license can be read. The splash and the mark stay

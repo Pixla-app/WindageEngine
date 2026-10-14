@@ -12,6 +12,20 @@ cut in Pixla Games Control's Releases window, never by hand.
 
 ## [Unreleased]
 
+### Added
+
+- **glTF and GLB loading** — `MeshLoader` now loads `.gltf` and `.glb` the way it loads USD: meshes placed by their
+  nodes, metallic-roughness materials with their textures, and compressed files (meshopt, Draco, quantized
+  attributes, KTX2 textures through Basis Universal). Skins and animation are not read; a skinned mesh arrives in
+  its bind pose. A file requiring an extension the engine does not read is refused with `GLTFError`.
+- **`ImportedModel`**, `ImportedMesh`, `ImportedMaterial`, `ImportedTextureReference` and `ImportedTexture` — a
+  model as plain values, for a tool that wants what a file holds without drawing it. `ImportedModel.read(gltf:)` and
+  `MeshLoader.model(url:)` make one from glTF; `MeshLoader.load(model:named:device:vertexDescriptor:semantics:)` draws one a game's own
+  reader made.
+- Google's Draco decoder (Apache 2.0) and Binomial's Basis Universal transcoder with Zstandard (Apache 2.0 and BSD)
+  are vendored for this and linked into every game built with the engine, so **a game ships their licenses**
+  beside meshoptimizer's — in `Sources/Draco` and `Sources/Basis`.
+
 ### Fixed
 
 - **Archiving for the Mac App Store** — the engine now compiles for Intel as well as Apple silicon, so a game's

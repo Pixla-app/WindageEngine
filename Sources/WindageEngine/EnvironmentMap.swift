@@ -174,7 +174,7 @@ public nonisolated final class EnvironmentMap: @unchecked Sendable {
     /// A `Float` as the bits of a half float, for an `.rgba16Float` texture.
     ///
     /// **Bits, not `Float16`, so the engine compiles for Intel (2026-10-14).** Swift has no `Float16` on Intel
-    /// Macs, and an App Store archive builds for both architectures: Worldra's failed outright here, while every
+    /// Macs, and an App Store archive builds for both architectures: an editor's failed outright here, while every
     /// Debug build — this Mac's architecture only — had passed. Metal 4 needs Apple silicon, so Intel never runs
     /// this; it only has to compile. On Apple silicon it is `Float16` exactly as before, so every frame is
     /// unchanged; on Intel it is the same round-to-nearest-even, written out.

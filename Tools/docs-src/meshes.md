@@ -1,12 +1,40 @@
 ---
 title: Loading meshes
-description: Load geometry through Model I/O with MeshLoader, laid out to match your pipeline, with bounds, materials, node transforms and generated tangents.
+description: Load USD, glTF and other formats with MeshLoader, laid out to match your pipeline, with bounds, materials, node transforms and generated tangents.
 ---
-`MeshLoader` turns a file into Metal meshes laid out exactly the way your render pipeline expects, along with each mesh's bounding box, its materials and its place in the file's node hierarchy. It reads whatever Model I/O reads, and nothing else.
+`MeshLoader` turns a file into Metal meshes laid out exactly the way your render pipeline expects, along with each mesh's bounding box, its materials and its place in the file's node hierarchy. It reads whatever Model I/O reads, and glTF.
 
 ## Formats
 
-Model I/O reads **USD, USDZ, OBJ, PLY, STL and Alembic** natively. Anything outside that list — FBX above all — has no importer in the engine. Prefer USD for anything with materials or hierarchy; OBJ is fine for placeholder geometry. Emission, for one, reaches the engine from USD and not from OBJ.
+Model I/O reads **USD, USDZ, OBJ, PLY, STL and Alembic** natively, and the engine reads **glTF 2.0 — `.gltf` and `.glb`** — itself. **FBX is not read**: the only complete reader is Autodesk's SDK, which a public source repository cannot carry. Prefer USD or glTF for anything with materials or hierarchy; OBJ is fine for placeholder geometry. Emission, for one, reaches the engine from USD and glTF and not from OBJ.
+
+## glTF and GLB {#gltf}
+
+Pass a `.gltf` or `.glb` to either load function, exactly as you would a USD file. The engine reads it into an `ImportedModel` and hands that to Model I/O, so tangents, your vertex layout, bounds and materials come out the same way as for any other format.
+
+What is read:
+
+- **Meshes** from the default scene, each placed by its node's transform, which arrives as `nodeTransform`. Triangle strips and fans become triangle lists; points and lines are left out and reported.
+- **Compressed files**: quantized attributes (`KHR_mesh_quantization`), meshopt (`EXT_meshopt_compression`, `KHR_meshopt_compression`) and Draco (`KHR_draco_mesh_compression`).
+- **Materials**: the full metallic-roughness set with its textures, emission and `KHR_materials_emissive_strength`. Textures may be inside a `.glb`, in data URIs or in files beside a `.gltf`, as PNG, JPEG, WebP (`EXT_texture_webp`) or KTX2 (`KHR_texture_basisu`). `KHR_texture_transform` is baked into the texture coordinates.
+- **Buffers** embedded, in data URIs, or in a `.bin` beside the `.gltf`.
+
+A glTF texture lands the same way up as the same model's from USD: its coordinates are turned to Model I/O's v-up convention, so leave `TextureOrigin` at its default. Images that are not plain files — inside a `.glb`, in a data URI, KTX2 or WebP — are written once to the app's temporary folder, named by their contents, because a `Material` names its textures by URL. glTF's factors stay with their textures: a base color factor tints its texture, and a metallic factor of 0 keeps a metallic-roughness map from making a surface metal.
+
+What is not read: **skins and animation**. A skinned mesh arrives in its bind pose, placed where its joints stand at rest; load the rig from USD (see [skeletons](skeletons.html)). Cameras, lights and morph targets are ignored. A file that *requires* an extension the engine does not read is refused, naming the extension.
+
+`Material` cannot carry alpha mode and cutoff, double-sidedness, normal scale, occlusion strength, wrapping or filtering. To see them, or to write a model out again, read it yourself:
+
+```swift
+let model = try MeshLoader.model(url: url)   // or ImportedModel.read(gltf: url); throws GLTFError
+for material in model.materials {
+    print(material.name, material.alphaMode, material.doubleSided)
+}
+```
+
+`ImportedModel` is plain values — meshes, materials and images — in meters, Y up, with linear colors. A reader of your own, for a format the engine does not read, can make one and draw it with `MeshLoader.load(model:named:device:vertexDescriptor:semantics:reportingTo:)`. `GLTFError` says why a file was refused: `unreadable`, `unsupportedVersion`, `unsupportedExtension` or `missingResource`. Through `MeshLoader`, it arrives as the `underlying` error of `conversionFailed`.
+
+> **A sandboxed app** can open a `.bin` beside a `.gltf` only when the two share a name — `hero.gltf` and `hero.bin` — and the app declares the `.bin`'s type with `NSIsRelatedItemType` in its Info.plist. Otherwise the read fails with `missingResource`.
 
 ## The two load functions
 
