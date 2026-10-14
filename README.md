@@ -2376,7 +2376,7 @@ Pixla Control's Board releases the business apps: every step is the owner's clic
 3. **Cut** — moves *Unreleased* under `## [version] — date`, runs `swift test` on exactly that, and only if it
    passes commits the changelog and tags the version (annotated, no `v`, which is what SwiftPM resolves). It
    refuses a second release the same day.
-4. **Publish** pushes the branch and the tag. **Make Public** is the repository's one-time switch, behind typing
+4. **Publish** pushes the branch and the tag, and makes the GitHub Release page from the version's notes. **Make Public** is the repository's one-time switch, behind typing
    its name.
 
 **A session never bumps, cuts, tags, publishes or changes visibility.** Those are the buttons, and they are the
