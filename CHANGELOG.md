@@ -12,6 +12,12 @@ cut in Pixla Games Control's Releases window, never by hand.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Archiving for the Mac App Store** — the engine now compiles for Intel as well as Apple silicon, so a game's
+  universal Release build or archive no longer fails on `Float16`, which Swift does not have on Intel. Metal 4
+  still needs Apple silicon to run; nothing draws differently.
+
 ## [1.0.0] — 2026-10-14
 
 **Initial release.** A Swift 6 and Metal 4 game engine for the Mac, extracted from working games.
