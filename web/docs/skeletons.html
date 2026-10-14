@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skeletons and clips · Windage Engine</title>
+  <meta name="description" content="Load a rigged character&#x27;s skeleton and animation clips from USD, pose it each frame, cross-fade between clips and hand the joint palette to a vertex shader.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html" aria-current="page">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html" aria-current="page">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Characters</p>
+    <h1>Skeletons and clips</h1>
+<p>A skinned character is a mesh, the skeleton it was bound to, and clips that move the skeleton. <code>RigLoader</code> reads the skeleton and clips from USD, <code>SkeletonPose</code> poses them, and you get the matrices a vertex shader skins with. None of it needs a GPU, so all of it runs under <code>swift test</code>.</p>
+<h2 id="the-types">The types</h2>
+<div class="table"><table><thead><tr><th>Type</th><th>What it is</th></tr></thead><tbody><tr><td><code>Skeleton</code></td><td>Structure only: joint paths, derived parentage, the rest pose and the inverse bind matrices. Loaded once, shared by every character wearing the rig.</td></tr><tr><td><code>AnimationClip</code></td><td>Keys for translation, rotation and scale, with the clip's own joint names. Each channel is a <code>JointTrack</code>. Both check their data when made, and throw an <code>AnimationClipError</code> for keys of the wrong shape.</td></tr><tr><td><code>AnimationBinding</code></td><td>Which of a rig's joints each of a clip's joints drives, matched <strong>by path, once</strong>. A playhead makes it; <code>unboundJoints</code> and <code>isEmpty</code> are what you read.</td></tr><tr><td><code>AnimationPlayhead</code></td><td>A clip, its binding to a rig, and the time.</td></tr><tr><td><code>SkeletonPose</code></td><td>A rig with a pose on it, one per character, kept between frames.</td></tr><tr><td><code>Rig</code></td><td>What <code>RigLoader</code> returns: a <code>skeleton</code>, its <code>clips</code> and a <code>nodeTransform</code>.</td></tr></tbody></table></div>
+<h2 id="loading-a-rig">Loading a rig</h2>
+<p><code>RigLoader.load(named:withExtension:bundle:)</code> reads the skeleton and every clip from one file; <code>load(url:)</code> does the same from anywhere on disk. The extension and the bundle are always named: <code>.main</code> is right for an app and wrong for a SwiftPM target, whose resources are in <code>.module</code>.</p>
+<p>A real character usually arrives as one file per clip, and each of those files carries a whole copy of the mesh and the skeleton. Take the rig from the base file and only the clips from the others:</p>
+<pre class="code-swift"><span class="k">let</span> rig = <span class="k">try</span> RigLoader.load(named: <span <span class="k">class</span>="p">"figure"</span>, withExtension: <span <span class="k">class</span>="p">"usda"</span>,
+                             clipFiles: [<span <span class="k">class</span>="p">"figure-wave"</span>], bundle: .module) {
+    print(<span <span class="k">class</span>="p">"figure clips — \($0)"</span>)
+}</pre>
+<p><code>load(url:clipURLs:reportingTo:)</code> does the same from disk. The closure is handed a <code>RigLoader.Warning</code> — <code>.noAnimation</code>, <code>.clipDrivesNoJoints</code> or <code>.clipFileFailed</code> — each printing as a sentence. Both:</p>
+<ul><li><strong>Rename a file's only clip to the file's name</strong>, so a game asks for <code>figure-wave</code>, not the exporter's name.</li><li><strong>Drop and report a clip that drives none of the rig's joints</strong> — otherwise it looks exactly like a character standing still.</li><li><strong>Report a clip file that is missing or unreadable, and load the rest.</strong> Only the base file failing throws.</li><li><strong>Ignore the clip files' skeletons.</strong> Their rest pose is wherever the exporter left the rig; merged, every joint a clip does not animate stands wrong.</li></ul>
+<p><code>RigLoader.clips(named:withExtension:bundle:)</code> and <code>clips(url:)</code> read only animations; <code>Rig.adding(_:)</code> puts them on a rig. <code>rig.joints(notDrivenBy: clip)</code> lists joints a clip ignores: empty is what you want.</p>
+<p>Loading throws a <code>RigLoaderError</code> — <code>.assetNotFound</code> (by name or by URL), <code>.noSkeleton</code>, <code>.conflictingGeometryBindTransforms</code>, <code>.malformedClip</code> — or a <code>SkeletonError</code> for a missing or out-of-order parent or a bind transform that cannot be inverted, rather than drawing a limb in the wrong place.</p>
+<h2 id="posing-a-character">Posing a character</h2>
+<p>Make a pose and one playhead per clip when the character is placed:</p>
+<pre class="code-swift"><span class="k">var</span> pose = SkeletonPose(skeleton: rig.skeleton)
+<span class="k">var</span> idle = AnimationPlayhead(clip: idleClip, skeleton: rig.skeleton)
+<span class="k">var</span> wave = AnimationPlayhead(clip: waveClip, skeleton: rig.skeleton)</pre>
+<p>A new pose starts at rest. A playhead loops by default; <code>looping: false</code> makes a one-shot that clamps and reports <code>isFinished</code>. Its <code>time</code> may run past <code>duration</code>.</p>
+<p>Each frame, advance the playheads and pose the rig. One clip is <code>pose.set(to: idle)</code>. Two is a cross-fade, from the sample:</p>
+<pre class="code-swift">figures[index].idle.advance(by: deltaTime)
+figures[index].wave.advance(by: deltaTime)
+
+<span class="k">let</span> target: Float = distance &lt; SampleGame.noticeDistance ? 1 : 0
+<span class="k">let</span> rate = min(deltaTime / 0.25, 1)
+figures[index].waveWeight += (target - figures[index].waveWeight) * rate
+
+figures[index].pose.set(to: figures[index].idle,
+                        blendedWith: figures[index].wave,
+                        weight: figures[index].waveWeight)</pre>
+<p><code>weight</code> is how much of the second clip, 0 to 1. <strong>Each clip is sampled at its own time.</strong> Ease the weight rather than switching it. Posing allocates nothing. A playhead must be made with the pose's skeleton, or one with the same joints in the same order; one made for another rig stops with a message naming the clip, rather than posing garbage.</p>
+<p>For anything that is not a clip — a head turn, a solver — use <code>set(to:)</code> with an array of <code>JointTransform</code>s, one per joint, which keep rotation as a quaternion because a matrix cannot be blended.</p>
+<h2 id="what-a-pose-gives-you">What a pose gives you</h2>
+<div class="table"><table><thead><tr><th>Property</th><th>Space</th><th>For</th></tr></thead><tbody><tr><td><code>localTransforms</code></td><td>joint-local</td><td>what a clip writes, and where blending happens</td></tr><tr><td><code>modelTransforms</code></td><td>the character's own space</td><td>attaching things to a joint</td></tr><tr><td><code>skinningMatrices</code></td><td>model, relative to the bind</td><td>what the vertex shader multiplies by</td></tr></tbody></table></div>
+<p><code>skinningMatrices</code> is already exactly what a shader indexes, so it is copied into a buffer as it is:</p>
+<pre class="code-swift">figure.pose.skinningMatrices.withUnsafeBytes { source <span class="k">in</span>
+    jointBuffer.contents().advanced(by: jointOffset(frameSlot: frameSlot, figure: index))
+        .copyMemory(from: source.baseAddress!, byteCount: source.count)
+}</pre>
+<p>The skinning shader and palette size are your game's; the sample's takes 128 joints. Find a joint once with <code>skeleton.index(ofJoint:)</code>; <code>pose.modelTransform(ofJoint:)</code> says where it is each frame — see <a href="attachments.html">attachments</a>.</p>
+<h2 id="scale-and-orientation">Scale and orientation</h2>
+<p>An exported character often sits in centimeters under a node scaled by 0.01. <code>Rig.nodeTransform</code> carries that matrix, as the mesh's <code>nodeTransform</code> does. Apply it inside the placement, with the up-axis correction:</p>
+<pre class="code-swift"><span class="k">let</span> transform = placement * figureOrientation.transform * node</pre>
+<p>One matrix corrects mesh, rig and clips at once. Which way a character faces is not in the file; it is a yaw where it is placed.</p>
+<h2 id="gotchas">Gotchas</h2>
+<ul><li><strong>Rest transforms are joint-local; bind transforms are skeleton-space.</strong> They coincide only in a rig rooted at the origin. A hand-built <code>Skeleton(jointPaths:restTransforms:bindTransforms:)</code> must keep them apart.</li><li><strong>Clip translations are joint-local.</strong> Channels a clip lacks fall back to rest.</li><li><strong>Keyframe times arrive in seconds.</strong></li></ul>
+<h2 id="what-it-does-not-do">What it does not do</h2>
+<p>No animation state machine: which two clips to cross-fade is your game's decision. No retargeting, no IK and no root motion yet.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#the-types">The types</a><a href="#loading-a-rig">Loading a rig</a><a href="#posing-a-character">Posing a character</a><a href="#what-a-pose-gives-you">What a pose gives you</a><a href="#scale-and-orientation">Scale and orientation</a><a href="#gotchas">Gotchas</a><a href="#what-it-does-not-do">What it does not do</a>
+  </aside>
+</div>
+
+</body>
+</html>

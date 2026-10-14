@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The HUD · Windage Engine</title>
+  <meta name="description" content="HUDRenderer draws text, rectangles, lines, rings and polygons in screen space, after tone mapping, so interface colors land exactly as authored.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html" aria-current="page">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html" aria-current="page">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>The HUD</h1>
+<p><code>HUDRenderer</code> draws your game's interface: text, filled and outlined rectangles, lines, rings and polygons, in screen space, after the scene has been tone mapped. Use it for a reticle, a timer, a bar, a panel, a settings screen or a credit. It is one pipeline and one draw call for the whole interface.</p>
+<h2 id="order">Why it draws after tone mapping</h2>
+<p>Scene colors are radiance: they pass through an exposure and a filmic curve on the way to the screen, by design. An interface color is a specification, and a brand color must land on screen as exactly that color. So <code>FrameRenderer</code> calls your <code>GameLoop</code>'s <code>encodeHUD(into:frameSlot:interpolation:)</code> <strong>after</strong> the scene and its tone map, and the HUD's pipeline applies no curve. The ordering is structural, not something each game has to remember.</p>
+<p><code>encodeHUD</code> has a default implementation that does nothing; implement it to draw an interface. See <a href="tone-mapping.html">tone mapping</a> for what happens to the scene before it.</p>
+<h2 id="init">Making one</h2>
+<pre class="code-swift">hud = <span class="k">try</span> HUDRenderer(device: device, additionalCharacters: [<span <span class="k">class</span>="p">"⌘"</span>, <span <span class="k">class</span>="p">"⌫"</span>, <span <span class="k">class</span>="p">"·"</span>, <span <span class="k">class</span>="p">"°"</span>, <span <span class="k">class</span>="p">"•"</span>, <span <span class="k">class</span>="p">"—"</span>])
+engine.residencySet.addAllocations(hud.allocations)</pre>
+<p>The initializer is <code>init(device:font:additionalCharacters:maxVerticesPerFrame:)</code> and throws a <code>HUDRendererError</code> saying whether the font atlas, the pipeline or a buffer could not be built. Its <code>allocations</code> (the vertex buffer and the glyph texture) must be in the residency set, like everything else the GPU reads.</p>
+<h2 id="frame">A frame</h2>
+<p>From the sample's <code>encodeHUD</code>, trimmed:</p>
+<pre class="code-swift"><span class="k">func</span> encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
+    <span class="k">guard</span> <span class="k">let</span> hud <span class="k">else</span> { <span class="k">return</span> }
+    hud.begin(viewportSize: viewportSize)
+
+    <span class="k">let</span> scale = max(viewportSize.y / 1080, 0.75)
+    <span class="k">let</span> title = 30 * scale, margin = 22 * scale
+    <span class="k">let</span> white = InterfaceColor(srgb: SIMD4(1, 1, 1, 0.95))
+
+    <span class="k">var</span> y = margin + title
+    hud.text(<span <span class="k">class</span>="p">"\(level.name)   \(levelIndex + 1)/\(SampleLevel.names.count)"</span>,
+             atBaseline: SIMD2(margin, y), pointSize: title, color: white)
+
+    <span class="k">let</span> dot = 3 * scale
+    hud.fillRect(origin: viewportSize / 2 - dot, size: SIMD2(repeating: dot * 2), color: white)
+    hud.draw(into: encoder, frameSlot: frameSlot)
+}</pre>
+<p><code>begin(viewportSize:)</code> clears last frame's shapes and sets the coordinate space. Every position is a <code>SIMD2&lt;Float&gt;</code> with <strong>the origin at the top left</strong>, in whatever units you pass as the viewport. The sample passes the drawable's size in pixels and scales against a 1080-pixel reference, so text is the same share of the screen on any display. Raw pixel sizes on a Retina display come out at half the size you meant.</p>
+<p><code>draw(into:frameSlot:)</code> uploads and draws everything since <code>begin</code>, in the order it was added: later shapes draw over earlier ones. <code>frameSlot</code> must be the one <code>encodeHUD</code> was given.</p>
+<h2 id="shapes">What it draws</h2>
+<div class="table"><table><thead><tr><th>Method</th><th>Draws</th></tr></thead><tbody><tr><td><code>fillRect(origin:size:color:)</code></td><td>a filled rectangle, <code>origin</code> its top-left corner</td></tr><tr><td><code>strokeRect(origin:size:thickness:color:)</code></td><td>an unfilled rectangle, as four edges</td></tr><tr><td><code>line(from:to:thickness:color:)</code></td><td>a line of a thickness, as a rotated quad</td></tr><tr><td><code>fillRing(center:innerRadius:outerRadius:segments:color:)</code></td><td>a filled ring; <code>segments</code> defaults to 96</td></tr><tr><td><code>fillPolygon(_:color:feather:)</code></td><td>a filled polygon, concave or convex</td></tr><tr><td><code>text(_:atBaseline:pointSize:color:)</code></td><td>a line of text; returns its width</td></tr><tr><td><code>width(of:pointSize:)</code></td><td>a string's width without drawing it</td></tr></tbody></table></div>
+<p>A ring with a large outer radius is a circular vignette, which is how a scope's surround is drawn.</p>
+<h3 id="polygons-and-feather">Polygons and feather</h3>
+<p><code>fillPolygon(_:color:feather:)</code> takes an outline in order, either way round, and triangulates it by ear clipping, so concave shapes such as a letter fill correctly. The outline must be simple, with no edge crossing another; one that is not is drawn only in part.</p>
+<p>The HUD pipeline has no multisampling, so a filled shape with a diagonal edge would be stair-stepped. <code>feather</code> (default <code>1</code>, in the HUD's own units, so a pixel when the viewport is in pixels) runs a strip around the outline that fades from the color to nothing. Pass <code>0</code> for hard edges, for a shape that must tile exactly against its neighbor. The engine's <a href="mark.html">mark</a> is drawn this way.</p>
+<h2 id="text">Text</h2>
+<div class="note"><p><strong><code>atBaseline</code> is the baseline, not the top</strong> — hence the label. Glyphs draw upward from it. Pass a top margin as its <code>y</code> and the first line's ascenders run off the top of the screen. Put the first line at least one <code>pointSize</code> below where text should start.</p></div>
+<p>Baselines make two readouts line up even when one has a descender or a comma. <code>text</code> returns the width it drew, which <code>SplashScreen</code> uses to set letters one at a time with extra spacing; <code>width(of:pointSize:)</code> measures without drawing, for centering or right-aligning, and the atlas's <code>lineHeight(pointSize:)</code> gives the distance from one baseline to the next.</p>
+<h3 id="fontatlas">FontAtlas</h3>
+<p>Glyphs come from a <code>FontAtlas</code>, rasterized at launch from an installed font: <code>init(device:font:additionalCharacters:)</code>, which throws a <code>FontAtlasError</code> when the characters do not fit on one sheet, with the font defaulting to the monospaced system font. It rasterizes at <code>FontAtlas.rasterHeight</code> (64) and scales down, so text looks clean at HUD sizes and softens if drawn much larger. It is a bitmap atlas, not signed distance fields.</p>
+<p><strong>ASCII is the default, not a limit.</strong> Anything else, such as <code>×</code>, <code>·</code> or <code>⌘</code>, is passed in <code>additionalCharacters</code>. A character the atlas does not carry draws nothing, so the engine says so: <code>FontAtlas.unavailableCharacters</code> lists what the font could not supply, and <code>text</code> logs each missing character once. The sample's hints once read "S save" with the ⌘ silently gone, which is why.</p>
+<h2 id="color">InterfaceColor</h2>
+<p><code>InterfaceColor</code> is a color authored for the interface: sRGB, the space hex codes live in, converted to linear once using the real sRGB transfer function. The drawable re-encodes on write, so the value round-trips exactly.</p>
+<pre class="code-swift"><span class="k">let</span> brand = InterfaceColor(hex: 0x00C2FF)
+<span class="k">let</span> panel = InterfaceColor(srgb: SIMD4(0.05, 0.06, 0.08, 0.86))
+<span class="k">let</span> faded = brand.withAlpha(0.5)</pre>
+<p><code>InterfaceColor.white</code>, <code>.black</code> and <code>.clear</code> are provided. Blending is premultiplied, so translucent panels composite cleanly over the scene. A shape with zero alpha is skipped.</p>
+<h2 id="limits">Limits</h2>
+<ul><li><strong>No layout, widgets or event handling.</strong> Positions are yours; a settings screen is text and rectangles your game places, and its keys are your game's.</li><li><strong><code>maxVerticesPerFrame</code> defaults to 8,192</strong>, set at init; anything past it in one frame is not drawn, and the log says so once. Every rectangle and character is six vertices.</li><li><strong>Text is one line per call.</strong> Wrapping and line spacing are yours.</li></ul>
+<p>See <a href="splash.html">the splash</a> for a full-screen overlay drawn through the HUD.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#order">Why it draws after tone mapping</a><a href="#init">Making one</a><a href="#frame">A frame</a><a href="#shapes">What it draws</a><a href="#text">Text</a><a href="#color">InterfaceColor</a><a href="#limits">Limits</a>
+  </aside>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audio · Windage Engine</title>
+  <meta name="description" content="AudioEngine plays positional one-shots and looping sounds tied to a place, and the character controller and level supply what a footstep needs to sound right.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html" aria-current="page">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html" aria-current="page">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / World</p>
+    <h1>Audio</h1>
+<p><code>AudioEngine</code> plays sounds at positions in the world: one-shots for things that happen, and loops for things that keep making noise, like a brazier. Footsteps and landings come from the <a href="character-controller.html">character controller</a>, which reports what the body did, and from the <a href="levels.html">level</a>, which says what each surface is made of.</p>
+<h2 id="scope">What it does and does not do</h2>
+<p>Every sound is spatialized: you give the listener each frame and a world position for each sound. The engine plays one-shots and loops tied to a place. It has <strong>no music, no buses and no mixing groups</strong>. Those come when a game needs them.</p>
+<p>Sixteen one-shots can overlap by default (<code>AudioEngine.Configuration.voiceCount</code>). Beyond that the oldest voice is reused, because the newest sound is the one that just happened.</p>
+<h2 id="setup">Setting it up</h2>
+<pre class="code-swift"><span class="c">// your game: with no output device, there is no engine, and the game runs quiet</span>
+<span class="k">let</span> audio: AudioEngine?
+<span class="k">do</span> { audio = <span class="k">try</span> AudioEngine() } <span class="k">catch</span> { audio = <span class="k">nil</span>; print(<span <span class="k">class</span>="p">"no audio — \(error)"</span>) }
+<span class="k">for</span> sound <span class="k">in</span> [<span <span class="k">class</span>="p">"pickup"</span>, <span <span class="k">class</span>="p">"crackle"</span>, <span <span class="k">class</span>="p">"step_stone_0"</span>, <span <span class="k">class</span>="p">"land_stone"</span>] {
+    <span class="k">do</span> { <span class="k">try</span> audio?.load(sound, bundle: .module) } <span class="k">catch</span> { print(error) }   <span class="c">// "no sound file pickup.wav"</span>
+}</pre>
+<p><code>AudioEngine()</code> throws an <code>AudioEngineError</code> saying why it could not start. <code>load(_:withExtension:bundle:)</code> decodes a sound and keeps it in memory, with <code>wav</code> as the default extension, and throws <code>.soundNotFound</code> or <code>.unreadableSound</code>. <strong><code>bundle</code> has no default on purpose.</strong> In an app bundle the sounds are in <code>.main</code>, while in a SwiftPM executable <code>.main</code> holds nothing and the sounds are in <code>.module</code>. <code>load(_:samples:sampleRate:)</code> loads mono samples your game generates.</p>
+<p><code>AudioEngine(configuration:)</code> takes the voice count and both spatializers' distance curves (<code>Configuration.Falloff</code>: reference distance, maximum distance, rolloff). The defaults are the curves described below.</p>
+<p>Move the listener once a frame:</p>
+<pre class="code-swift">audio?.updateListener(position: camera.position, forward: camera.forward, up: SIMD3(0, 1, 0))</pre>
+<h2 id="one-shots">One-shots</h2>
+<pre class="code-swift"><span class="c">// your game</span>
+audio.play(<span <span class="k">class</span>="p">"pickup"</span>, at: cratePosition, volume: 0.8)
+audio.play(<span <span class="k">class</span>="p">"impact"</span>, at: target, delay: distance / 343)   <span class="c">// sound takes time to travel</span>
+audio.play(<span <span class="k">class</span>="p">"win"</span>)                                         <span class="c">// not positioned</span></pre>
+<p><code>play(_:at:volume:delay:)</code> plays a sound at a world position. <code>delay</code> is in seconds. At about 343 m/s, an impact 800 m away is heard nearly two and a half seconds after it happens. The delay is counted on the audio clock, so it holds while the engine is paused and <code>stop()</code> cancels a sound still waiting. <code>play(_:volume:)</code> plays without a position, for sounds that happen <em>to</em> the player.</p>
+<h2 id="loops">Loops that belong to a place</h2>
+<pre class="code-swift"><span class="k">if</span> <span class="k">let</span> loop = audio.startLoop(<span <span class="k">class</span>="p">"crackle"</span>, at: position, volume: 0.8) {
+    audio.moveLoop(loop, to: newPosition)
+    audio.stopLoop(loop)
+}</pre>
+<p><code>startLoop(_:at:volume:)</code> returns an <code>AudioEngine.Loop</code> handle — keep it, since a loop nobody holds can only be stopped by <code>stopAllLoops()</code> — and <code>loopCount</code> covers the rest. Each loop starts at a different point in its sound, so two braziers playing the same crackle don't sound like one crackle in two places.</p>
+<p><strong>Loops get their own spatializer with a different falloff.</strong> One-shots are tuned for a sound heard across a range: full volume out to 8 m, then 90% of the inverse law. Through that curve, a brazier sounds as loud at 8 m as it does up close, and two of them fill a level with fire. Loops use the physical inverse law from 2 m (<code>Configuration.loopFalloff</code>) and measured 1 : 0.250 : 0.100 at 2, 8 and 20 m.</p>
+<p>A placement can carry a sound in its own space, like its lamp. <code>Level.carriedSounds(on:)</code> gives each one's world position, so a brazier moved in the editor takes its crackle with it. When your level changes, <strong>reconcile the loops instead of restarting them</strong>. The sample matches loops by name and position first, and only then by placement index, because copying a placement renumbers every placement after it.</p>
+<h2 id="footsteps">Footsteps and landings</h2>
+<p>The engine doesn't play footsteps itself. It gives your game the two facts it needs:</p>
+<ul><li><strong>What the body did.</strong> <code>CharacterController.events</code> lists this step's <code>.stride(foot:speed:)</code>, <code>.landed(impactSpeed:)</code> and <code>.jumped</code>, in order. The list is cleared at the start of every step, so read it after <code>step</code>.</li><li><strong>What is underfoot.</strong> <code>CharacterController.groundSolid</code> says which solid the feet are on. <code>Level.surface(standingOn:)</code> turns the matching placement into its <code>surface</code>, or the level's <code>groundSurface</code> for <code>nil</code>.</li></ul>
+<p>Here is the sample's version, trimmed (<code>variant</code> picks one of three recordings). Footsteps are not positioned, because they happen to the player:</p>
+<pre class="code-swift"><span class="k">var</span> surface = level.surface(standingOn: placement) ?? <span <span class="k">class</span>="p">"stone"</span>
+<span class="k">for</span> event <span class="k">in</span> body.events {
+    <span class="k">switch</span> event {
+    <span class="k">case</span> .stride(_, <span class="k">let</span> speed):
+        <span class="k">let</span> crouched = body.tuning.walkSpeed * body.tuning.crouchedSpeedFraction
+        <span class="k">let</span> t = simd_clamp((speed - crouched) / (body.tuning.sprintSpeed - crouched), 0, 1)
+        audio?.play(<span <span class="k">class</span>="p">"step_\(surface)_\(variant)"</span>, volume: 0.3 + 0.7 * t)
+    <span class="k">case</span> .landed(<span class="k">let</span> impact):
+        audio?.play(<span <span class="k">class</span>="p">"land_\(surface)"</span>, volume: simd_clamp(impact / 9, 0.35, 1))
+    <span class="k">case</span> .jumped:
+        audio?.play(<span <span class="k">class</span>="p">"step_\(surface)_0"</span>, volume: 0.4)
+    }
+}</pre>
+<p>A few details are worth knowing:</p>
+<ul><li><strong>Strides are counted from the distance the feet actually covered</strong>, not the distance asked for. A player pushing into a wall doesn't march on the spot.</li><li><strong>Strides are longer than a person's because the speeds are faster.</strong> <code>walkStride</code>, <code>sprintStride</code> and <code>crouchStride</code> (2.6, 5 and 1.6 m) give about 2.3, 3.6 and 1.7 steps a second. The first footstep comes partway into a stride (<code>firstStepPhase</code>), so a walk doesn't start silent.</li><li><strong>Each stair tread gets a footstep.</strong> A step up or down counts as a foot landing, whatever the stride says. A step down a stair is not a <code>.landed</code>, and a slide makes no footsteps.</li><li><strong><code>surface(standingOn:)</code> returns <code>nil</code> for a placement that names no surface.</strong> It doesn't fall back to the ground's, so the gap can be noticed. The sample logs it once and plays stone.</li></ul>
+<h2 id="volume">Volume</h2>
+<p><code>masterVolume</code> scales everything. <code>loopVolume</code> scales only the loops, so a player who finds a fire too loud doesn't lose their own footsteps turning it down. <code>PlayerSettings.ambienceVolume</code> is the matching player setting. Measured: half ambience lowers a loop by 6.02 dB and a one-shot by 0.0.</p>
+<h2 id="lifecycle">Pausing and stopping</h2>
+<p><code>pause()</code> holds everything — one-shots, loops and delayed one-shots still waiting — and <code>resume()</code> carries on. <code>stop()</code> is final: it frees the output device, and a stopped engine plays nothing again.</p>
+<h2 id="offline">Measuring without listening</h2>
+<p><code>AudioEngine(offlineSampleRate:)</code> makes an engine with no device, and <code>renderOffline(seconds:)</code> returns the mix as one array per channel. The falloff numbers on this page were measured that way. <code>WINDAGE_SAMPLE_MEASURE_AUDIO=1 swift run WindageSample</code> measures the sample's own crackle at several distances.</p>
+<div class="note"><p><strong>Before adding an AVFoundation callback:</strong> a closure written inside the engine's methods inherits main-actor isolation, and AVFoundation calls it on a realtime audio thread, which crashes. Mark it <code>@Sendable</code> and give it its own thread-safe storage.</p></div>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#scope">What it does and does not do</a><a href="#setup">Setting it up</a><a href="#one-shots">One-shots</a><a href="#loops">Loops that belong to a place</a><a href="#footsteps">Footsteps and landings</a><a href="#volume">Volume</a><a href="#lifecycle">Pausing and stopping</a><a href="#offline">Measuring without listening</a>
+  </aside>
+</div>
+
+</body>
+</html>

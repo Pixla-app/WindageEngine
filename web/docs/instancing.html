@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Many copies · Windage Engine</title>
+  <meta name="description" content="Draw many copies of the same meshes with one draw per submesh per kind, using InstanceBatches and InstanceBuffer, with shadows through a self-drawing ShadowMap batch.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html" aria-current="page">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html" aria-current="page">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Rendering</p>
+    <h1>Many copies</h1>
+<p>A wood is a few hundred trees of two or three kinds; a rubble field is a hundred stones of one. Drawn as separate objects, that is a draw call per copy per submesh, and the CPU cost grows with every copy. Drawn instanced, it is one draw per submesh per <em>kind</em>, and the copies are a buffer of transforms the GPU indexes.</p>
+<p>Windage Engine splits this in two, the way it splits particles: <code>InstanceBatches</code> groups copies on the CPU and is tested without a GPU; <code>InstanceBuffer</code> puts the result where a shader can read it.</p>
+<h2 id="instancebatches">InstanceBatches</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">nonisolated</span> <span class="k">struct</span> InstanceBatches&lt;Key: Hashable &amp; Sendable&gt;: Sendable {
+    <span class="k">public</span> <span class="k">struct</span> Batch: Sendable, Equatable {
+        <span class="k">public</span> <span class="k">let</span> key: Key
+        <span class="k">public</span> <span class="k">let</span> start: Int          <span class="c">// index of this kind's first transform</span>
+        <span class="k">public</span> <span class="k">let</span> count: Int
+        <span class="k">public</span> <span class="k">var</span> byteOffset: Int     <span class="c">// start * MemoryLayout&lt;simd_float4x4&gt;.stride</span>
+    }
+    <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> transforms: [simd_float4x4]
+    <span class="k">public</span> <span class="k">private</span>(set) <span class="k">var</span> batches: [Batch]
+    <span class="k">public</span> <span class="k">init</span>()
+    <span class="k">public</span> <span class="k">init</span>&lt;Copies: Sequence&gt;(_ copies: Copies) <span class="k">where</span> Copies.Element == (Key, simd_float4x4)
+    <span class="k">public</span> <span class="k">var</span> isEmpty: Bool
+}</pre>
+<p>Hand it <code>(key, transform)</code> pairs. The <strong>key</strong> is whatever names a kind in your game — a mesh name, an index into your list of loaded meshes. The result is every copy's transform in one array, kind after kind, and a <code>Batch</code> per kind saying where its run starts and how long it is.</p>
+<h3 id="order-is-fixed-on-purpose">Order is fixed, on purpose</h3>
+<p><strong>Kinds come in the order they were first seen, and copies in the order they were given.</strong> A dictionary's order would change between runs, and with it which kind is drawn first — invisible in an opaque pass, and a flicker the day a transparent kind is instanced. The same input gives the same draws every run.</p>
+<h2 id="instancebuffer">InstanceBuffer</h2>
+<pre class="code-swift"><span class="k">public</span> <span class="k">final</span> <span class="k">class</span> InstanceBuffer {
+    <span class="k">public</span> <span class="k">init</span>(renderer: FrameRenderer)
+    <span class="k">public</span> <span class="k">func</span> write&lt;Key&gt;(_ batches: InstanceBatches&lt;Key&gt;, frameSlot: Int) -&gt; MTLBuffer?
+}</pre>
+<p><code>write(_:frameSlot:)</code> copies a frame's transforms into a buffer and returns it, or <code>nil</code> when there are none.</p>
+<ul><li><strong>One buffer per frame in flight.</strong> A frame still being drawn is reading the previous one; rewriting it in place would draw a copy at the next frame's position for a frame.</li><li><strong>Grown, never shrunk</strong>, with room to spare: half as much again as needed, never below 1,024 copies. A scene that keeps adding copies does not reallocate every frame. The rule is tested.</li><li><strong>Residency is handled.</strong> A grown buffer is added to the renderer's residency set and committed, and the old one is removed.</li></ul>
+<p>The engine draws nothing here. Your vertex function reads the copies, because the vertices are yours.</p>
+<h2 id="the-shader-contract">The shader contract</h2>
+<p>One <code>float4x4</code> per copy, starting at the batch's <code>byteOffset</code>, indexed by <code>[[instance_id]]</code>, applied on top of whatever per-object transform you already have. Bind the buffer's address plus <code>byteOffset</code>, then draw each submesh with <code>instanceCount: batch.count</code>.</p>
+<p>The sample's instanced vertex function:</p>
+<pre class="code-metal">vertex VertexOut sampleInstancedVertex(VertexIn <span class="k">in</span> [[stage_in]],
+                                       uint instance [[instance_id]],
+                                       constant Uniforms &amp;uniforms [[buffer(1)]],
+                                       const device float4x4 *copies [[buffer(7)]])
+{
+    const float4x4 model = copies[instance] * uniforms.model;
+    <span class="c">// …</span>
+}</pre>
+<p>Buffer 7 is the sample's choice for the main pass. Only the shadow pass's index is fixed by the engine.</p>
+<h2 id="the-sample-s-debris">The sample's debris</h2>
+<p><code>SampleRubble.transforms(around:count:margin:seed:)</code> scatters small boxes among a level's buildings — deterministic, so the recorded frames never drift — and the sample groups them as one kind:</p>
+<pre class="code-swift">rubble = InstanceBatches(SampleRubble.transforms(around: buildings).map { (<span <span class="k">class</span>="p">"box"</span>, $0) })</pre>
+<p>Each frame, before any pass, it writes them:</p>
+<pre class="code-swift">rubbleCopies = rubbleBuffer.write(rubble, frameSlot: frameSlot)</pre>
+<p>Writing before the shadow passes means the shadows and the scene draw the same copies. Then the main pass:</p>
+<pre class="code-swift"><span class="k">for</span> batch <span class="k">in</span> rubble.batches {
+    argumentTable.setAddress(copies.gpuAddress + UInt64(batch.byteOffset), index: 7)
+    <span class="k">for</span> submesh <span class="k">in</span> mesh.submeshes {
+        encoder.drawIndexedPrimitives(primitiveType: submesh.primitiveType,
+                                      indexCount: submesh.indexCount,
+                                      indexType: submesh.indexType,
+                                      indexBuffer: submesh.indexBuffer.buffer.gpuAddress
+                                          + UInt64(submesh.indexBuffer.offset),
+                                      indexBufferLength: submesh.indexBuffer.length,
+                                      instanceCount: batch.count)
+    }
+}</pre>
+<div class="note"><p><strong>Every piece is evenly sized</strong>, so the shader can turn normals with the copy's own rotation. A copy squashed along one axis would need its inverse transpose, per copy.</p></div>
+<h2 id="shadows-for-instanced-copies">Shadows for instanced copies</h2>
+<p><code>ShadowMap</code> normally draws object by object. Copies are not objects, so they go in a batch that <strong>encodes its own draws</strong>:</p>
+<pre class="code-swift">ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, pass <span class="k">in</span> … }</pre>
+<p>The engine binds the pipeline and the light matrix, then calls the closure once per sun cascade — and once per atlas tile and cube face for lamp shadows. Your closure binds what its vertex function reads and draws. The copies go at <code>ShadowBufferIndex.instances</code> (4):</p>
+<pre class="code-swift">batches.append(ShadowBatch(pipeline: instancedShadowPipeline) { encoder, table, _ <span class="k">in</span>
+    table.setAddress(uniforms, index: ShadowBufferIndex.uniforms)
+    <span class="k">for</span> (bufferIndex, vertexBuffer) <span class="k">in</span> box.mesh.vertexBuffers.enumerated() {
+        table.setAddress(vertexBuffer.buffer.gpuAddress + UInt64(vertexBuffer.offset), index: bufferIndex)
+    }
+    <span class="k">for</span> batch <span class="k">in</span> batchList {
+        table.setAddress(copies.gpuAddress + UInt64(batch.byteOffset),
+                         index: ShadowBufferIndex.instances)
+        <span class="c">// draw each submesh with instanceCount: batch.count</span>
+    }
+})</pre>
+<p>and the shadow vertex function reads them there:</p>
+<pre class="code-metal">vertex float4 sampleInstancedShadowVertex(VertexIn <span class="k">in</span> [[stage_in]],
+                                          uint instance [[instance_id]],
+                                          constant Uniforms &amp;uniforms [[buffer(1)]],
+                                          constant float4x4 &amp;lightViewProjection [[buffer(2)]],
+                                          const device float4x4 *copies [[buffer(4)]])
+{
+    <span class="k">return</span> lightViewProjection * (copies[instance] * uniforms.model * float4(<span class="k">in</span>.position, 1.0));
+}</pre>
+<p>The engine cannot cull a self-drawing batch per object, so it hands you a <code>ShadowPass</code> with the pass's <code>target</code> — which cascade, tile or cube face — and its <code>viewProjection</code>. The sample's debris is small enough to ignore it; a wood should build a <code>Frustum</code> from it and draw only the copies that pass can see — see <a href="culling.html">culling</a>. See <a href="shadows.html">shadows</a> for the rest of the pass.</p>
+<h2 id="what-it-does-not-do">What it does not do</h2>
+<ul><li><strong>Pick detail by distance.</strong> That is <code>MeshDetail</code> — see <a href="level-of-detail.html">level-of-detail</a>. The sample's scenes are too small to need it.</li><li><strong>Cull for you.</strong> Which copies go into a frame is your game's choice.</li><li><strong>Own the vertex function.</strong> The contract is the buffer layout; the shader is yours.</li></ul>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#instancebatches">InstanceBatches</a><a href="#instancebuffer">InstanceBuffer</a><a href="#the-shader-contract">The shader contract</a><a href="#the-sample-s-debris">The sample&#x27;s debris</a><a href="#shadows-for-instanced-copies">Shadows for instanced copies</a><a href="#what-it-does-not-do">What it does not do</a>
+  </aside>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Get started · Windage Engine</title>
+  <meta name="description" content="Add Windage Engine to a Swift package, run the sample game, play it by script and check it.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html" aria-current="page">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html" aria-current="page">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Start</p>
+    <h1>Get started</h1>
+<p>Windage Engine is a Swift package. Add it, run the sample game that ships with it, then play that game by script and check it the way the engine checks itself.</p>
+    <div class="pills"><span>macOS 26+</span><span>Swift 6.2</span><span>Metal 4 GPU</span></div>
+
+    <ol class="steps">
+      <li>
+        <h2 id="add">Add the package</h2>
+        <p>In your game's <code>Package.swift</code>:</p>
+<pre>dependencies: [
+    .package(url: <span class="p">"https://github.com/Pixla-app/WindageEngine.git"</span>, from: <span class="p">"1.0.0"</span>)
+]</pre>
+      </li>
+      <li>
+        <h2 id="run">Run the sample</h2>
+        <p>A complete small game — two levels, an editor, sound, a save — written against the public API only. It opens with the engine's splash; any key skips it and still does what it was pressed for.</p>
+<pre>swift run WindageSample</pre>
+        <figure><img src="../images/ruins-lintel.jpg" alt="The sample's ruins at eye height: a stone lintel on posts, stairs and warm lamps."><figcaption>The ruins at eye height, drawn by the sample.</figcaption></figure>
+      </li>
+      <li>
+        <h2 id="script">Play it by script</h2>
+        <p>Keys and seconds, pressed through the same path a keyboard uses. The log says where the feet ended each segment.</p>
+<pre>WINDAGE_SAMPLE_LEVEL=1 \
+WINDAGE_SAMPLE_WALK=<span class="p">"d:0.7 w:1.0 w:0.4 wait:1"</span> swift run WindageSample
+<span class="c">WindageSample: walk 'w:1.0' → feet (4.20, 1.20, -0.00), highest 1.20, on the ground, eye 1.69 m up</span></pre>
+      </li>
+      <li>
+        <h2 id="check">Check it</h2>
+        <p>Tests, every recorded walk, and every recorded frame — the three checks the engine runs on itself before a change is called done.</p>
+<pre>swift test
+python3 Tools/walks.py
+python3 Tools/frames.py</pre>
+      </li>
+    </ol>
+
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#add">Add the package</a><a href="#run">Run the sample</a><a href="#script">Play it by script</a><a href="#check">Check it</a>
+  </aside>
+</div>
+
+</body>
+</html>

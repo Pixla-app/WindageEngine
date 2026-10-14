@@ -86,7 +86,7 @@ credits line required, the splash optional (README, licensing). The price above 
 **windageengine.com's docs are complete**: 29 guides (every sidebar topic, plus loading meshes, the camera,
 sky and environment, particles, instancing, level of detail, culling and saving), a reference page of every
 public type linked to its guide, the changelog as a page, search (box or ⌘K), and a Contents menu on phones.
-Sources in `Brand/web/docs-src/`, built by `Brand/web/build-docs.py` — **run it after changing a guide, the
+Sources in `Tools/docs-src/`, built into `web/` by `Tools/build-docs.py` — **run it after changing a guide, the
 changelog or a public type**. Every Swift identifier in the examples exists (checked by script); Your first
 game was built and run. **Doc comments are US English now** (the sweep the owner scheduled for publication),
 and four that had stopped being true were corrected. Comments only — no consumer can be affected.
@@ -186,7 +186,7 @@ the offset at 10% fails all four `Brand/` files and the frame at 0.16%.
 **The splash is one line across** — `MADE WITH` · W · `WINDAGE`/`ENGINE` — and **no version by default**: no
 engine's shipped splash shows one. The name is still set in the host's font; there is no drawn wordmark.
 
-**`Brand/web/`** — a working draft of `windageengine.com`, from the concept chosen: the product page's first
+**`web/`** — `windageengine.com`, the folder that is uploaded, from the concept chosen: the product page's first
 screen ("Native to the Mac. Nothing in between.") and a game as a Swift file, then the proof-led argument ("A
 game engine that shows its work": the jump at four rates, the stale shadows, what's in it and isn't, how it's
 checked), and the docs' first page in their own shape. **Four things in it are ahead of the facts** — the

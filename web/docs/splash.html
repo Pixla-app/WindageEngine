@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The splash · Windage Engine</title>
+  <meta name="description" content="SplashScreen shows the engine&#x27;s mark and name over your game for a couple of seconds, fading in and out, skippable without eating the key that skipped it.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html" aria-current="page">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html" aria-current="page">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Your game&#x27;s name</p>
+    <h1>The splash</h1>
+<p><code>SplashScreen</code> is the engine saying its own name: the engine's mark and "Windage Engine" over a dark ground, fading up, holding and fading away. A game that wants to credit the engine at launch has nothing to build: no art, no texture and no pipeline, because it is drawn with the <a href="hud.html">HUD</a>. Nothing runs unless your game runs it.</p>
+<h2 id="lockup">What it shows</h2>
+<p>One line across: an optional <strong>lead</strong>, the mark, and the name, with "WINDAGE" large over "ENGINE" small and tracked out. With <code>lead: &quot;MADE WITH&quot;</code>, as the sample uses, the lead sits in small capitals to the left of the mark, one word per line.</p>
+<p>The name is set in the HUD's font rather than drawn: the engine has a drawn <a href="mark.html">mark</a> but not yet a drawn wordmark. There is <strong>no version</strong> on it by default. <code>showsVersion</code> exists for development builds and is off, because no shipped game shows its engine's version.</p>
+<h2 id="use">Using it</h2>
+<p>It is an overlay and a clock, not a mode. <strong>Advance it from your simulation step, draw it from your HUD</strong>, and drop it when it is done. From the sample:</p>
+<pre class="code-swift"><span class="k">private</span> <span class="k">var</span> splash: SplashScreen? = SplashScreen(lead: <span <span class="k">class</span>="p">"MADE WITH"</span>)
+
+<span class="k">func</span> step(deltaTime: Float) {
+    <span class="k">if</span> splash != <span class="k">nil</span> {
+        splash?.advance(by: deltaTime)
+        <span class="k">if</span> splash?.isFinished == <span class="k">true</span> { splash = <span class="k">nil</span> }
+    }
+    <span class="c">// … the rest of the step runs as usual</span>
+}
+
+<span class="k">func</span> keyPressed(_ code: UInt16, command: Bool) {
+    splash?.skip()
+    <span class="c">// … and the key goes on to do what it was pressed for</span>
+}
+
+<span class="k">func</span> encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
+    <span class="k">guard</span> <span class="k">let</span> hud <span class="k">else</span> { <span class="k">return</span> }
+    hud.begin(viewportSize: viewportSize)
+    <span class="c">// … the game's own interface</span>
+    splash?.draw(into: hud, viewportSize: viewportSize)   <span class="c">// last, over everything</span>
+    hud.draw(into: encoder, frameSlot: frameSlot)
+}</pre>
+<p>Three rules come with it:</p>
+<ul><li><strong>Keep stepping behind it.</strong> The game is usually loading during a splash. A game that suspends its step while the splash is up makes its first second unrepeatable.</li><li><strong><code>skip()</code> is a side effect of a press, never a consumer of one.</strong> A splash that eats the first keystroke eats the first keystroke of whatever the player was already doing. The sample checks this with a scripted walk run under the splash, which must end exactly where the same walk ends without it. See <a href="walks.html">walks</a>.</li><li><strong>Drop it when <code>isFinished</code> is true.</strong> An overlay at zero opacity still costs its vertices.</li></ul>
+<p>Draw it last in <code>encodeHUD</code>, so it covers the game's own interface.</p>
+<h2 id="timing">Timing</h2>
+<div class="table"><table><thead><tr><th>Property</th><th>Default</th><th>Meaning</th></tr></thead><tbody><tr><td><code>fadeIn</code></td><td>0.4 s</td><td>fading up from nothing</td></tr><tr><td><code>hold</code></td><td>1.6 s</td><td>at full strength</td></tr><tr><td><code>fadeOut</code></td><td>0.5 s</td><td>fading away</td></tr><tr><td><code>skipDelay</code></td><td>0.25 s</td><td>presses ignored after it appears</td></tr></tbody></table></div>
+<p><code>duration</code> is the three together. <code>elapsed</code>, <code>opacity</code> (0 to 1), <code>isSkipped</code> and <code>isFinished</code> report where it is.</p>
+<p><strong>A skip runs it to the start of its fade, not to its end.</strong> A splash that vanishes on the frame a key goes down looks like a dropped frame; one that fades out looks intended. A skip is ignored for the first <code>skipDelay</code> seconds, because the key or click that launched the game is often still down when the first frame appears, and ignored again once it is fading, so holding a key does not cut the fade short twice.</p>
+<p><strong>The fades are linear ramps</strong> in <code>elapsed</code>, which is a sum of step lengths, so the picture at a given moment is the same at 30 steps a second and at 240. The tests check exactly that.</p>
+<h2 id="appearance">Appearance</h2>
+<div class="table"><table><thead><tr><th>Property</th><th>Default</th></tr></thead><tbody><tr><td><code>background</code></td><td><code>InterfaceColor(hex: 0x0B0D10)</code>, near-black so it reads as a surface</td></tr><tr><td><code>foreground</code></td><td><code>EngineMark.display</code>, the light tone for dark grounds</td></tr><tr><td><code>lead</code></td><td><code>nil</code>, no lead; the mark and name center on their own</td></tr><tr><td><code>markScale</code></td><td><code>0.12</code> of the viewport's width; everything else is sized from the mark</td></tr><tr><td><code>showsVersion</code></td><td><code>false</code></td></tr></tbody></table></div>
+<p>All are <code>var</code>s, set after <code>SplashScreen(lead:)</code>. If you set <code>showsVersion</code>, the text drawn is <code>Engine.version</code>.</p>
+<h2 id="your-name">Your game's name</h2>
+<p>The splash says the engine's name, not yours. It reads <code>Engine.name</code>, which is <code>&quot;Windage Engine&quot;</code>, and there is no setting to put anything else in it. It is the engine's credit; the only words you choose are the <code>lead</code>.</p>
+<p>Your game's own title card, logo or studio card is yours to draw, with the same tools. The <a href="hud.html">HUD</a> draws text, rectangles and polygons in exact colors, so a title screen needs nothing from the engine beyond that. Show it before or after the engine's splash as you like; <code>SplashScreen</code> does not install itself in the frame loop or take control of what comes next.</p>
+<p>Where the engine's name appears without a splash — a credits screen, an about box, a corner — draw the mark with <code>EngineMark.draw(into:origin:height:color:)</code> and set <code>Engine.name</code> beside it. The sample also puts the engine's name and version in its window title:</p>
+<pre class="code-swift">window.title = <span <span class="k">class</span>="p">"\(Engine.name) \(Engine.version) — sample"</span></pre>
+<p><strong>The splash is optional.</strong> What a game must show is a credits line — "Uses Windage Engine © 2026 Pixla LLC" in its credits or legal screen; the splash is a more visible credit on top of that, and nothing shows one unless your game does. See <a href="mark.html#credit">the mark</a>.</p>
+<h2 id="in-the-sample">In the sample</h2>
+<p>The sample opens with the splash in ordinary play. <code>WINDAGE_SAMPLE_SPLASH=1</code> or <code>0</code> forces it on or off; unset, it is off in a scripted check and in a recorded frame, because those are pictures of the scene. The splash has a recorded frame of its own. See <a href="sample.html">the sample</a> and <a href="frames.html">frames</a>.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#lockup">What it shows</a><a href="#use">Using it</a><a href="#timing">Timing</a><a href="#appearance">Appearance</a><a href="#your-name">Your game&#x27;s name</a><a href="#in-the-sample">In the sample</a>
+  </aside>
+</div>
+
+</body>
+</html>

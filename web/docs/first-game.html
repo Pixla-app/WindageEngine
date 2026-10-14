@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your first game · Windage Engine</title>
+  <meta name="description" content="A new Swift package that depends on Windage Engine, a minimal GameLoop, and the window and FrameRenderer set-up that puts it on screen.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html" aria-current="page">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html" aria-current="page">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / Start</p>
+    <h1>Your first game</h1>
+<p>A game is a Swift package that depends on the engine and supplies one object conforming to <code>GameLoop</code>. This page builds the smallest one that opens a window and draws something, using the same set-up the sample game uses.</p>
+<h2 id="the-package">The package</h2>
+<pre class="code-swift"><span class="c">// swift-tools-version: 6.2</span>
+<span class="k">import</span> PackageDescription
+
+<span class="k">let</span> package = Package(
+    name: <span <span class="k">class</span>="p">"MyGame"</span>,
+    platforms: [.macOS(.v26)],
+    dependencies: [
+        .package(url: <span <span class="k">class</span>="p">"https://github.com/Pixla-app/WindageEngine.git"</span>, from: <span <span class="k">class</span>="p">"1.0.0"</span>)
+    ],
+    targets: [
+        .executableTarget(
+            name: <span <span class="k">class</span>="p">"MyGame"</span>,
+            dependencies: [.product(name: <span <span class="k">class</span>="p">"WindageEngine"</span>, package: <span <span class="k">class</span>="p">"WindageEngine"</span>)],
+            swiftSettings: [.defaultIsolation(MainActor.<span class="k">self</span>)]
+        )
+    ]
+)</pre>
+<p>Three things in it are deliberate:</p>
+<ul><li><strong>macOS 26 and tools 6.2</strong>, which the engine requires. <code>FrameRenderer</code> also needs a GPU that supports Metal 4; its initializer returns <code>nil</code> otherwise.</li><li><strong><code>.upToNextMinor</code></strong>. Before 1.0 a minor bump may break a build and a patch never does, so this gets fixes without surprises.</li><li><strong><code>.defaultIsolation(MainActor.self)</code></strong>, matching the engine. <code>GameLoop</code> and <code>FrameRenderer</code> are main-actor types, and with the same default your game's code means the same thing on both sides.</li></ul>
+<p>A relative-path dependency works too, for an engine checkout beside the game, but then the game no longer builds from its own checkout alone.</p>
+<h2 id="a-minimal-gameloop">A minimal GameLoop</h2>
+<p>This game counts simulated seconds and draws the number with the engine's <code>HUDRenderer</code>. It draws no scene, so the frame shows <code>clearColor</code>.</p>
+<pre class="code-swift"><span class="k">import</span> Metal
+<span class="k">import</span> WindageEngine
+
+<span class="k">final</span> <span class="k">class</span> Game: GameLoop {
+    <span class="k">private</span> <span class="k">let</span> hud: HUDRenderer
+    <span class="k">private</span> <span class="k">var</span> viewportSize = SIMD2&lt;Float&gt;(1, 1)
+    <span class="k">private</span> <span class="k">var</span> seconds: Double = 0
+
+    <span class="k">init</span>(engine: FrameRenderer) <span class="k">throws</span> {
+        hud = <span class="k">try</span> HUDRenderer(device: engine.device)
+        engine.residencySet.addAllocations(hud.allocations)
+        engine.commitResidency()
+    }
+
+    <span class="k">func</span> beginFrame() {}
+
+    <span class="k">func</span> step(deltaTime: Float) {
+        seconds += Double(deltaTime)
+    }
+
+    <span class="k">func</span> viewportSizeChanged(width: Int, height: Int) {
+        viewportSize = SIMD2(Float(width), Float(height))
+    }
+
+    <span class="k">func</span> encode(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {}
+
+    <span class="k">func</span> encodeHUD(into encoder: MTL4RenderCommandEncoder, frameSlot: Int, interpolation: Float) {
+        hud.begin(viewportSize: viewportSize)
+        hud.text(String(format: <span <span class="k">class</span>="p">"%.1f s"</span>, seconds), atBaseline: SIMD2(40, 80), pointSize: 48, color: .white)
+        hud.draw(into: encoder, frameSlot: frameSlot)
+    }
+}</pre>
+<p><code>encodePrePasses</code> is left out because it has a default that does nothing; <code>encodeHUD</code> has one too. Everything the GPU touches has to be in the renderer's <code>residencySet</code>, which is why the HUD's allocations are added and committed. The viewport is in pixels, and since that is what the HUD is begun with, HUD coordinates are pixels from the top left too — the text's position is its baseline.</p>
+<h2 id="getting-it-on-screen">Getting it on screen</h2>
+<p>The engine owns no window. A window, a view and a responder chain are your app's decisions, so <code>main.swift</code> makes them, exactly as the sample's does:</p>
+<pre class="code-swift"><span class="k">import</span> AppKit
+<span class="k">import</span> MetalKit
+<span class="k">import</span> WindageEngine
+
+<span class="k">let</span> application = NSApplication.shared
+application.setActivationPolicy(.regular)
+
+<span class="k">guard</span> <span class="k">let</span> device = MTLCreateSystemDefaultDevice() <span class="k">else</span> { exit(1) }
+
+<span class="k">let</span> window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 800),
+                      styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                      backing: .buffered, <span class="k">defer</span>: <span class="k">false</span>)
+window.title = <span <span class="k">class</span>="p">"My Game"</span>
+window.center()
+
+<span class="k">let</span> engine: FrameRenderer
+<span class="k">do</span> {
+    engine = <span class="k">try</span> FrameRenderer(device: device)
+} <span class="k">catch</span> {
+    print(error)   <span class="c">// FrameRendererError: no Metal 4, or something a frame needs</span>
+    exit(1)
+}
+
+<span class="k">let</span> view = MTKView(frame: window.contentLayoutRect, device: device)
+view.colorPixelFormat = FrameRenderer.colorPixelFormat
+view.depthStencilPixelFormat = FrameRenderer.depthPixelFormat
+view.isPaused = <span class="k">true</span>
+view.enableSetNeedsDisplay = <span class="k">false</span>
+window.contentView = view
+
+<span class="k">guard</span> <span class="k">let</span> game = <span class="k">try</span>? Game(engine: engine) <span class="k">else</span> { exit(1) }
+engine.game = game
+engine.clearColor = MTLClearColor(red: 0.42, green: 0.55, blue: 0.70, alpha: 1)
+
+<span class="k">guard</span> <span class="k">let</span> metalLayer = view.layer as? CAMetalLayer <span class="k">else</span> { exit(1) }
+<span class="k">let</span> displayLink = engine.makeDisplayLink(<span class="k">for</span>: metalLayer)
+displayLink.add(to: .main, forMode: .common)
+
+window.makeKeyAndOrderFront(<span class="k">nil</span>)
+application.activate(ignoringOtherApps: <span class="k">true</span>)
+application.run()</pre>
+<p>Then:</p>
+<pre class="code-sh">swift run MyGame</pre>
+<h3 id="what-to-watch-for">What to watch for</h3>
+<ul><li><strong>The view hosts the layer; it does not drive frames.</strong> <code>CAMetalDisplayLink</code> does. Leaving MetalKit's own timer running as well (<code>isPaused = false</code>) would ask for two frames of work per frame.</li><li><strong><code>engine.game</code> is weak.</strong> Something else has to keep the game alive. In <code>main.swift</code> the top-level <code>let game</code> does; in an app delegate, store it.</li><li><strong>You own the display link</strong> and must invalidate it when you are done with it.</li><li><strong><code>clearColor</code> is radiance</strong>, tone mapped like the rest of the scene, so it will not arrive on screen as exactly those numbers. Interface colors drawn in <code>encodeHUD</code> do.</li><li><strong>Shaders under <code>swift run</code>.</strong> SwiftPM's command line compiles no Metal. Ship your <code>.metal</code> source as a <code>.copy</code> resource and load it through <code>ShaderLibrary.make(device:bundle:sourceNamed:)</code>, which compiles the source at runtime when no compiled library exists.</li><li><strong>Print unbuffered.</strong> <code>print</code> is fully buffered when stdout is not a terminal; the sample calls <code>setbuf(stdout, nil)</code> so a piped run shows anything at all.</li></ul>
+<h2 id="input">Input</h2>
+<p>Keys reach the game through the view. The sample subclasses <code>MTKView</code>, overrides <code>keyDown</code>, <code>keyUp</code>, <code>flagsChanged</code> (Shift, Control, Option and Command arrive only there) and the mouse events, and hands them to an <code>InputState</code>, started once with <code>start()</code>. Poll it in <code>beginFrame</code>. See <a href="input.html">input</a>.</p>
+<h2 id="where-to-go-next">Where to go next</h2>
+<ul><li><a href="game-loop.html">GameLoop</a> — each requirement, frame slots and the order of a frame.</li><li><a href="fixed-timestep.html">Fixed timestep</a> — why <code>step</code> always gets the same delta, and how to draw between steps.</li><li><a href="camera.html">Camera</a> and <a href="meshes.html">meshes</a> — a scene to draw in <code>encode</code>.</li><li><a href="sample.html">The sample game</a> — split into a window-free core and an app, which is the shape to copy as the game grows.</li></ul>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#the-package">The package</a><a href="#a-minimal-gameloop">A minimal GameLoop</a><a href="#getting-it-on-screen">Getting it on screen</a><a href="#input">Input</a><a href="#where-to-go-next">Where to go next</a>
+  </aside>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Saving · Windage Engine</title>
+  <meta name="description" content="SaveStore keeps any Codable value between runs, atomically, in a place that works sandboxed or not; PlayerSettings is the settings every first-person game needs.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="../site.css">
+  <script src="search-index.js" defer></script>
+  <script src="search.js" defer></script>
+</head>
+<body>
+
+<header class="docs-bar">
+  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
+  <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
+  <span class="ver">v1.0.0</span>
+</header>
+
+<div class="docs">
+  <nav class="docs-nav" aria-label="Documentation">
+    <h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html" aria-current="page">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a>
+  </nav>
+
+  <main>
+    <details class="docs-menu"><summary>Contents</summary><nav aria-label="Documentation"><h2>Start</h2><a href="start.html">Get started</a><a href="sample.html">The sample game</a><a href="first-game.html">Your first game</a><h2>The frame loop</h2><a href="game-loop.html">GameLoop</a><a href="fixed-timestep.html">Fixed timestep</a><a href="running-hidden.html">Running hidden</a><a href="camera.html">Camera</a><h2>Rendering</h2><a href="meshes.html">Loading meshes</a><a href="materials.html">Materials and textures</a><a href="shadows.html">Shadows</a><a href="lights.html">Clustered lights</a><a href="sky.html">Sky and environment</a><a href="tone-mapping.html">Tone mapping</a><a href="particles.html">Particles</a><a href="instancing.html">Many copies</a><a href="level-of-detail.html">Level of detail</a><a href="culling.html">Culling</a><a href="hud.html">The HUD</a><h2>Characters</h2><a href="skeletons.html">Skeletons and clips</a><a href="character-controller.html">CharacterController</a><a href="attachments.html">Hanging things off joints</a><h2>World</h2><a href="levels.html">Levels and the editor</a><a href="audio.html">Audio</a><a href="input.html">Input and settings</a><a href="saving.html" aria-current="page">Saving</a><h2>Your game&#x27;s name</h2><a href="splash.html">The splash</a><a href="mark.html">The mark</a><h2>Checking your game</h2><a href="walks.html">Scripted walks</a><a href="frames.html">Recorded frames</a></nav></details>
+    <p class="crumb">Docs / World</p>
+    <h1>Saving</h1>
+<p><code>SaveStore</code> keeps what your game remembers between runs. It stores any <code>Codable</code> value as a JSON file, atomically, in the one place a Mac app can always write, sandboxed or not. <code>PlayerSettings</code> is the engine's share of a settings screen, ready to save with it.</p>
+<h2 id="savestore">SaveStore</h2>
+<pre class="code-swift"><span class="k">let</span> store = SaveStore&lt;SampleRun.Progress&gt;(container: <span <span class="k">class</span>="p">"WindageSample"</span>, name: <span <span class="k">class</span>="p">"progress"</span>)
+
+<span class="k">let</span> progress = (<span class="k">try</span>? store.load()) ?? SampleRun.Progress()   <span class="c">// nil when there is nothing; throws when it cannot be read</span>
+<span class="k">try</span> store.save(progress)
+<span class="k">try</span> store.clear()                                            <span class="c">// "reset progress"</span></pre>
+<p><code>SaveStore&lt;Value: Codable &amp; Sendable&gt;</code> is a small value type:</p>
+<div class="table"><table><thead><tr><th>Member</th><th>What it does</th></tr></thead><tbody><tr><td><code>init(container:name:)</code></td><td><code>container</code> is the folder for your game; <code>name</code> is the file, without extension</td></tr><tr><td><code>url</code></td><td>where the file lives; only a path, so asking for it creates nothing</td></tr><tr><td><code>load() throws -&gt; Value?</code></td><td>the saved value, <code>nil</code> when nothing has been saved, and an error when a file is there and will not read</td></tr><tr><td><code>save(_:) throws</code></td><td>writes the value, replacing what was there, and makes the folder the first time</td></tr><tr><td><code>clear() throws</code></td><td>removes the file; clearing nothing is not an error</td></tr></tbody></table></div>
+<p><strong>Name the container after your game</strong>, so two games on one machine do not collide and a person can find your files. Use one store per kind of thing: the sample keeps settings and progress apart, so resetting progress does not reset a player's keys.</p>
+<pre class="code-swift"><span class="k">private</span> <span class="k">static</span> <span class="k">let</span> settingsStore = SaveStore&lt;PlayerSettings&gt;(container: container, name: <span <span class="k">class</span>="p">"settings"</span>)</pre>
+<h3 id="where">Where files go</h3>
+<p>The file is <code>&lt;container&gt;/&lt;name&gt;.json</code> in the user's <strong>Application Support</strong> folder:</p>
+<ul><li>Unsandboxed, that is <code>~/Library/Application Support/&lt;container&gt;/</code>.</li><li>Sandboxed, macOS gives the app its own Application Support inside its container, and the same code resolves to it.</li></ul>
+<p>This is why <code>SaveStore</code> is in the engine at all. <strong>The engine never assumes a writable location outside the app's container</strong>, because your game, not the engine, is what gets distributed, and it may be sandboxed. A path beside the executable works right up until the app is sandboxed, so there is one place that knows where a game may write. Resources you ship are read from bundles. The save itself is pretty-printed JSON with sorted keys.</p>
+<h3 id="atomic">Atomic writes</h3>
+<p><code>save</code> writes to a temporary file and renames it over the old one, and a rename is atomic. If the game crashes mid-write, the save is either the old one or the new one, never half of either.</p>
+<h3 id="bad-file">A bad file says so</h3>
+<p><code>load()</code> returns <code>nil</code> when there is no file, and <strong>throws</strong> when there is one that is truncated or written by a build that cannot be decoded. A save that will not load must still not stop the game starting — losing a high score is a disappointment; refusing to launch is a bug report — so catch it, log it, and start fresh. <code>(try? store.load()) ?? fallback</code> is the short form.</p>
+<p>Starting fresh is the right failure for progress and a bad one for settings, where it means every setting reset. The fix is in the type you save, not in <code>SaveStore</code>; see versioning below.</p>
+<p><strong>In tests</strong>, use a container of your own and clear what you write: tests sharing the real file clobber a player's save, and parallel tests clobber each other.</p>
+<h2 id="settings">PlayerSettings</h2>
+<p><code>PlayerSettings</code> is what a player sets once and expects to find set again. It is <code>Codable</code>, so it saves through a <code>SaveStore</code> as it is:</p>
+<pre class="code-swift"><span class="k">private</span> <span class="k">var</span> settings = (<span class="k">try</span>? SampleGame.settingsStore.load()) ?? PlayerSettings()
+
+<span class="c">// Written the moment anything changes: no "apply" button to forget.</span>
+<span class="k">try</span> SampleGame.settingsStore.save(settings)</pre>
+<div class="table"><table><thead><tr><th>Property</th><th>Default</th><th>Range</th></tr></thead><tbody><tr><td><code>bindings</code></td><td><code>InputBindings.standard</code></td><td>which key does what</td></tr><tr><td><code>padBindings</code></td><td><code>PadBindings.standard</code></td><td>which controller button does what</td></tr><tr><td><code>mouseSensitivity</code>, <code>stickSensitivity</code></td><td><code>1</code></td><td><code>PlayerSettings.sensitivityRange</code>, 0.1…5</td></tr><tr><td><code>invertMouse</code>, <code>invertStick</code></td><td><code>false</code></td><td></td></tr><tr><td><code>moveDeadzone</code>, <code>lookDeadzone</code></td><td><code>StickResponse.moveDeadzone</code>, <code>.lookDeadzone</code></td><td><code>PlayerSettings.deadzoneRange</code>, 0…0.5</td></tr><tr><td><code>headBobAmount</code></td><td><code>1</code></td><td>0…1; 0 is off — stored as <code>headBob</code></td></tr><tr><td><code>volume</code></td><td><code>0.8</code></td><td>0…1</td></tr><tr><td><code>ambienceVolume</code></td><td><code>1</code></td><td>0…1, under <code>volume</code></td></tr><tr><td><code>brightness</code></td><td><code>0</code></td><td><code>PlayerSettings.brightnessRange</code>, −2…2 stops</td></tr></tbody></table></div>
+<p>Every numeric setting is clamped to its range when set, and a value that is not finite falls back to its default. <code>mouseLookScale</code> and <code>stickLookScale</code> give the multipliers to apply before <code>Camera.look(mouseDelta:)</code> and <code>Camera.turn(rate:deltaTime:)</code>. See <a href="input.html">input</a> for bindings and the rules for rebinding.</p>
+<p>A game with more settings, such as a field of view, a difficulty or subtitles, keeps them <strong>beside</strong> <code>PlayerSettings</code> rather than inside it.</p>
+<h2 id="versioning">Versioning saved data</h2>
+<p><code>SaveStore</code> does not version what it stores; the type you save does. Two patterns, both in the engine and its sample:</p>
+<p><strong>Decode field by field.</strong> <code>PlayerSettings</code> decodes every field as optional: a missing field takes its default, an unknown one is ignored, and a key name this build does not recognize costs only that one binding. A settings file from an older build loads into a newer one with everything it did say intact. A file written before the mouse and the stick had separate settings has one sensitivity and one invert, and both devices inherit them.</p>
+<p><strong>Carry a version from the first save.</strong> The sample's <code>SampleRun.Progress</code> has a <code>version</code> field and <code>currentVersion = 2</code>. Version 1 held a single best time; version 2 keeps one per level. A version 1 save migrates when it loads instead of being discarded, and the encoder never writes the old field, so migration is one way.</p>
+<div class="note"><p>The first save format that needs changing is always one that did not have a version. Add the field before you need it.</p></div>
+<p><code>Engine.version</code> is the engine's version, not your save's: a save's format changes when your data does.</p>
+<h2 id="what-it-does-not-do">What it does not do</h2>
+<ul><li><strong>No cloud sync or save slots.</strong> One value per file; several slots are several stores with different names.</li><li><strong>No encryption.</strong> The file is plain JSON a player can edit.</li><li><strong>No background writes.</strong> <code>save</code> writes when called.</li></ul>
+<p>The sample's level editor saves edited levels to the same folder; see <a href="levels.html">levels</a>.</p>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <h2>On this page</h2><a href="#savestore">SaveStore</a><a href="#settings">PlayerSettings</a><a href="#versioning">Versioning saved data</a><a href="#what-it-does-not-do">What it does not do</a>
+  </aside>
+</div>
+
+</body>
+</html>
