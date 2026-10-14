@@ -17,7 +17,7 @@ the proof-led page's argument, and the docs in their own shape underneath.**
 | `images/` | the engine's own sample, running — nothing staged, nothing painted over |
 
 Paths above are inside `web/` unless they say otherwise. Open `web/index.html` in a browser; there is no build step
-to *view* it. **After changing a guide's source, the changelog, the engine's public types or its mark, run
+to *view* it. Links home are `/` and `/#section` — the site's address, never `index.html` (owner, 2026-10-14) — so opened from disk they lead to the disk's root; to click through it, serve it: `python3 -m http.server -d web`. **After changing a guide's source, the changelog, the engine's public types or its mark, run
 `python3 Tools/build-docs.py`** and commit what it writes.
 
 ## The docs (2026-10-13)

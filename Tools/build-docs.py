@@ -258,7 +258,7 @@ def page(slug, title, description, body, toc, crumb, ver):
 <body>
 
 <header class="docs-bar">
-  <a class="brand" href="../index.html"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
+  <a class="brand" href="/"><img src="../windage-engine.svg" alt="">WINDAGE <small>ENGINE</small></a>
   <button class="search" type="button" id="docs-search"><span>Search the docs</span><kbd>⌘K</kbd></button>
   <ul><li><a href="start.html">Guides</a></li><li><a href="reference.html">Reference</a></li><li><a href="changelog.html">Changelog</a></li></ul>
   <span class="ver">v{ver}</span>
