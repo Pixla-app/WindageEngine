@@ -2356,8 +2356,8 @@ Never more than one release in a day.
 
 Nothing in a build cares whether `CHANGELOG.md` was updated, so a changelog left to discipline falls
 behind — and one that has fallen behind is worse than none, because a reader believes it.
-`ChangelogTests` checks that its newest entry is the version the engine reports (1.0.0 while there is
-none), that entries are in order, and that an `Unreleased` section exists to write into. Releasing without
+`ChangelogTests` checks that its newest entry is the version the engine reports, or one it has been bumped
+past and not yet cut (1.0.0 while there is none), that entries are in order, and that an `Unreleased` section exists to write into. Releasing without
 writing the entry fails the suite.
 
 **Entries are written for somebody upgrading**, which is why *Changed* and *Removed* carry the weight.
