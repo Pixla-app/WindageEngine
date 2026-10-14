@@ -78,8 +78,11 @@ as recorded; Worldra's forest frame byte-identical to before.
 
 **Not released — nothing is.** The engine reports 1.0.0, the version its first release will be;
 `CHANGELOG.md` has one *Unreleased* section ("Initial release") and there are no tags. When 1.0.0 ships is the
-owner's call (README, "Versioning") — never cut a release unasked. The credit policy is decided: a
-credits line required, the splash optional (README, licensing). The price above PolyForm's thresholds is not.
+owner's, in **Pixla Games Control's Releases window** (2026-10-13): Cut runs the tests and tags, Publish pushes,
+Make Public is the one-time switch — a session never does any of them. Ready for it: `LICENSE` is PolyForm
+Small Business with the credits line as its Required Notice, the docs name `github.com/Pixla-app/WindageEngine`,
+and `web/` is the site to upload. **No repository is backed up yet** — Repos ▸ Create backup, before anything.
+Above PolyForm's thresholds: legal@pixla.app, no price set (owner, 2026-10-13).
 
 ## Done 2026-10-13 — the docs, written (Unreleased)
 
@@ -1776,8 +1779,7 @@ below, never in this list.
 ## Standing reminders
 
 - **Update this file before the session ends.** Do not wait to be asked.
-- **The licence is PolyForm Small Business 1.0.0.** Settled; `LICENSE` reserves rights until the day
-  the engine is handed to somebody. Not an open question.
+- **The licence is PolyForm Small Business 1.0.0**, in `LICENSE` since 2026-10-13. Not an open question.
 - **Nothing enters this package speculatively.** Working, tested code proves the seam, or it stays
   where it is.
 - **No game's name appears in this repository.** Describe the shape, not the product.

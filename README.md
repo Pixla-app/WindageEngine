@@ -2364,12 +2364,24 @@ writing the entry fails the suite.
 A new type costs a reader nothing; a changed one costs them a build. The first entry is the exception: 1.0.0
 says what the engine does, because nobody is upgrading to it.
 
-### Releasing, when the owner says so
+### Releasing, when the owner says so — in Pixla Games Control (2026-10-13)
 
-1. Move `Unreleased` into a dated version heading in `CHANGELOG.md` — the first is `## [1.0.0] — <date>`.
-2. Set `Engine.semanticVersion` to match — the test will tell you if you forget.
-3. `swift test`, then tag: **`git tag 1.0.0`**, no `v` prefix, which is what SwiftPM resolves and
-   what `SemanticVersion.init(_:)` deliberately refuses to parse leniently.
+**Releases are cut in Pixla Games Control's Releases window** (`~/PixlaGames/Studio/PixlaGamesControl`), the way
+Pixla Control's Board releases the business apps: every step is the owner's click.
+
+1. **Notes** — Edit… writes the *Unreleased* section and commits `CHANGELOG.md` only. A session may still add
+   notes under *Unreleased* as it works; nothing else in the changelog is a session's to write.
+2. **Bump** — Patch, Minor or Major, suggested from the notes (Removed → major, Added → minor, otherwise patch),
+   rewrites `Engine.semanticVersion` and commits `Engine.swift` only. Not offered before the first release,
+   which is 1.0.0.
+3. **Cut** — moves *Unreleased* under `## [version] — date`, runs `swift test` on exactly that, and only if it
+   passes commits the changelog and tags the version (annotated, no `v`, which is what SwiftPM resolves). It
+   refuses a second release the same day.
+4. **Publish** pushes the branch and the tag. **Make Public** is the repository's one-time switch, behind typing
+   its name.
+
+**A session never bumps, cuts, tags, publishes or changes visibility.** Those are the buttons, and they are the
+owner's.
 
 ## The sample game (2026-09-07)
 

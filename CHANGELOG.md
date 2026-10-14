@@ -4,8 +4,8 @@ Every release of Windage Engine, newest first. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html), as set out in `README.md` § "Versioning".
 
-**Nothing has been released yet.** The first public release will be **1.0.0**, and the section below becomes
-its entry. How the engine was built is in the git log, not here.
+**1.0.0 is the first release.** How the engine was built before it is in the git log, not here. Releases are
+cut in Pixla Games Control's Releases window, never by hand.
 
 **Written for somebody upgrading**, which means the entries that matter most after 1.0.0 are under
 *Changed* and *Removed*. A new type costs a reader nothing; a changed one costs them a build.
